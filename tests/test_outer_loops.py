@@ -1661,6 +1661,26 @@ def test_empty_list_treats_shortcut_as_active(temp_repo, monkeypatch):
     assert options["filter"]["statuses"] == ["Todo"]
 
 
+def test_tasklist_filter_project_forwarded_to_provider_options(temp_repo, monkeypatch):
+    """tasklist_filter.project is forwarded into filter_dict so Jira provider receives it."""
+    options = _capture_tasklist_options(
+        temp_repo,
+        monkeypatch,
+        {"tasklist_filter": {"project": "ENG", "labels": [], "assignees": [], "statuses": []}},
+    )
+    assert options["filter"]["project"] == "ENG"
+
+
+def test_tasklist_filter_project_absent_when_not_set(temp_repo, monkeypatch):
+    """When project is not in tasklist_filter, filter_dict should not contain a project key."""
+    options = _capture_tasklist_options(
+        temp_repo,
+        monkeypatch,
+        {"tasklist_filter": {"labels": ["sprint-1"], "assignees": [], "statuses": []}},
+    )
+    assert "project" not in options.get("filter", {})
+
+
 # ---------------------------------------------------------------------------
 # Provider placeholder substitution tests
 # ---------------------------------------------------------------------------

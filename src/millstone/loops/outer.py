@@ -45,6 +45,8 @@ from millstone.utils import progress
 # works without requiring callers to manually import the module.
 with contextlib.suppress(Exception):
     import millstone.artifact_providers.mcp  # noqa: F401  (side-effect: registers "mcp" backends)
+with contextlib.suppress(Exception):
+    import millstone.artifact_providers.jira  # noqa: F401  (side-effect: registers "jira" backend)
 
 if TYPE_CHECKING:
     # Avoid circular import - only used for type hints
@@ -181,6 +183,7 @@ class OuterLoopManager:
             milestone = raw_filter.get("milestone")  # GitHub
             cycles = list(raw_filter.get("cycles", []))  # Linear
             projects = list(raw_filter.get("projects", []))  # Linear
+            project = raw_filter.get("project")  # Jira
 
             filter_dict: dict[str, Any] = {
                 "labels": labels,
@@ -193,6 +196,8 @@ class OuterLoopManager:
                 filter_dict["cycles"] = cycles
             if projects:
                 filter_dict["projects"] = projects
+            if project is not None:
+                filter_dict["project"] = project
 
             tasklist_options.setdefault("filter", filter_dict)
 
