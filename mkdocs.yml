@@ -25,7 +25,6 @@ nav:
       - Scope: architecture/scope.md
   - Release:
       - Changelog: https://github.com/wittekin/millstone/blob/main/CHANGELOG.md
-      - Release Checklist: maintainer/release_checklist.md
   - Community:
       - Contributing: maintainer/contributing.md
       - Maintainers: maintainer/maintainers.md
