@@ -31,6 +31,7 @@ from millstone.artifacts.tasklist import TasklistManager
 # EvidenceStore
 # ---------------------------------------------------------------------------
 
+
 class TestEvidenceStore:
     def test_emit_writes_json_file(self, tmp_path):
         store = EvidenceStore(tmp_path / ".millstone")
@@ -71,49 +72,61 @@ class TestEvidenceStore:
 
     def test_list_returns_all_records(self, tmp_path):
         store = EvidenceStore(tmp_path / ".millstone")
-        for i, kind in enumerate([EvidenceKind.review, EvidenceKind.eval, EvidenceKind.design_review]):
-            store.emit(EvidenceRecord(
-                evidence_id=f"20260301_14302{i}_000000-{kind.value}-item",
-                kind=kind,
-                timestamp="2026-03-01T14:30:22+00:00",
-                outcome="ok",
-            ))
+        for i, kind in enumerate(
+            [EvidenceKind.review, EvidenceKind.eval, EvidenceKind.design_review]
+        ):
+            store.emit(
+                EvidenceRecord(
+                    evidence_id=f"20260301_14302{i}_000000-{kind.value}-item",
+                    kind=kind,
+                    timestamp="2026-03-01T14:30:22+00:00",
+                    outcome="ok",
+                )
+            )
         assert len(store.list()) == 3
 
     def test_list_filters_by_kind(self, tmp_path):
         store = EvidenceStore(tmp_path / ".millstone")
-        store.emit(EvidenceRecord(
-            evidence_id="20260301_143022_000000-review-a",
-            kind=EvidenceKind.review,
-            timestamp="2026-03-01T14:30:22+00:00",
-            outcome="approved",
-        ))
-        store.emit(EvidenceRecord(
-            evidence_id="20260301_143023_000000-eval-a",
-            kind=EvidenceKind.eval,
-            timestamp="2026-03-01T14:30:23+00:00",
-            outcome="passed",
-        ))
+        store.emit(
+            EvidenceRecord(
+                evidence_id="20260301_143022_000000-review-a",
+                kind=EvidenceKind.review,
+                timestamp="2026-03-01T14:30:22+00:00",
+                outcome="approved",
+            )
+        )
+        store.emit(
+            EvidenceRecord(
+                evidence_id="20260301_143023_000000-eval-a",
+                kind=EvidenceKind.eval,
+                timestamp="2026-03-01T14:30:23+00:00",
+                outcome="passed",
+            )
+        )
         results = store.list(kind=EvidenceKind.review)
         assert len(results) == 1
         assert results[0].kind == EvidenceKind.review
 
     def test_list_filters_by_work_item_id(self, tmp_path):
         store = EvidenceStore(tmp_path / ".millstone")
-        store.emit(EvidenceRecord(
-            evidence_id="20260301_143022_000000-review-task-a",
-            kind=EvidenceKind.review,
-            timestamp="2026-03-01T14:30:22+00:00",
-            outcome="approved",
-            work_item_id="task-a",
-        ))
-        store.emit(EvidenceRecord(
-            evidence_id="20260301_143023_000000-review-task-b",
-            kind=EvidenceKind.review,
-            timestamp="2026-03-01T14:30:23+00:00",
-            outcome="approved",
-            work_item_id="task-b",
-        ))
+        store.emit(
+            EvidenceRecord(
+                evidence_id="20260301_143022_000000-review-task-a",
+                kind=EvidenceKind.review,
+                timestamp="2026-03-01T14:30:22+00:00",
+                outcome="approved",
+                work_item_id="task-a",
+            )
+        )
+        store.emit(
+            EvidenceRecord(
+                evidence_id="20260301_143023_000000-review-task-b",
+                kind=EvidenceKind.review,
+                timestamp="2026-03-01T14:30:23+00:00",
+                outcome="approved",
+                work_item_id="task-b",
+            )
+        )
         results = store.list(work_item_id="task-a")
         assert len(results) == 1
         assert results[0].work_item_id == "task-a"
@@ -142,10 +155,10 @@ class TestEvidenceStore:
 # make_review_evidence
 # ---------------------------------------------------------------------------
 
+
 class TestMakeReviewEvidence:
     def test_kind_is_review(self):
-        r = make_review_evidence("fix auth", "approved", 2, 3,
-                                 {"critical": 0, "high": 1}, 1000)
+        r = make_review_evidence("fix auth", "approved", 2, 3, {"critical": 0, "high": 1}, 1000)
         assert r.kind == EvidenceKind.review
 
     def test_outcome_preserved(self):
@@ -157,13 +170,13 @@ class TestMakeReviewEvidence:
         assert r.work_item_kind == "task"
 
     def test_capability_tier_stored(self):
-        r = make_review_evidence("fix auth", "approved", 1, 0, {}, 500,
-                                 capability_tier="C1_local_write")
+        r = make_review_evidence(
+            "fix auth", "approved", 1, 0, {}, 500, capability_tier="C1_local_write"
+        )
         assert r.capability_tier == "C1_local_write"
 
     def test_detail_contains_cycles_and_findings(self):
-        r = make_review_evidence("fix auth", "approved", 3, 5,
-                                 {"critical": 1, "high": 4}, 2000)
+        r = make_review_evidence("fix auth", "approved", 3, 5, {"critical": 1, "high": 4}, 2000)
         assert r.detail["cycles"] == 3
         assert r.detail["findings_count"] == 5
         assert r.detail["duration_ms"] == 2000
@@ -173,8 +186,15 @@ class TestMakeReviewEvidence:
         assert r.work_item_id == "fix-auth-token"
 
     def test_work_item_id_uses_explicit_id_over_slug(self):
-        r = make_review_evidence("Refactor auth module to use new token library",
-                                 "approved", 1, 0, {}, 0, work_item_id="refactor-auth")
+        r = make_review_evidence(
+            "Refactor auth module to use new token library",
+            "approved",
+            1,
+            0,
+            {},
+            0,
+            work_item_id="refactor-auth",
+        )
         assert r.work_item_id == "refactor-auth"
         assert r.evidence_id.endswith("-review-refactor-auth")
 
@@ -182,6 +202,7 @@ class TestMakeReviewEvidence:
 # ---------------------------------------------------------------------------
 # make_eval_evidence
 # ---------------------------------------------------------------------------
+
 
 class TestMakeEvalEvidence:
     def test_outcome_passed(self):
@@ -218,6 +239,7 @@ class TestMakeEvalEvidence:
 # make_design_review_evidence
 # ---------------------------------------------------------------------------
 
+
 class TestMakeDesignReviewEvidence:
     def test_kind_is_design_review(self):
         d = make_design_review_evidence("designs/add-foo.md", "APPROVED", 3, 0)
@@ -249,6 +271,7 @@ class TestMakeDesignReviewEvidence:
 # evidence_from_effect_record
 # ---------------------------------------------------------------------------
 
+
 class TestEvidenceFromEffectRecord:
     def test_kind_is_effect(self):
         import datetime
@@ -259,6 +282,7 @@ class TestEvidenceFromEffectRecord:
             EffectRecord,
             EffectStatus,
         )
+
         intent = EffectIntent(
             effect_class=EffectClass.transactional,
             description="close ticket",
@@ -281,6 +305,7 @@ class TestEvidenceFromEffectRecord:
             EffectRecord,
             EffectStatus,
         )
+
         intent = EffectIntent(
             effect_class=EffectClass.transactional,
             description="close ticket",
@@ -302,6 +327,7 @@ class TestEvidenceFromEffectRecord:
             EffectRecord,
             EffectStatus,
         )
+
         intent = EffectIntent(
             effect_class=EffectClass.operational,
             description="deploy",
@@ -319,6 +345,7 @@ class TestEvidenceFromEffectRecord:
 # ---------------------------------------------------------------------------
 # TasklistManager.extract_current_task_metadata
 # ---------------------------------------------------------------------------
+
 
 class TestExtractCurrentTaskMetadata:
     def test_returns_task_id_from_raw_block(self, temp_repo):
@@ -361,25 +388,36 @@ class TestExtractCurrentTaskMetadata:
 # Orchestrator integration: _evidence_store construction and emission
 # ---------------------------------------------------------------------------
 
+
 class TestOrchestratorEvidenceIntegration:
     def test_evidence_store_constructed(self, temp_repo):
         from millstone.runtime.orchestrator import Orchestrator
-        orch = Orchestrator(repo_dir=str(temp_repo), tasklist="docs/tasklist.md",
-                            dry_run=False, quiet=True)
+
+        orch = Orchestrator(
+            repo_dir=str(temp_repo), tasklist="docs/tasklist.md", dry_run=False, quiet=True
+        )
         assert hasattr(orch, "_evidence_store")
         assert isinstance(orch._evidence_store, EvidenceStore)
 
     def test_save_task_metrics_approved_emits_evidence(self, temp_repo):
         from millstone.runtime.orchestrator import Orchestrator
-        orch = Orchestrator(repo_dir=str(temp_repo), tasklist="docs/tasklist.md",
-                            dry_run=False, quiet=True)
+
+        orch = Orchestrator(
+            repo_dir=str(temp_repo), tasklist="docs/tasklist.md", dry_run=False, quiet=True
+        )
         orch._task_start_time = None
         orch._task_tokens_in = 0
         orch._task_tokens_out = 0
         orch._task_review_cycles = 1
         orch._task_review_duration_ms = 500
         orch._task_findings_count = 2
-        orch._task_findings_by_severity = {"critical": 0, "high": 0, "medium": 2, "low": 0, "nit": 0}
+        orch._task_findings_by_severity = {
+            "critical": 0,
+            "high": 0,
+            "medium": 2,
+            "low": 0,
+            "nit": 0,
+        }
         orch.current_task_group = None
 
         with patch.object(orch._eval_manager, "save_task_metrics", return_value=Path("/tmp/x")):
@@ -391,15 +429,23 @@ class TestOrchestratorEvidenceIntegration:
 
     def test_save_task_metrics_failure_does_not_emit_evidence(self, temp_repo):
         from millstone.runtime.orchestrator import Orchestrator
-        orch = Orchestrator(repo_dir=str(temp_repo), tasklist="docs/tasklist.md",
-                            dry_run=False, quiet=True)
+
+        orch = Orchestrator(
+            repo_dir=str(temp_repo), tasklist="docs/tasklist.md", dry_run=False, quiet=True
+        )
         orch._task_start_time = None
         orch._task_tokens_in = 0
         orch._task_tokens_out = 0
         orch._task_review_cycles = 0
         orch._task_review_duration_ms = 0
         orch._task_findings_count = 0
-        orch._task_findings_by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0, "nit": 0}
+        orch._task_findings_by_severity = {
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "low": 0,
+            "nit": 0,
+        }
         orch.current_task_group = None
 
         with patch.object(orch._eval_manager, "save_task_metrics", return_value=Path("/tmp/x")):
@@ -410,8 +456,10 @@ class TestOrchestratorEvidenceIntegration:
 
     def test_run_eval_emits_eval_evidence(self, temp_repo):
         from millstone.runtime.orchestrator import Orchestrator
-        orch = Orchestrator(repo_dir=str(temp_repo), tasklist="docs/tasklist.md",
-                            dry_run=False, quiet=True)
+
+        orch = Orchestrator(
+            repo_dir=str(temp_repo), tasklist="docs/tasklist.md", dry_run=False, quiet=True
+        )
 
         fake_result = {
             "_passed": True,
@@ -437,8 +485,10 @@ class TestOrchestratorEvidenceIntegration:
 
     def test_review_design_emits_design_review_evidence(self, temp_repo):
         from millstone.runtime.orchestrator import Orchestrator
-        orch = Orchestrator(repo_dir=str(temp_repo), tasklist="docs/tasklist.md",
-                            dry_run=False, quiet=True)
+
+        orch = Orchestrator(
+            repo_dir=str(temp_repo), tasklist="docs/tasklist.md", dry_run=False, quiet=True
+        )
 
         fake_result = {
             "approved": True,

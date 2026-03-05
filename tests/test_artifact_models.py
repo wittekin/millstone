@@ -1,4 +1,5 @@
 """Tests for artifact model dataclasses and status enums (artifact-models task)."""
+
 import pytest
 
 from millstone.artifacts.models import (
@@ -105,6 +106,7 @@ class TestOpportunity:
 
     def test_is_dataclass(self):
         import dataclasses
+
         assert dataclasses.is_dataclass(Opportunity)
 
 
@@ -155,6 +157,7 @@ class TestDesign:
 
     def test_is_dataclass(self):
         import dataclasses
+
         assert dataclasses.is_dataclass(Design)
 
 
@@ -206,6 +209,7 @@ class TestTasklistItem:
 
     def test_is_dataclass(self):
         import dataclasses
+
         assert dataclasses.is_dataclass(TasklistItem)
 
 
@@ -216,6 +220,7 @@ class TestNoInternalImports:
         import inspect
 
         import millstone.artifacts.models as mod
+
         source = inspect.getsource(mod)
         lines = source.splitlines()
         import_lines = [

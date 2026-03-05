@@ -461,7 +461,9 @@ class TasklistManager:
         """
         print()
         print("=== Compacting Tasklist ===")
-        print(f"Completed tasks ({self.completed_task_count}) >= threshold ({self.compact_threshold})")
+        print(
+            f"Completed tasks ({self.completed_task_count}) >= threshold ({self.compact_threshold})"
+        )
         print("Running compaction to reduce token usage...")
 
         tasklist_path = self._tasklist_path()
@@ -638,7 +640,9 @@ class TasklistManager:
                 continue
 
             # Success/Criteria/Acceptance: ...
-            criteria_match = re.match(r"(?:Success|Criteria|Acceptance):\s*(.+)", line, re.IGNORECASE)
+            criteria_match = re.match(
+                r"(?:Success|Criteria|Acceptance):\s*(.+)", line, re.IGNORECASE
+            )
             if criteria_match:
                 result["criteria"] = criteria_match.group(1).strip()
                 continue
@@ -731,7 +735,9 @@ class TasklistManager:
         if not matches:
             return False
 
-        target_index = self._resolve_task_index_by_id(task_id=task_id, taskmap=taskmap, matches=matches)
+        target_index = self._resolve_task_index_by_id(
+            task_id=task_id, taskmap=taskmap, matches=matches
+        )
         if target_index is None:
             return False
 
@@ -766,13 +772,17 @@ class TasklistManager:
         if not matches:
             return None
 
-        target_index = self._resolve_task_index_by_id(task_id=task_id, taskmap=taskmap, matches=matches)
+        target_index = self._resolve_task_index_by_id(
+            task_id=task_id, taskmap=taskmap, matches=matches
+        )
         if target_index is None:
             return None
 
         return matches[target_index].group(1).lower() == "x"
 
-    def _resolve_task_index_by_id(self, task_id: str, taskmap: dict, matches: list[re.Match]) -> int | None:
+    def _resolve_task_index_by_id(
+        self, task_id: str, taskmap: dict, matches: list[re.Match]
+    ) -> int | None:
         """Resolve task index from taskmap first, then by metadata/id hash scan."""
         mapped = taskmap.get(task_id)
         if isinstance(mapped, int) and 0 <= mapped < len(matches):
@@ -1119,12 +1129,14 @@ class TasklistManager:
 
                 if shared_refs:
                     # Tasks share file references - may have dependency
-                    dependencies.append({
-                        "from_index": task1["index"],
-                        "to_index": task2["index"],
-                        "reason": f"shared files: {', '.join(list(shared_refs)[:3])}",
-                        "type": "file_overlap",
-                    })
+                    dependencies.append(
+                        {
+                            "from_index": task1["index"],
+                            "to_index": task2["index"],
+                            "reason": f"shared files: {', '.join(list(shared_refs)[:3])}",
+                            "type": "file_overlap",
+                        }
+                    )
 
                 # Check for explicit ordering hints in task text
                 task1_text = task1.get("full_text", "").lower()
@@ -1136,12 +1148,14 @@ class TasklistManager:
                     or f"depends on {task2_title}" in task1_text
                     or f"requires {task2_title}" in task1_text
                 ):
-                    dependencies.append({
-                        "from_index": task1["index"],
-                        "to_index": task2["index"],
-                        "reason": "explicit dependency",
-                        "type": "explicit",
-                    })
+                    dependencies.append(
+                        {
+                            "from_index": task1["index"],
+                            "to_index": task2["index"],
+                            "reason": "explicit dependency",
+                            "type": "explicit",
+                        }
+                    )
 
         return dependencies
 
@@ -1185,10 +1199,7 @@ class TasklistManager:
 
         while remaining:
             # Find tasks with no unresolved dependencies
-            available = [
-                idx for idx in remaining
-                if not (dep_graph[idx] & remaining)
-            ]
+            available = [idx for idx in remaining if not (dep_graph[idx] & remaining)]
 
             if not available:
                 # Circular dependency - just pick by complexity
@@ -1196,9 +1207,7 @@ class TasklistManager:
 
             # Sort available by complexity (simple first)
             available.sort(
-                key=lambda idx: complexity_order.get(
-                    tasks[index_to_pos[idx]]["complexity"], 1
-                )
+                key=lambda idx: complexity_order.get(tasks[index_to_pos[idx]]["complexity"], 1)
             )
 
             # Pick the simplest available task
@@ -1219,9 +1228,11 @@ class TasklistManager:
         print()
 
         # Summary counts
-        print(f"Tasks: {result['total_count']} total, "
-              f"{result['pending_count']} pending, "
-              f"{result['completed_count']} completed")
+        print(
+            f"Tasks: {result['total_count']} total, "
+            f"{result['pending_count']} pending, "
+            f"{result['completed_count']} completed"
+        )
         print()
 
         # Pending tasks by complexity
@@ -1233,9 +1244,7 @@ class TasklistManager:
         # Count by complexity
         complexity_counts = {"simple": 0, "medium": 0, "complex": 0}
         for task in pending_tasks:
-            complexity_counts[task["complexity"]] = (
-                complexity_counts.get(task["complexity"], 0) + 1
-            )
+            complexity_counts[task["complexity"]] = complexity_counts.get(task["complexity"], 0) + 1
 
         print("Pending tasks by complexity:")
         print(f"  Simple:  {complexity_counts['simple']}")
@@ -1270,8 +1279,9 @@ class TasklistManager:
         if dependencies:
             print("Potential dependencies:")
             for dep in dependencies[:10]:  # Limit to 10
-                print(f"  Task {dep['from_index'] + 1} -> Task {dep['to_index'] + 1}: "
-                      f"{dep['reason']}")
+                print(
+                    f"  Task {dep['from_index'] + 1} -> Task {dep['to_index'] + 1}: {dep['reason']}"
+                )
             if len(dependencies) > 10:
                 print(f"  ... and {len(dependencies) - 10} more")
             print()
@@ -1344,6 +1354,7 @@ class TasklistManager:
             - output: The agent's analysis and suggestions
         """
         from millstone.utils import progress
+
         progress(f"Analyzing task {task_number} for splitting...")
 
         # First, analyze the tasklist to get task info

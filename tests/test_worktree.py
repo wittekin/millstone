@@ -46,9 +46,9 @@ class TestWorktreeManager:
         base_ref = _head_sha(temp_repo)
         millstone_dir = temp_repo / ".millstone"
         millstone_dir.mkdir(exist_ok=True)
-        (millstone_dir / "config.toml").write_text('parallel_enabled = true\n')
+        (millstone_dir / "config.toml").write_text("parallel_enabled = true\n")
         (millstone_dir / "policy.toml").write_text("[limits]\nmax_loc_per_task = 123\n")
-        (millstone_dir / "project.toml").write_text("[project]\nname = \"x\"\n")
+        (millstone_dir / "project.toml").write_text('[project]\nname = "x"\n')
 
         lock = AdvisoryLock(temp_repo / ".millstone" / "locks" / "git.lock", timeout=2.0)
         mgr = WorktreeManager(
@@ -58,7 +58,7 @@ class TestWorktreeManager:
         )
 
         wt = mgr.create_task_worktree("task-two", base_ref)
-        assert (wt / ".millstone" / "config.toml").read_text() == 'parallel_enabled = true\n'
+        assert (wt / ".millstone" / "config.toml").read_text() == "parallel_enabled = true\n"
         assert (wt / ".millstone" / "policy.toml").read_text().startswith("[limits]")
         assert (wt / ".millstone" / "project.toml").read_text().startswith("[project]")
 

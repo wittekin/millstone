@@ -24,12 +24,14 @@ from enum import Enum
 
 class ReviewStatus(str, Enum):
     """Review decision status."""
+
     APPROVED = "APPROVED"
     REQUEST_CHANGES = "REQUEST_CHANGES"
 
 
 class FindingSeverity(str, Enum):
     """Review finding severity level."""
+
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -39,12 +41,14 @@ class FindingSeverity(str, Enum):
 
 class SanityStatus(str, Enum):
     """Sanity check status."""
+
     OK = "OK"
     HALT = "HALT"
 
 
 class DesignReviewVerdict(str, Enum):
     """Design review verdict."""
+
     APPROVED = "APPROVED"
     NEEDS_REVISION = "NEEDS_REVISION"
 
@@ -67,20 +71,14 @@ REVIEW_DECISION_SCHEMA = {
         "status": {
             "type": "string",
             "enum": ["APPROVED", "REQUEST_CHANGES"],
-            "description": "The review decision"
+            "description": "The review decision",
         },
-        "review": {
-            "type": "string",
-            "description": "Full review content (free-form text)"
-        },
-        "summary": {
-            "type": "string",
-            "description": "Brief summary of the review"
-        },
+        "review": {"type": "string", "description": "Full review content (free-form text)"},
+        "summary": {"type": "string", "description": "Brief summary of the review"},
         "findings": {
             "type": ["array", "null"],
             "items": {"type": "string"},
-            "description": "List of issues that must be addressed (include when REQUEST_CHANGES)"
+            "description": "List of issues that must be addressed (include when REQUEST_CHANGES)",
         },
         "findings_by_severity": {
             "type": ["object", "null"],
@@ -88,36 +86,36 @@ REVIEW_DECISION_SCHEMA = {
                 "critical": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Critical issues that block merge"
+                    "description": "Critical issues that block merge",
                 },
                 "high": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "High priority issues"
+                    "description": "High priority issues",
                 },
                 "medium": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Medium priority issues"
+                    "description": "Medium priority issues",
                 },
                 "low": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Low priority issues"
+                    "description": "Low priority issues",
                 },
                 "nit": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Nitpicks and style suggestions"
-                }
+                    "description": "Nitpicks and style suggestions",
+                },
             },
             "required": ["critical", "high", "medium", "low", "nit"],
             "additionalProperties": False,
-            "description": "Findings grouped by severity level"
-        }
+            "description": "Findings grouped by severity level",
+        },
     },
     "required": ["status", "review", "summary", "findings", "findings_by_severity"],
-    "additionalProperties": False
+    "additionalProperties": False,
 }
 
 SANITY_CHECK_SCHEMA = {
@@ -127,37 +125,31 @@ SANITY_CHECK_SCHEMA = {
         "status": {
             "type": "string",
             "enum": ["OK", "HALT"],
-            "description": "Whether to proceed (OK) or halt for human intervention (HALT)"
+            "description": "Whether to proceed (OK) or halt for human intervention (HALT)",
         },
         "reason": {
             "type": "string",
-            "description": "Explanation of why halting (include when HALT)"
-        }
+            "description": "Explanation of why halting (include when HALT)",
+        },
     },
     "required": ["status", "reason"],
-    "additionalProperties": False
+    "additionalProperties": False,
 }
 
 BUILDER_COMPLETION_SCHEMA = {
     # Note: Avoid JSON Schema conditionals (if/then/else) - not supported by all providers
     "type": "object",
     "properties": {
-        "completed": {
-            "type": "boolean",
-            "description": "Whether the task was completed"
-        },
-        "summary": {
-            "type": "string",
-            "description": "Brief summary of what was done"
-        },
+        "completed": {"type": "boolean", "description": "Whether the task was completed"},
+        "summary": {"type": "string", "description": "Brief summary of what was done"},
         "files_changed": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "List of files that were modified"
-        }
+            "description": "List of files that were modified",
+        },
     },
     "required": ["completed", "summary", "files_changed"],
-    "additionalProperties": False
+    "additionalProperties": False,
 }
 
 DESIGN_REVIEW_SCHEMA = {
@@ -167,26 +159,26 @@ DESIGN_REVIEW_SCHEMA = {
         "verdict": {
             "type": "string",
             "enum": ["APPROVED", "NEEDS_REVISION"],
-            "description": "The review verdict"
+            "description": "The review verdict",
         },
         "strengths": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "List of design strengths"
+            "description": "List of design strengths",
         },
         "issues": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "List of issues that must be addressed"
+            "description": "List of issues that must be addressed",
         },
         "questions": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "Clarifying questions for the author"
-        }
+            "description": "Clarifying questions for the author",
+        },
     },
     "required": ["verdict", "strengths", "issues", "questions"],
-    "additionalProperties": False
+    "additionalProperties": False,
 }
 
 # Registry of all schemas
@@ -201,6 +193,7 @@ SCHEMAS = {
 # =============================================================================
 # Schema Utilities
 # =============================================================================
+
 
 def get_schema_json(schema_name: str) -> str:
     """Get a schema as a JSON string for CLI flags.
@@ -250,9 +243,11 @@ def get_schema_path(schema_name: str, work_dir: str) -> str:
 # Response Dataclasses
 # =============================================================================
 
+
 @dataclass
 class ReviewDecision:
     """Parsed review decision from agent."""
+
     status: ReviewStatus
     review: str | None = None
     findings: list[str] | None = None
@@ -287,6 +282,7 @@ class ReviewDecision:
 @dataclass
 class SanityResult:
     """Parsed sanity check result from agent."""
+
     status: SanityStatus
     reason: str | None = None
 
@@ -298,6 +294,7 @@ class SanityResult:
 @dataclass
 class BuilderCompletion:
     """Parsed builder completion signal from agent."""
+
     completed: bool
     summary: str
     files_changed: list[str] | None = None
@@ -306,6 +303,7 @@ class BuilderCompletion:
 @dataclass
 class DesignReviewResult:
     """Parsed design review result from agent."""
+
     verdict: DesignReviewVerdict
     strengths: list[str]
     issues: list[str]
@@ -319,6 +317,7 @@ class DesignReviewResult:
 # =============================================================================
 # Parsing Functions
 # =============================================================================
+
 
 def parse_review_decision(output: str) -> ReviewDecision | None:
     """Parse review decision from agent output.
@@ -336,7 +335,7 @@ def parse_review_decision(output: str) -> ReviewDecision | None:
     import re
 
     # Try to find JSON in code blocks first (more reliable for nested objects)
-    code_block_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', output, re.DOTALL)
+    code_block_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", output, re.DOTALL)
     if code_block_match:
         try:
             data = json.loads(code_block_match.group(1))
@@ -359,11 +358,11 @@ def parse_review_decision(output: str) -> ReviewDecision | None:
     depth = 0
     start = -1
     for i, char in enumerate(output):
-        if char == '{':
+        if char == "{":
             if depth == 0:
                 start = i
             depth += 1
-        elif char == '}':
+        elif char == "}":
             depth -= 1
             if depth == 0 and start >= 0:
                 brace_positions.append((start, i + 1))
@@ -431,8 +430,7 @@ def parse_sanity_result(output: str) -> SanityResult | None:
     if re.search(r'"status"\s*:\s*"HALT"', output, re.IGNORECASE):
         reason_match = re.search(r'"reason"\s*:\s*"([^"]+)"', output)
         return SanityResult(
-            status=SanityStatus.HALT,
-            reason=reason_match.group(1) if reason_match else None
+            status=SanityStatus.HALT, reason=reason_match.group(1) if reason_match else None
         )
 
     # Default to OK if no halt signal found
@@ -451,7 +449,9 @@ def parse_builder_completion(output: str) -> BuilderCompletion | None:
     import re
 
     # Try to extract JSON
-    json_match = re.search(r'\{[^{}]*"completed"\s*:\s*(true|false)[^{}]*\}', output, re.DOTALL | re.IGNORECASE)
+    json_match = re.search(
+        r'\{[^{}]*"completed"\s*:\s*(true|false)[^{}]*\}', output, re.DOTALL | re.IGNORECASE
+    )
     if json_match:
         try:
             data = json.loads(json_match.group(0))
@@ -490,7 +490,7 @@ def parse_design_review(output: str) -> DesignReviewResult | None:
         r'"strengths"\s*:\s*\[[^\]]*\][^{}]*'
         r'"issues"\s*:\s*\[[^\]]*\][^{}]*\}',
         output,
-        re.DOTALL
+        re.DOTALL,
     )
 
     if json_match:
@@ -509,7 +509,7 @@ def parse_design_review(output: str) -> DesignReviewResult | None:
     # This handles cases where fields may be in different order
     try:
         # Look for JSON code block
-        code_block_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', output, re.DOTALL)
+        code_block_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", output, re.DOTALL)
         if code_block_match:
             data = json.loads(code_block_match.group(1))
             if "verdict" in data and "strengths" in data and "issues" in data:

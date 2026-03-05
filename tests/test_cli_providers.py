@@ -78,11 +78,7 @@ class TestClaudeProvider:
     def test_build_command_with_all_options(self):
         """Command with all options includes everything."""
         provider = ClaudeProvider()
-        cmd = provider.build_command(
-            "do something",
-            resume="sess-456",
-            model="opus"
-        )
+        cmd = provider.build_command("do something", resume="sess-456", model="opus")
         assert cmd[0] == "claude"
         assert "-p" in cmd
         assert "do something" in cmd
@@ -148,11 +144,7 @@ class TestCodexProvider:
     def test_build_command_resume_with_model(self):
         """Resume command with model includes both."""
         provider = CodexProvider()
-        cmd = provider.build_command(
-            "follow up",
-            resume="sess-789",
-            model="gpt-5"
-        )
+        cmd = provider.build_command("follow up", resume="sess-789", model="gpt-5")
         assert "resume" in cmd
         assert "sess-789" in cmd
         assert "--model" in cmd
@@ -200,11 +192,7 @@ class TestProviderRun:
         """run() returns CLIResult with correct fields."""
         provider = ClaudeProvider()
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout="output text",
-                stderr="",
-                returncode=0
-            )
+            mock_run.return_value = MagicMock(stdout="output text", stderr="", returncode=0)
             result = provider.run("test prompt")
             assert isinstance(result, CLIResult)
             assert result.output == "output text"
@@ -215,9 +203,7 @@ class TestProviderRun:
         provider = ClaudeProvider()
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
-                stdout="stdout part",
-                stderr="stderr part",
-                returncode=0
+                stdout="stdout part", stderr="stderr part", returncode=0
             )
             result = provider.run("test")
             assert result.output == "stdout part\nstderr part"
@@ -240,11 +226,7 @@ class TestProviderCheckAvailable:
         """check_available() returns (True, message) when CLI is found."""
         provider = ClaudeProvider()
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout="claude v1.0.0",
-                stderr="",
-                returncode=0
-            )
+            mock_run.return_value = MagicMock(stdout="claude v1.0.0", stderr="", returncode=0)
             available, message = provider.check_available()
             assert available is True
             assert "Claude Code available" in message
@@ -263,11 +245,7 @@ class TestProviderCheckAvailable:
         """check_available() returns (False, message) on non-zero returncode."""
         provider = ClaudeProvider()
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout="",
-                stderr="some error",
-                returncode=1
-            )
+            mock_run.return_value = MagicMock(stdout="", stderr="some error", returncode=1)
             available, message = provider.check_available()
             assert available is False
             assert "error" in message.lower()
@@ -293,6 +271,7 @@ class TestStructuredOutputSchema:
         schema_json = cmd[json_schema_idx + 1]
         # Verify it's valid JSON with expected fields
         import json
+
         schema = json.loads(schema_json)
         assert "status" in schema.get("properties", {})
 
@@ -313,6 +292,7 @@ class TestStructuredOutputSchema:
         assert "review_decision.json" in schema_path
         # File should exist
         from pathlib import Path
+
         assert Path(schema_path).exists()
 
     def test_codex_output_schema_requires_work_dir(self):
@@ -343,6 +323,7 @@ class TestSchemasParsing:
     def test_parse_review_decision_approved(self):
         """Parses APPROVED status from JSON."""
         from millstone.policy.schemas import ReviewStatus, parse_review_decision
+
         output = '{"status": "APPROVED", "review": "Looks good", "summary": "No blockers"}'
         result = parse_review_decision(output)
         assert result is not None
@@ -352,6 +333,7 @@ class TestSchemasParsing:
     def test_parse_review_decision_request_changes(self):
         """Parses REQUEST_CHANGES status with findings."""
         from millstone.policy.schemas import ReviewStatus, parse_review_decision
+
         output = '{"status": "REQUEST_CHANGES", "review": "Needs fixes", "summary": "Blocking issues", "findings": ["fix bug", "add tests"]}'
         result = parse_review_decision(output)
         assert result is not None
@@ -362,6 +344,7 @@ class TestSchemasParsing:
     def test_parse_review_decision_from_prose(self):
         """Parses approval from surrounding text."""
         from millstone.policy.schemas import ReviewStatus, parse_review_decision
+
         output = """
         ## Review Summary
         The changes look good.
@@ -378,6 +361,7 @@ class TestSchemasParsing:
     def test_parse_review_decision_fallback_safe_to_merge(self):
         """Does not parse prose-only without required JSON fields."""
         from millstone.policy.schemas import parse_review_decision
+
         output = "The changes are safe to merge."
         result = parse_review_decision(output)
         assert result is None
@@ -385,7 +369,8 @@ class TestSchemasParsing:
     def test_parse_review_decision_with_findings_by_severity(self):
         """Parses findings_by_severity from JSON."""
         from millstone.policy.schemas import ReviewStatus, parse_review_decision
-        output = '''{
+
+        output = """{
             "status": "REQUEST_CHANGES",
             "review": "Needs fixes",
             "summary": "Blocking issues",
@@ -396,7 +381,7 @@ class TestSchemasParsing:
                 "low": ["typo in comment"],
                 "nit": []
             }
-        }'''
+        }"""
         result = parse_review_decision(output)
         assert result is not None
         assert result.status == ReviewStatus.REQUEST_CHANGES
@@ -408,7 +393,8 @@ class TestSchemasParsing:
     def test_parse_review_decision_findings_count(self):
         """ReviewDecision.findings_count aggregates all findings."""
         from millstone.policy.schemas import parse_review_decision
-        output = '''{
+
+        output = """{
             "status": "REQUEST_CHANGES",
             "review": "Needs fixes",
             "summary": "Blocking issues",
@@ -417,7 +403,7 @@ class TestSchemasParsing:
                 "critical": ["critical1", "critical2"],
                 "high": ["high1"]
             }
-        }'''
+        }"""
         result = parse_review_decision(output)
         assert result is not None
         # 1 from findings + 2 critical + 1 high = 4
@@ -426,7 +412,8 @@ class TestSchemasParsing:
     def test_parse_review_decision_severity_counts(self):
         """ReviewDecision.get_severity_counts returns correct counts."""
         from millstone.policy.schemas import parse_review_decision
-        output = '''{
+
+        output = """{
             "status": "REQUEST_CHANGES",
             "review": "Needs fixes",
             "summary": "Blocking issues",
@@ -437,7 +424,7 @@ class TestSchemasParsing:
                 "low": [],
                 "nit": ["d", "e", "f"]
             }
-        }'''
+        }"""
         result = parse_review_decision(output)
         assert result is not None
         counts = result.get_severity_counts()
@@ -450,6 +437,7 @@ class TestSchemasParsing:
     def test_parse_sanity_result_ok(self):
         """Parses OK status from JSON."""
         from millstone.policy.schemas import SanityStatus, parse_sanity_result
+
         output = '{"status": "OK"}'
         result = parse_sanity_result(output)
         assert result is not None
@@ -459,6 +447,7 @@ class TestSchemasParsing:
     def test_parse_sanity_result_halt(self):
         """Parses HALT status with reason."""
         from millstone.policy.schemas import SanityStatus, parse_sanity_result
+
         output = '{"status": "HALT", "reason": "Implementation is gibberish"}'
         result = parse_sanity_result(output)
         assert result is not None
@@ -469,6 +458,7 @@ class TestSchemasParsing:
     def test_parse_sanity_result_defaults_to_ok(self):
         """Defaults to OK when no HALT signal found."""
         from millstone.policy.schemas import SanityStatus, parse_sanity_result
+
         output = "The implementation looks reasonable."
         result = parse_sanity_result(output)
         assert result is not None
@@ -477,6 +467,7 @@ class TestSchemasParsing:
     def test_parse_builder_completion_completed(self):
         """Parses completed builder signal."""
         from millstone.policy.schemas import parse_builder_completion
+
         output = '{"completed": true, "summary": "Added new feature", "files_changed": ["foo.py"]}'
         result = parse_builder_completion(output)
         assert result is not None
@@ -487,6 +478,7 @@ class TestSchemasParsing:
     def test_parse_builder_completion_not_completed(self):
         """Parses incomplete builder signal."""
         from millstone.policy.schemas import parse_builder_completion
+
         output = '{"completed": false, "summary": "Hit an error"}'
         result = parse_builder_completion(output)
         assert result is not None
@@ -495,7 +487,10 @@ class TestSchemasParsing:
     def test_parse_design_review_approved(self):
         """Parses APPROVED design review."""
         from millstone.policy.schemas import DesignReviewVerdict, parse_design_review
-        output = '{"verdict": "APPROVED", "strengths": ["clear scope"], "issues": [], "questions": []}'
+
+        output = (
+            '{"verdict": "APPROVED", "strengths": ["clear scope"], "issues": [], "questions": []}'
+        )
         result = parse_design_review(output)
         assert result is not None
         assert result.verdict == DesignReviewVerdict.APPROVED
@@ -506,6 +501,7 @@ class TestSchemasParsing:
     def test_parse_design_review_needs_revision(self):
         """Parses NEEDS_REVISION design review with issues."""
         from millstone.policy.schemas import DesignReviewVerdict, parse_design_review
+
         output = '{"verdict": "NEEDS_REVISION", "strengths": [], "issues": ["missing tests", "scope too broad"]}'
         result = parse_design_review(output)
         assert result is not None
@@ -516,6 +512,7 @@ class TestSchemasParsing:
     def test_parse_design_review_with_questions(self):
         """Parses design review with questions field."""
         from millstone.policy.schemas import parse_design_review
+
         output = '{"verdict": "APPROVED", "strengths": ["good"], "issues": [], "questions": ["Why this approach?"]}'
         result = parse_design_review(output)
         assert result is not None
@@ -524,13 +521,14 @@ class TestSchemasParsing:
     def test_parse_design_review_from_code_block(self):
         """Parses design review from markdown code block."""
         from millstone.policy.schemas import DesignReviewVerdict, parse_design_review
-        output = '''Here is my review:
+
+        output = """Here is my review:
 
 ```json
 {"verdict": "APPROVED", "strengths": ["well designed"], "issues": []}
 ```
 
-That's my assessment.'''
+That's my assessment."""
         result = parse_design_review(output)
         assert result is not None
         assert result.verdict == DesignReviewVerdict.APPROVED
@@ -539,6 +537,7 @@ That's my assessment.'''
     def test_parse_design_review_fallback_approved(self):
         """Falls back to minimal result when only verdict keyword found."""
         from millstone.policy.schemas import DesignReviewVerdict, parse_design_review
+
         output = 'The design looks good. "verdict": "APPROVED" is my conclusion.'
         result = parse_design_review(output)
         assert result is not None
@@ -549,6 +548,7 @@ That's my assessment.'''
     def test_parse_design_review_fallback_needs_revision(self):
         """Falls back to minimal result for NEEDS_REVISION keyword."""
         from millstone.policy.schemas import DesignReviewVerdict, parse_design_review
+
         output = 'After review, "verdict": "NEEDS_REVISION" due to missing details.'
         result = parse_design_review(output)
         assert result is not None
@@ -557,12 +557,14 @@ That's my assessment.'''
     def test_parse_design_review_returns_none_for_empty(self):
         """Returns None for empty input."""
         from millstone.policy.schemas import parse_design_review
+
         assert parse_design_review("") is None
         assert parse_design_review(None) is None
 
     def test_parse_design_review_returns_none_for_no_verdict(self):
         """Returns None when no verdict can be found."""
         from millstone.policy.schemas import parse_design_review
+
         output = "This is just some random text without any verdict."
         assert parse_design_review(output) is None
 
@@ -571,6 +573,7 @@ That's my assessment.'''
         import json
 
         from millstone.policy.schemas import get_schema_json
+
         schema_json = get_schema_json("review_decision")
         schema = json.loads(schema_json)
         assert schema["type"] == "object"
@@ -579,6 +582,7 @@ That's my assessment.'''
     def test_get_schema_json_raises_for_unknown(self):
         """get_schema_json raises ValueError for unknown schema."""
         from millstone.policy.schemas import get_schema_json
+
         with pytest.raises(ValueError) as exc_info:
             get_schema_json("unknown_schema")
         assert "unknown_schema" in str(exc_info.value)
@@ -591,11 +595,14 @@ class TestOrchestratorStructuredOutput:
         """is_approved returns (bool, ReviewDecision) tuple."""
         from millstone.policy.schemas import ReviewDecision, ReviewStatus
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             orch = Orchestrator(task="test")
             try:
-                approved, decision = orch.is_approved('{"status": "APPROVED", "review": "Looks good", "summary": "No blockers"}')
+                approved, decision = orch.is_approved(
+                    '{"status": "APPROVED", "review": "Looks good", "summary": "No blockers"}'
+                )
                 assert approved is True
                 assert isinstance(decision, ReviewDecision)
                 assert decision.status == ReviewStatus.APPROVED
@@ -606,6 +613,7 @@ class TestOrchestratorStructuredOutput:
         """is_approved returns findings from REQUEST_CHANGES."""
         from millstone.policy.schemas import ReviewStatus
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             orch = Orchestrator(task="test")
@@ -621,6 +629,7 @@ class TestOrchestratorStructuredOutput:
     def test_is_approved_fallback_patterns_work(self):
         """is_approved returns None for prose-only responses."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             orch = Orchestrator(task="test")
@@ -634,6 +643,7 @@ class TestOrchestratorStructuredOutput:
     def test_is_approved_none_for_unrecognized_output(self):
         """is_approved returns (False, None) for unrecognized output."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             orch = Orchestrator(task="test")
@@ -647,12 +657,9 @@ class TestOrchestratorStructuredOutput:
     def test_run_agent_passes_output_schema(self):
         """run_agent passes output_schema to provider."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout='{"status": "OK"}',
-                stderr=""
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout='{"status": "OK"}', stderr="")
             orch = Orchestrator(task="test")
             try:
                 orch.run_agent(
@@ -675,6 +682,7 @@ class TestOrchestratorCLIIntegration:
     def test_orchestrator_default_cli_is_claude(self):
         """Orchestrator defaults to claude CLI."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             orch = Orchestrator(task="test")
@@ -686,6 +694,7 @@ class TestOrchestratorCLIIntegration:
     def test_orchestrator_accepts_cli_parameter(self):
         """Orchestrator accepts cli parameter."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             orch = Orchestrator(task="test", cli="codex")
@@ -697,6 +706,7 @@ class TestOrchestratorCLIIntegration:
     def test_orchestrator_accepts_role_specific_cli(self):
         """Orchestrator accepts role-specific CLI parameters."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             orch = Orchestrator(
@@ -715,6 +725,7 @@ class TestOrchestratorCLIIntegration:
     def test_orchestrator_role_specific_defaults_to_main_cli(self):
         """Role-specific CLI defaults to main cli when not specified."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             orch = Orchestrator(task="test", cli="codex")
@@ -729,6 +740,7 @@ class TestOrchestratorCLIIntegration:
     def test_orchestrator_get_provider_returns_correct_provider(self):
         """_get_provider returns correct provider for role."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             orch = Orchestrator(
@@ -762,12 +774,9 @@ class TestOrchestratorCLIIntegration:
     def test_orchestrator_run_agent_uses_provider(self):
         """run_agent uses the correct provider."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout="test output",
-                stderr=""
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout="test output", stderr="")
             orch = Orchestrator(task="test", cli="claude", retry_on_empty_response=True)
             try:
                 output = orch.run_agent("test prompt", role="builder")
@@ -796,12 +805,9 @@ class TestOrchestratorCLIIntegration:
     def test_orchestrator_run_claude_still_works(self):
         """run_claude (deprecated) still works as wrapper."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout="legacy output",
-                stderr=""
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout="legacy output", stderr="")
             orch = Orchestrator(task="test")
             try:
                 output = orch.run_claude("test prompt")
@@ -812,6 +818,7 @@ class TestOrchestratorCLIIntegration:
     def test_run_agent_retries_on_empty_response(self):
         """run_agent retries once when response is empty."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             # First call returns empty, second call returns valid output
             mock_run.side_effect = [
@@ -831,6 +838,7 @@ class TestOrchestratorCLIIntegration:
     def test_run_agent_retries_on_whitespace_only_response(self):
         """run_agent retries when response is whitespace-only."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = [
                 MagicMock(returncode=0, stdout="   \n\t  ", stderr=""),  # Whitespace-only
@@ -846,14 +854,13 @@ class TestOrchestratorCLIIntegration:
     def test_run_agent_no_retry_on_valid_response(self):
         """run_agent does not retry when response has content meeting min_response_length."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             # Response must meet min_response_length (default 50 chars) to avoid retry
-            valid_response = "This is a valid response that meets the minimum response length threshold."
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout=valid_response,
-                stderr=""
+            valid_response = (
+                "This is a valid response that meets the minimum response length threshold."
             )
+            mock_run.return_value = MagicMock(returncode=0, stdout=valid_response, stderr="")
             orch = Orchestrator(task="test", cli="claude", retry_on_empty_response=True)
             try:
                 output = orch.run_agent("test prompt", role="builder")
@@ -867,6 +874,7 @@ class TestOrchestratorCLIIntegration:
     def test_run_agent_retries_on_missing_schema_structure(self):
         """run_agent retries when response lacks expected schema structure."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = [
                 # Response has content but missing expected sanity_check schema
@@ -876,11 +884,7 @@ class TestOrchestratorCLIIntegration:
             ]
             orch = Orchestrator(task="test", cli="claude", retry_on_empty_response=True)
             try:
-                output = orch.run_agent(
-                    "test prompt",
-                    role="sanity",
-                    output_schema="sanity_check"
-                )
+                output = orch.run_agent("test prompt", role="sanity", output_schema="sanity_check")
                 assert '"status"' in output
                 assert '"OK"' in output
                 # Should be called twice due to schema mismatch
@@ -892,6 +896,7 @@ class TestOrchestratorCLIIntegration:
     def test_run_agent_logs_retry_event(self):
         """run_agent logs retry_empty_response event when retrying."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = [
                 MagicMock(returncode=0, stdout="", stderr=""),
@@ -909,6 +914,7 @@ class TestOrchestratorCLIIntegration:
     def test_run_agent_returns_halt_fallback_for_sanity_check_after_retry_fails(self):
         """run_agent returns HALT fallback when retry also returns empty for sanity_check schema."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             # Both attempts return empty responses
             mock_run.side_effect = [
@@ -930,6 +936,7 @@ class TestOrchestratorCLIIntegration:
     def test_run_agent_fallback_for_review_decision_schema(self):
         """run_agent returns REQUEST_CHANGES fallback when retry also returns empty for review_decision schema."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             # Both attempts return empty responses
             mock_run.side_effect = [
@@ -938,7 +945,9 @@ class TestOrchestratorCLIIntegration:
             ]
             orch = Orchestrator(task="test", cli="claude", retry_on_empty_response=True)
             try:
-                output = orch.run_agent("test prompt", role="reviewer", output_schema="review_decision")
+                output = orch.run_agent(
+                    "test prompt", role="reviewer", output_schema="review_decision"
+                )
                 # Should return REQUEST_CHANGES fallback verdict
                 assert '"status": "REQUEST_CHANGES"' in output
                 assert "empty response" in output.lower()
@@ -954,6 +963,7 @@ class TestOrchestratorCLIIntegration:
     def test_run_agent_no_fallback_for_builder_completion_schema(self):
         """run_agent does NOT return fallback for builder_completion schema (no safety implications)."""
         from millstone.runtime.orchestrator import Orchestrator
+
         with patch("subprocess.run") as mock_run:
             # Both attempts return empty responses
             mock_run.side_effect = [
@@ -962,7 +972,9 @@ class TestOrchestratorCLIIntegration:
             ]
             orch = Orchestrator(task="test", cli="claude", retry_on_empty_response=True)
             try:
-                output = orch.run_agent("test prompt", role="builder", output_schema="builder_completion")
+                output = orch.run_agent(
+                    "test prompt", role="builder", output_schema="builder_completion"
+                )
                 # Should return the empty output, not a fallback
                 assert output == ""
                 # Check the log file contains fallback event
@@ -978,6 +990,7 @@ class TestExtractClaudeResult:
     def test_extracts_result_from_json_wrapper(self):
         """Extracts result field from Claude Code JSON wrapper."""
         from millstone.runtime.orchestrator import extract_claude_result
+
         wrapper = '{"type":"result","subtype":"success","result":"Hello world","session_id":"abc"}'
         assert extract_claude_result(wrapper) == "Hello world"
 
@@ -986,39 +999,47 @@ class TestExtractClaudeResult:
         import json
 
         from millstone.runtime.orchestrator import extract_claude_result
-        wrapper = json.dumps({
-            "type": "result",
-            "result": 'Analysis complete.\n\n```json\n{"status": "OK"}\n```',
-            "session_id": "123"
-        })
+
+        wrapper = json.dumps(
+            {
+                "type": "result",
+                "result": 'Analysis complete.\n\n```json\n{"status": "OK"}\n```',
+                "session_id": "123",
+            }
+        )
         result = extract_claude_result(wrapper)
         assert '"status": "OK"' in result
 
     def test_returns_original_when_not_wrapper(self):
         """Returns original output when not a JSON wrapper."""
         from millstone.runtime.orchestrator import extract_claude_result
+
         plain = "This is just plain text output"
         assert extract_claude_result(plain) == plain
 
     def test_returns_original_for_other_json(self):
         """Returns original output when JSON doesn't have type=result."""
         from millstone.runtime.orchestrator import extract_claude_result
+
         other_json = '{"status": "OK", "reason": "test"}'
         assert extract_claude_result(other_json) == other_json
 
     def test_handles_empty_string(self):
         """Handles empty string gracefully."""
         from millstone.runtime.orchestrator import extract_claude_result
+
         assert extract_claude_result("") == ""
 
     def test_handles_none(self):
         """Handles None gracefully."""
         from millstone.runtime.orchestrator import extract_claude_result
+
         assert extract_claude_result(None) is None
 
     def test_handles_malformed_json(self):
         """Returns original on malformed JSON that starts with type:result."""
         from millstone.runtime.orchestrator import extract_claude_result
+
         malformed = '{"type":"result", broken json'
         assert extract_claude_result(malformed) == malformed
 
@@ -1027,13 +1048,16 @@ class TestExtractClaudeResult:
         import json
 
         from millstone.runtime.orchestrator import extract_claude_result
+
         # This is what Claude Code returns when using --json-schema
-        wrapper = json.dumps({
-            "type": "result",
-            "result": "",
-            "structured_output": {"status": "APPROVED", "summary": "Looks good"},
-            "session_id": "abc123"
-        })
+        wrapper = json.dumps(
+            {
+                "type": "result",
+                "result": "",
+                "structured_output": {"status": "APPROVED", "summary": "Looks good"},
+                "session_id": "abc123",
+            }
+        )
         result = extract_claude_result(wrapper)
         # Should return the structured_output as JSON string
         parsed = json.loads(result)
@@ -1056,13 +1080,16 @@ class TestExtractClaudeResult:
         import json
 
         from millstone.runtime.orchestrator import extract_claude_result
+
         # This is what Claude Code actually returns with --json-schema
-        wrapper = json.dumps({
-            "type": "result",
-            "result": "Done. The sanity check passed — the implementation is coherent and ready for code review.",
-            "structured_output": {"status": "OK"},
-            "session_id": "abc123"
-        })
+        wrapper = json.dumps(
+            {
+                "type": "result",
+                "result": "Done. The sanity check passed — the implementation is coherent and ready for code review.",
+                "structured_output": {"status": "OK"},
+                "session_id": "abc123",
+            }
+        )
         result = extract_claude_result(wrapper)
         # Should return structured_output as JSON, NOT the text result
         parsed = json.loads(result)
@@ -1073,11 +1100,8 @@ class TestExtractClaudeResult:
         import json
 
         from millstone.runtime.orchestrator import extract_claude_result
-        wrapper = json.dumps({
-            "type": "result",
-            "result": "",
-            "session_id": "abc123"
-        })
+
+        wrapper = json.dumps({"type": "result", "result": "", "session_id": "abc123"})
         result = extract_claude_result(wrapper)
         # Should return original since nothing to extract
         assert result == wrapper

@@ -20,15 +20,18 @@ from millstone.utils import progress
 T = TypeVar("T")  # The artifact type (e.g., str for code/plan)
 V = TypeVar("V")  # The verdict type
 
+
 @dataclass
 class LoopResult(Generic[T, V]):
     """Result of a loop execution."""
+
     success: bool
     artifact: T | None = None
     verdict: V | None = None
     cycles: int = 0
     duration_ms: int = 0
     error: str | None = None
+
 
 @dataclass
 class ArtifactReviewLoop(Generic[T, V]):
@@ -43,6 +46,7 @@ class ArtifactReviewLoop(Generic[T, V]):
         on_cycle_start: Optional callback before each cycle.
         on_success: Optional callback on approval.
     """
+
     name: str
     producer: Callable[..., T]
     reviewer: Callable[[T], V]
@@ -85,14 +89,21 @@ class ArtifactReviewLoop(Generic[T, V]):
                 progress(f"[{self.name}] Cycle {current_cycle}/{self.max_cycles}: Validating...")
                 valid, reason = self.validator(last_artifact)
                 if not valid:
-                    return LoopResult(False, last_artifact, error=reason or "Validation failed", cycles=current_cycle)
+                    return LoopResult(
+                        False,
+                        last_artifact,
+                        error=reason or "Validation failed",
+                        cycles=current_cycle,
+                    )
 
             # Step 3: Review
             progress(f"[{self.name}] Cycle {current_cycle}/{self.max_cycles}: Running reviewer...")
             try:
                 last_verdict = self.reviewer(last_artifact)
             except Exception as e:
-                return LoopResult(False, last_artifact, error=f"Reviewer failed: {str(e)}", cycles=current_cycle)
+                return LoopResult(
+                    False, last_artifact, error=f"Reviewer failed: {str(e)}", cycles=current_cycle
+                )
 
             # Step 3: Decision
             if self.is_approved(last_verdict):
@@ -102,17 +113,25 @@ class ArtifactReviewLoop(Generic[T, V]):
                 if self.on_success:
                     success = self.on_success(last_artifact, last_verdict)
                     if not success:
-                        return LoopResult(False, last_artifact, last_verdict, cycles=current_cycle, error="Completion step failed")
+                        return LoopResult(
+                            False,
+                            last_artifact,
+                            last_verdict,
+                            cycles=current_cycle,
+                            error="Completion step failed",
+                        )
 
                 duration = int((time.time() - start_time) * 1000)
-                return LoopResult(True, last_artifact, last_verdict, cycles=current_cycle, duration_ms=duration)
+                return LoopResult(
+                    True, last_artifact, last_verdict, cycles=current_cycle, duration_ms=duration
+                )
 
             # Step 4: Extract feedback for next cycle
             # Extract feedback from verdict (attribute, dict key, or string)
-            if hasattr(last_verdict, 'feedback'):
+            if hasattr(last_verdict, "feedback"):
                 feedback_raw = last_verdict.feedback
             elif isinstance(last_verdict, dict):
-                feedback_raw = last_verdict.get('feedback', str(last_verdict))
+                feedback_raw = last_verdict.get("feedback", str(last_verdict))
             else:
                 feedback_raw = str(last_verdict)
 
@@ -131,5 +150,5 @@ class ArtifactReviewLoop(Generic[T, V]):
             last_verdict,
             cycles=current_cycle,
             duration_ms=duration,
-            error=f"Maximum cycles ({self.max_cycles}) reached without approval"
+            error=f"Maximum cycles ({self.max_cycles}) reached without approval",
         )

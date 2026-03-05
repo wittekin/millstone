@@ -210,9 +210,7 @@ class TestPerRoleCliDispatch:
                 cwd = kwargs.get("cwd")
                 if "commit" in prompt.lower():
                     if cwd:
-                        _original_subprocess_run(
-                            ["git", "add", "-A"], cwd=cwd, capture_output=True
-                        )
+                        _original_subprocess_run(["git", "add", "-A"], cwd=cwd, capture_output=True)
                         _original_subprocess_run(
                             ["git", "commit", "-m", "per-role dispatch test"],
                             cwd=cwd,
@@ -222,12 +220,8 @@ class TestPerRoleCliDispatch:
                 else:
                     if cwd:
                         (Path(cwd) / "feature.py").write_text("def f(): pass\n")
-                        _original_subprocess_run(
-                            ["git", "add", "."], cwd=cwd, capture_output=True
-                        )
-                    return MagicMock(
-                        stdout="Implemented feature.", stderr="", returncode=0
-                    )
+                        _original_subprocess_run(["git", "add", "."], cwd=cwd, capture_output=True)
+                    return MagicMock(stdout="Implemented feature.", stderr="", returncode=0)
 
             else:
                 return _original_subprocess_run(cmd, **kwargs)

@@ -40,9 +40,7 @@ def get_opportunity_provider(backend: str, options: ProviderOptions) -> Opportun
     factory = OPPORTUNITY_PROVIDERS.get(backend)
     if factory is None:
         available = _format_available(list_opportunity_backends())
-        raise ValueError(
-            f"Unknown opportunity provider backend: {backend}. Available: {available}"
-        )
+        raise ValueError(f"Unknown opportunity provider backend: {backend}. Available: {available}")
     provider = factory(options)
     if not isinstance(provider, OpportunityProvider):
         raise TypeError(
@@ -80,9 +78,7 @@ def get_tasklist_provider(backend: str, options: ProviderOptions) -> TasklistPro
     return provider
 
 
-def register_opportunity_provider(
-    name: str, factory: ProviderFactory[OpportunityProvider]
-) -> None:
+def register_opportunity_provider(name: str, factory: ProviderFactory[OpportunityProvider]) -> None:
     if not callable(factory):
         raise TypeError("Opportunity provider factory must be callable")
     OPPORTUNITY_PROVIDERS[name] = factory
@@ -100,9 +96,7 @@ def register_tasklist_provider(name: str, factory: ProviderFactory[TasklistProvi
     TASKLIST_PROVIDERS[name] = factory
 
 
-def register_opportunity_provider_class(
-    name: str, provider_cls: OpportunityProviderClass
-) -> None:
+def register_opportunity_provider_class(name: str, provider_cls: OpportunityProviderClass) -> None:
     if not issubclass(provider_cls, OpportunityProviderBase):
         raise TypeError(
             f"Opportunity provider class {provider_cls.__name__} must inherit OpportunityProviderBase"
@@ -112,7 +106,9 @@ def register_opportunity_provider_class(
 
 def register_design_provider_class(name: str, provider_cls: DesignProviderClass) -> None:
     if not issubclass(provider_cls, DesignProviderBase):
-        raise TypeError(f"Design provider class {provider_cls.__name__} must inherit DesignProviderBase")
+        raise TypeError(
+            f"Design provider class {provider_cls.__name__} must inherit DesignProviderBase"
+        )
     register_design_provider(name, provider_cls.from_config)
 
 

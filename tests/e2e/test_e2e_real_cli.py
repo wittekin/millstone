@@ -28,13 +28,17 @@ def test_real_claude_task_creates_commit(temp_repo: Path) -> None:
         capture_output=True,
     )
 
-    initial_log = subprocess.run(
-        ["git", "log", "--oneline"],
-        cwd=temp_repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip().splitlines()
+    initial_log = (
+        subprocess.run(
+            ["git", "log", "--oneline"],
+            cwd=temp_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        .stdout.strip()
+        .splitlines()
+    )
 
     timeout = 120
     start = time.monotonic()
@@ -55,16 +59,18 @@ def test_real_claude_task_creates_commit(temp_repo: Path) -> None:
     )
     assert elapsed < timeout, f"wall-clock {elapsed:.1f}s exceeded {timeout}s limit"
 
-    final_log = subprocess.run(
-        ["git", "log", "--oneline"],
-        cwd=temp_repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip().splitlines()
-    assert len(final_log) > len(initial_log), (
-        "No new git commit was created after millstone --task"
+    final_log = (
+        subprocess.run(
+            ["git", "log", "--oneline"],
+            cwd=temp_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        .stdout.strip()
+        .splitlines()
     )
+    assert len(final_log) > len(initial_log), "No new git commit was created after millstone --task"
 
 
 @pytest.mark.real_cli(provider="mixed")
@@ -87,13 +93,17 @@ def test_real_mixed_task_creates_commit(temp_repo: Path) -> None:
         capture_output=True,
     )
 
-    initial_log = _original_subprocess_run(
-        ["git", "log", "--oneline"],
-        cwd=temp_repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip().splitlines()
+    initial_log = (
+        _original_subprocess_run(
+            ["git", "log", "--oneline"],
+            cwd=temp_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        .stdout.strip()
+        .splitlines()
+    )
 
     recorded: list[tuple] = []
 
@@ -123,21 +133,28 @@ def test_real_mixed_task_creates_commit(temp_repo: Path) -> None:
     )
 
     # Verify mixed CLI routing: both claude (builder) and codex (reviewer) were invoked.
-    agent_cmds = [cmd for cmd, _ in recorded if isinstance(cmd, list) and cmd and cmd[0] in ("claude", "codex")]
+    agent_cmds = [
+        cmd
+        for cmd, _ in recorded
+        if isinstance(cmd, list) and cmd and cmd[0] in ("claude", "codex")
+    ]
     invoked_binaries = {cmd[0] for cmd in agent_cmds}
     assert "claude" in invoked_binaries, "claude binary was not invoked as builder"
     assert "codex" in invoked_binaries, "codex binary was not invoked as reviewer"
 
-    final_log = _original_subprocess_run(
-        ["git", "log", "--oneline"],
-        cwd=temp_repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip().splitlines()
-    assert len(final_log) > len(initial_log), (
-        "No new git commit was created after orchestrator run"
+    final_log = (
+        _original_subprocess_run(
+            ["git", "log", "--oneline"],
+            cwd=temp_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        .stdout.strip()
+        .splitlines()
     )
+    assert len(final_log) > len(initial_log), "No new git commit was created after orchestrator run"
+
 
 @pytest.mark.real_cli(provider="codex")
 def test_real_codex_task_creates_commit(temp_repo: Path) -> None:
@@ -152,13 +169,17 @@ def test_real_codex_task_creates_commit(temp_repo: Path) -> None:
         capture_output=True,
     )
 
-    initial_log = subprocess.run(
-        ["git", "log", "--oneline"],
-        cwd=temp_repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip().splitlines()
+    initial_log = (
+        subprocess.run(
+            ["git", "log", "--oneline"],
+            cwd=temp_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        .stdout.strip()
+        .splitlines()
+    )
 
     timeout = 300  # codex (gpt-5.3-codex with high reasoning effort) can exceed 120s
     start = time.monotonic()
@@ -179,13 +200,15 @@ def test_real_codex_task_creates_commit(temp_repo: Path) -> None:
     )
     assert elapsed < timeout, f"wall-clock {elapsed:.1f}s exceeded {timeout}s limit"
 
-    final_log = subprocess.run(
-        ["git", "log", "--oneline"],
-        cwd=temp_repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip().splitlines()
-    assert len(final_log) > len(initial_log), (
-        "No new git commit was created after millstone --task"
+    final_log = (
+        subprocess.run(
+            ["git", "log", "--oneline"],
+            cwd=temp_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        .stdout.strip()
+        .splitlines()
     )
+    assert len(final_log) > len(initial_log), "No new git commit was created after millstone --task"

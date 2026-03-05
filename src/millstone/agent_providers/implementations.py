@@ -106,6 +106,7 @@ class ClaudeProvider(CLIProvider):
             cmd.extend(["--model", model])
         if output_schema:
             from millstone.policy.schemas import get_schema_json
+
             cmd.extend(["--output-format", "json"])
             cmd.extend(["--json-schema", get_schema_json(output_schema)])
         return cmd
@@ -169,6 +170,7 @@ class CodexProvider(CLIProvider):
 
         if output_schema and schema_work_dir:
             from millstone.policy.schemas import get_schema_path
+
             schema_path = get_schema_path(output_schema, schema_work_dir)
             cmd.extend(["--output-schema", schema_path])
 
@@ -260,7 +262,7 @@ class GeminiProvider(CLIProvider):
 
         # Options first
         cmd.append("-y")  # YOLO mode (skip confirmations)
-        cmd.extend(["-o", "json"]) # structured output for safer parsing
+        cmd.extend(["-o", "json"])  # structured output for safer parsing
 
         if resume:
             cmd.extend(["-r", resume])
@@ -272,6 +274,7 @@ class GeminiProvider(CLIProvider):
         full_prompt = prompt
         if output_schema:
             from millstone.policy.schemas import get_schema_json
+
             schema = get_schema_json(output_schema)
             # clear instructions for JSON
             full_prompt = (
@@ -337,7 +340,9 @@ class GeminiProvider(CLIProvider):
             time.sleep(delay_seconds)
 
         if result is None:
-            return CLIResult(output="", returncode=1, stdout="", stderr="Gemini command did not execute")
+            return CLIResult(
+                output="", returncode=1, stdout="", stderr="Gemini command did not execute"
+            )
 
         stdout = result.stdout
         stderr = result.stderr
@@ -358,7 +363,7 @@ class GeminiProvider(CLIProvider):
                 search_pos = 0
                 while True:
                     # Find next opening brace
-                    start = stdout.find('{', search_pos)
+                    start = stdout.find("{", search_pos)
                     if start == -1:
                         break
 
@@ -480,6 +485,7 @@ class OpenCodeProvider(CLIProvider):
         # Prepare prompt with schema if needed (OpenCode doesn't have native --json-schema)
         if output_schema:
             from millstone.policy.schemas import get_schema_json
+
             schema = get_schema_json(output_schema)
             # Append schema instructions to the prompt if it's the last arg
             schema_instruction = (
@@ -564,4 +570,3 @@ class OpenCodeProvider(CLIProvider):
             stdout=final_stdout,
             stderr=stderr,
         )
-

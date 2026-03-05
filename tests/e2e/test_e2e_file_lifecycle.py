@@ -78,9 +78,7 @@ def _write_task(repo: Path) -> None:
 
 def _make_code_change(repo: Path) -> None:
     """Create a Python file and stage it (so git diff is non-empty)."""
-    (repo / "annotated.py").write_text(
-        "def greet(name: str) -> str:\n    return f'Hello {name}'\n"
-    )
+    (repo / "annotated.py").write_text("def greet(name: str) -> str:\n    return f'Hello {name}'\n")
     subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=False)
 
 
@@ -107,9 +105,7 @@ def _commit_with_tick(repo: Path) -> None:
 class TestFullFileProviderCycle:
     """analyze → design → plan → execute full file-provider lifecycle."""
 
-    def test_full_file_provider_cycle(
-        self, empty_repo: Path, stub_cli: StubCli
-    ) -> None:
+    def test_full_file_provider_cycle(self, empty_repo: Path, stub_cli: StubCli) -> None:
         """Run full cycle starting from an empty tasklist.
 
         The cycle must proceed through analyze → design → plan → execute
@@ -331,9 +327,7 @@ _STUB_CLAUDE_SCRIPT = textwrap.dedent("""\
 class TestCommitTasklist:
     """commit_tasklist=True uses docs/tasklist.md and ticks it in a git commit."""
 
-    def test_commit_tasklist_inner_loop(
-        self, temp_repo: Path, stub_cli: StubCli
-    ) -> None:
+    def test_commit_tasklist_inner_loop(self, temp_repo: Path, stub_cli: StubCli) -> None:
         """Part A: Orchestrator(tasklist="docs/tasklist.md") reads from and ticks that path.
 
         Verifies:
@@ -517,9 +511,7 @@ class TestCommitTasklist:
 class TestCommitDesigns:
     """commit_designs=True and commit_opportunities=True place artifacts at tracked paths."""
 
-    def test_commit_designs_tracked_paths(
-        self, empty_repo: Path, stub_cli: StubCli
-    ) -> None:
+    def test_commit_designs_tracked_paths(self, empty_repo: Path, stub_cli: StubCli) -> None:
         """Artifacts land at committed (tracked) paths, not under .millstone/.
 
         Configure commit_designs=true and commit_opportunities=true via config.toml.
@@ -530,8 +522,7 @@ class TestCommitDesigns:
         # Write config.toml with commit flags before creating the Orchestrator so
         # load_config() picks them up and passes them to OuterLoopManager.
         (empty_repo / ".millstone" / "config.toml").write_text(
-            "commit_designs = true\n"
-            "commit_opportunities = true\n"
+            "commit_designs = true\ncommit_opportunities = true\n"
         )
 
         def _write_tracked_opportunities(repo: Path) -> None:
@@ -611,9 +602,7 @@ class TestCommitDesigns:
             "run_design() failed; the design provider may be using the wrong path. "
             f"Result: {design_result}"
         )
-        assert design_result.get("design_file"), (
-            "run_design() returned no design_file path"
-        )
+        assert design_result.get("design_file"), "run_design() returned no design_file path"
         assert ".millstone" not in design_result["design_file"], (
             "design_file points inside .millstone/ when commit_designs=True; "
             f"got: {design_result['design_file']}"
@@ -642,9 +631,7 @@ class TestCommitDesigns:
 class TestCustomPromptsDir:
     """--prompts-dir uses the custom template with standard substitutions intact."""
 
-    def test_custom_prompts_dir(
-        self, tmp_path: Path, temp_repo: Path, stub_cli: StubCli
-    ) -> None:
+    def test_custom_prompts_dir(self, tmp_path: Path, temp_repo: Path, stub_cli: StubCli) -> None:
         """Custom tasklist_prompt.md is loaded and standard tokens are still resolved.
 
         Write a modified tasklist_prompt.md to a temp directory containing
@@ -793,9 +780,7 @@ class TestEvalOnCommit:
             f"Expected custom script exit_code 0; got {custom[0]['exit_code']}"
         )
 
-    def test_eval_on_commit_regression_halts(
-        self, temp_repo: Path, stub_cli: StubCli
-    ) -> None:
+    def test_eval_on_commit_regression_halts(self, temp_repo: Path, stub_cli: StubCli) -> None:
         """Part 2: eval_on_commit=True exits 1 when post-commit eval introduces new failures.
 
         The baseline is captured before the builder runs (no tests exist yet).
@@ -846,13 +831,9 @@ class TestEvalOnCommit:
         finally:
             orch.cleanup()
 
-        assert exit_code == 1, (
-            f"Expected exit 1 (eval regression halts the run), got {exit_code}"
-        )
+        assert exit_code == 1, f"Expected exit 1 (eval regression halts the run), got {exit_code}"
 
-    def test_eval_on_commit_passing_does_not_halt(
-        self, temp_repo: Path, stub_cli: StubCli
-    ) -> None:
+    def test_eval_on_commit_passing_does_not_halt(self, temp_repo: Path, stub_cli: StubCli) -> None:
         """Part 3: eval_on_commit=True exits 0 when post-commit eval passes.
 
         The baseline is captured before the builder runs (no failing tests).

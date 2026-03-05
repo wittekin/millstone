@@ -65,11 +65,7 @@ def is_commit_prompt(prompt: str) -> bool:
 def do_commit(repo):
     """Actually commit staged changes."""
     _original_subprocess_run(["git", "add", "-A"], cwd=repo, capture_output=True)
-    _original_subprocess_run(
-        ["git", "commit", "-m", "Test commit"],
-        cwd=repo,
-        capture_output=True
-    )
+    _original_subprocess_run(["git", "commit", "-m", "Test commit"], cwd=repo, capture_output=True)
 
 
 def do_commit_without_tasklist(repo):
@@ -80,11 +76,11 @@ def do_commit_without_tasklist(repo):
     """
     # Stage only non-tasklist files
     _original_subprocess_run(["git", "add", "."], cwd=repo, capture_output=True)
-    _original_subprocess_run(["git", "reset", "HEAD", "docs/tasklist.md"], cwd=repo, capture_output=True)
     _original_subprocess_run(
-        ["git", "commit", "-m", "Test commit (without tasklist)"],
-        cwd=repo,
-        capture_output=True
+        ["git", "reset", "HEAD", "docs/tasklist.md"], cwd=repo, capture_output=True
+    )
+    _original_subprocess_run(
+        ["git", "commit", "-m", "Test commit (without tasklist)"], cwd=repo, capture_output=True
     )
 
 
@@ -99,44 +95,54 @@ def do_commit_without_tasklist(repo):
 
 def make_file_change(filename="feature.py", content="def new_feature():\n    pass\n"):
     """Factory for a side effect that creates/modifies a file and stages it."""
+
     def change(repo):
         (repo / filename).write_text(content)
         _original_subprocess_run(["git", "add", "."], cwd=repo, capture_output=True)
+
     return change
 
 
 def make_binary_file_change(filename="image.png"):
     """Factory for a side effect that creates a binary file."""
+
     def change(repo):
         (repo / filename).write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
         (repo / "code.py").write_text("pass")
         _original_subprocess_run(["git", "add", "."], cwd=repo, capture_output=True)
+
     return change
 
 
 def make_sensitive_file_change(filename=".env", content="SECRET=exposed"):
     """Factory for a side effect that creates a sensitive file."""
+
     def change(repo):
         (repo / filename).write_text(content)
         _original_subprocess_run(["git", "add", "."], cwd=repo, capture_output=True)
+
     return change
 
 
 def make_large_file_change(lines=11):
     """Factory for a side effect that creates a file exceeding LoC threshold."""
+
     def change(repo):
         content = "\n".join([f"line{i}" for i in range(lines)])
         (repo / "file.txt").write_text(content)
         _original_subprocess_run(["git", "add", "."], cwd=repo, capture_output=True)
+
     return change
 
 
 def make_exact_lines_change(lines=10):
     """Factory for a side effect that creates a file with exact line count."""
+
     def change(repo):
         content = "\n".join([f"line{i}" for i in range(lines)])
         (repo / "file.txt").write_text(content)
         _original_subprocess_run(["git", "add", "."], cwd=repo, capture_output=True)
+
     return change
 
 
@@ -213,7 +219,10 @@ class ResponseBuilder:
                     _, response = self._reviewer_responses[idx]
                     return (response, None)
                 # Default to approval if no more responses configured
-                return ('{"status": "APPROVED", "review": "Looks good", "summary": "No blockers", "findings": [], "findings_by_severity": {"critical": [], "high": [], "medium": [], "low": [], "nit": []}}', None)
+                return (
+                    '{"status": "APPROVED", "review": "Looks good", "summary": "No blockers", "findings": [], "findings_by_severity": {"critical": [], "high": [], "medium": [], "low": [], "nit": []}}',
+                    None,
+                )
             elif is_commit_prompt(prompt):
                 if self._commit_success:
                     return ("Committed changes.", lambda repo: do_commit(repo))
@@ -242,11 +251,13 @@ def standard_approval_flow(change_fn=None, builder_output="Implemented feature."
     if change_fn is None:
         change_fn = make_file_change()
 
-    return (ResponseBuilder()
-            .on_builder(change_fn, builder_output)
-            .on_reviewer(approve=True)
-            .on_commit(success=True)
-            .build())
+    return (
+        ResponseBuilder()
+        .on_builder(change_fn, builder_output)
+        .on_reviewer(approve=True)
+        .on_commit(success=True)
+        .build()
+    )
 
 
 def rejection_then_approval_flow(change_fn=None, rejections=1, builder_output="Made changes."):
@@ -308,9 +319,7 @@ def no_changes_flow(builder_output="Task completed successfully!"):
     Returns:
         Response handler function for make_mock_runner
     """
-    return (ResponseBuilder()
-            .on_builder(change_fn=None, output=builder_output)
-            .build())
+    return ResponseBuilder().on_builder(change_fn=None, output=builder_output).build()
 
 
 class TestFullFlow:
@@ -379,10 +388,12 @@ class TestFullFlow:
             stop_file = orch.work_dir / "STOP.md"
             stop_file.write_text("Builder output appears to be gibberish")
 
-        responses = (ResponseBuilder()
-                     .on_builder(make_file_change(), output="asdfghjkl gibberish ???")
-                     .on_sanity_check(response="Creating STOP.md", side_effect=create_stop)
-                     .build())
+        responses = (
+            ResponseBuilder()
+            .on_builder(make_file_change(), output="asdfghjkl gibberish ???")
+            .on_sanity_check(response="Creating STOP.md", side_effect=create_stop)
+            .build()
+        )
 
         try:
             with patch("subprocess.run", side_effect=make_mock_runner(temp_repo, responses)):
@@ -420,9 +431,11 @@ class TestFullFlow:
         Scenario: Builder modifies a sensitive file.
         Expected: Exit 0 and no sensitive file halt when policy disables the check.
         """
-        responses = (ResponseBuilder()
-                     .on_builder(make_sensitive_file_change(), output="Updated configuration.")
-                     .build())
+        responses = (
+            ResponseBuilder()
+            .on_builder(make_sensitive_file_change(), output="Updated configuration.")
+            .build()
+        )
 
         orch = Orchestrator()
         try:
@@ -464,7 +477,7 @@ class TestFullFlow:
             _original_subprocess_run(["git", "add", "."], cwd=repo, capture_output=True)
 
         # Reviewer makes a factual inaccuracy: claims line is 100 chars when it's 104
-        reviewer_response_with_inaccuracy = '''
+        reviewer_response_with_inaccuracy = """
         {
             "status": "APPROVED",
             "review": "Looks good overall. Minor note: line length may be close to limit.",
@@ -472,13 +485,15 @@ class TestFullFlow:
             "findings": [],
             "findings_by_severity": {"critical": [], "high": [], "medium": [], "low": [], "nit": []}
         }
-        '''
+        """
 
-        responses = (ResponseBuilder()
-                     .on_builder(make_long_line_change, output="Added test file.")
-                     .on_reviewer(approve=True, response=reviewer_response_with_inaccuracy)
-                     .on_commit(success=True)
-                     .build())
+        responses = (
+            ResponseBuilder()
+            .on_builder(make_long_line_change, output="Added test file.")
+            .on_reviewer(approve=True, response=reviewer_response_with_inaccuracy)
+            .on_commit(success=True)
+            .build()
+        )
 
         orch = Orchestrator(max_tasks=1)
         try:
@@ -517,13 +532,16 @@ class TestFullFlow:
             prompt = orch.load_prompt("sanity_check_review.md")
 
             # The prompt should explicitly mention ignoring minor inaccuracies
-            assert any(phrase in prompt.lower() for phrase in [
-                "minor",
-                "inaccurac",
-                "character count",
-                "line length",
-                "numeric",
-            ]), (
+            assert any(
+                phrase in prompt.lower()
+                for phrase in [
+                    "minor",
+                    "inaccurac",
+                    "character count",
+                    "line length",
+                    "numeric",
+                ]
+            ), (
                 "sanity_check_review.md should explicitly mention that minor "
                 "factual inaccuracies (like character counts) should not halt the run"
             )
@@ -544,6 +562,7 @@ class TestCommitBehavior:
 
         Expected: Orchestrator auto-commits the tasklist tick and continues.
         """
+
         def make_change_and_tick_tasklist(repo):
             """Make a code change AND tick the tasklist (but don't stage tasklist)."""
             # Create code change
@@ -559,16 +578,16 @@ class TestCommitBehavior:
         def commit_code_only(repo):
             """Commit only the staged code, leaving tasklist unstaged."""
             _original_subprocess_run(
-                ["git", "commit", "-m", "Add feature"],
-                cwd=repo,
-                capture_output=True
+                ["git", "commit", "-m", "Add feature"], cwd=repo, capture_output=True
             )
 
-        responses = (ResponseBuilder()
-                     .on_builder(make_change_and_tick_tasklist, output="Done.")
-                     .on_reviewer(approve=True)
-                     .on_commit(success=True)
-                     .build())
+        responses = (
+            ResponseBuilder()
+            .on_builder(make_change_and_tick_tasklist, output="Done.")
+            .on_reviewer(approve=True)
+            .on_commit(success=True)
+            .build()
+        )
 
         # Override the commit side effect to only commit code
         original_responses = responses
@@ -591,10 +610,7 @@ class TestCommitBehavior:
 
             # Verify the tasklist was committed (working directory should be clean)
             status = _original_subprocess_run(
-                ["git", "status", "--porcelain"],
-                cwd=temp_repo,
-                capture_output=True,
-                text=True
+                ["git", "status", "--porcelain"], cwd=temp_repo, capture_output=True, text=True
             )
             assert status.stdout.strip() == "", (
                 "Working directory should be clean after auto-commit"
@@ -648,15 +664,21 @@ class TestSessionResumption:
                 elif is_reviewer_prompt(prompt):
                     review_count[0] += 1
                     if review_count[0] == 1:
-                        return MagicMock(stdout='{"status": "REQUEST_CHANGES", "review": "Needs fixes", "summary": "Blocking issues", "findings": ["Needs fixes"], "findings_by_severity": {"critical": [], "high": ["Needs fixes"], "medium": [], "low": [], "nit": []}}', stderr="", returncode=0)
+                        return MagicMock(
+                            stdout='{"status": "REQUEST_CHANGES", "review": "Needs fixes", "summary": "Blocking issues", "findings": ["Needs fixes"], "findings_by_severity": {"critical": [], "high": ["Needs fixes"], "medium": [], "low": [], "nit": []}}',
+                            stderr="",
+                            returncode=0,
+                        )
                     else:
-                        return MagicMock(stdout='{"status": "APPROVED", "review": "Looks good", "summary": "No blockers", "findings": [], "findings_by_severity": {"critical": [], "high": [], "medium": [], "low": [], "nit": []}}', stderr="", returncode=0)
+                        return MagicMock(
+                            stdout='{"status": "APPROVED", "review": "Looks good", "summary": "No blockers", "findings": [], "findings_by_severity": {"critical": [], "high": [], "medium": [], "low": [], "nit": []}}',
+                            stderr="",
+                            returncode=0,
+                        )
                 elif is_builder_prompt(prompt) or "address this review feedback" in prompt.lower():
                     make_change(temp_repo)
                     return MagicMock(
-                        stdout='session_id: "abc-def-123-456"\nDone.',
-                        stderr="",
-                        returncode=0
+                        stdout='session_id: "abc-def-123-456"\nDone.', stderr="", returncode=0
                     )
                 else:
                     # Fallback - return proper JSON format
@@ -680,10 +702,12 @@ class TestEdgeCases:
     def test_handles_empty_review_output(self, temp_repo):
         """Handles case where reviewer returns empty output."""
         # Empty review output is treated as not approved
-        responses = (ResponseBuilder()
-                     .on_builder(make_file_change())
-                     .on_reviewer(approve=False, response="")  # Empty response
-                     .build())
+        responses = (
+            ResponseBuilder()
+            .on_builder(make_file_change())
+            .on_reviewer(approve=False, response="")  # Empty response
+            .build()
+        )
 
         orch = Orchestrator(max_cycles=2)
         try:
@@ -698,8 +722,7 @@ class TestEdgeCases:
     def test_handles_binary_files_in_diff(self, temp_repo):
         """Binary files don't crash LoC calculation."""
         responses = standard_approval_flow(
-            change_fn=make_binary_file_change(),
-            builder_output="Added image and code."
+            change_fn=make_binary_file_change(), builder_output="Added image and code."
         )
 
         orch = Orchestrator(max_tasks=1)
@@ -727,9 +750,7 @@ class TestEdgeCases:
     def test_loc_threshold_exceeded(self, temp_repo, capsys):
         """Changes over threshold fail."""
         # Use ResponseBuilder since this test doesn't reach approval/commit phase
-        responses = (ResponseBuilder()
-                     .on_builder(make_large_file_change(lines=11))
-                     .build())
+        responses = ResponseBuilder().on_builder(make_large_file_change(lines=11)).build()
 
         orch = Orchestrator(loc_threshold=10)
         try:
@@ -789,6 +810,7 @@ class TestEvalOnTask:
     def test_eval_on_task_default_is_none(self, temp_repo):
         """Default value for eval_on_task is 'none'."""
         from millstone.runtime.orchestrator import DEFAULT_CONFIG
+
         assert DEFAULT_CONFIG.get("eval_on_task") == "none"
 
         # Also verify orchestrator default
@@ -810,11 +832,11 @@ class TestEvalGating:
             orch.baseline_eval = {"failed_tests": [], "_passed": True}
 
             # Mock run_eval to return a new failure
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": ["test_foo.py::test_bar"],
                     "_passed": False,
-                    "tests": {"total": 10, "passed": 9, "failed": 1}
+                    "tests": {"total": 10, "passed": 9, "failed": 1},
                 }
 
                 gate_passed, eval_result = orch._run_eval_gate(task_text="Test task")
@@ -832,11 +854,11 @@ class TestEvalGating:
             orch.baseline_eval = {"failed_tests": ["test_foo.py::test_bar"], "_passed": False}
 
             # Mock run_eval to return the same failure
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": ["test_foo.py::test_bar"],
                     "_passed": False,
-                    "tests": {"total": 10, "passed": 9, "failed": 1}
+                    "tests": {"total": 10, "passed": 9, "failed": 1},
                 }
 
                 gate_passed, eval_result = orch._run_eval_gate(task_text="Test task")
@@ -852,11 +874,11 @@ class TestEvalGating:
             orch.baseline_eval = {"failed_tests": [], "_passed": True}
 
             # Mock run_eval to return all passing
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": [],
                     "_passed": True,
-                    "tests": {"total": 10, "passed": 10, "failed": 0}
+                    "tests": {"total": 10, "passed": 10, "failed": 0},
                 }
 
                 gate_passed, eval_result = orch._run_eval_gate(task_text="Test task")
@@ -869,19 +891,15 @@ class TestEvalGating:
         orch = Orchestrator(max_tasks=1, eval_on_task="smoke")
         try:
             # Set up baseline with good score
-            orch.baseline_eval = {
-                "failed_tests": [],
-                "_passed": True,
-                "composite_score": 0.95
-            }
+            orch.baseline_eval = {"failed_tests": [], "_passed": True, "composite_score": 0.95}
 
             # Mock run_eval to return regressed score (> 0.05 max_regression default)
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": [],
                     "_passed": True,
                     "tests": {"total": 10, "passed": 10, "failed": 0},
-                    "composite_score": 0.85  # 0.10 regression > 0.05 threshold
+                    "composite_score": 0.85,  # 0.10 regression > 0.05 threshold
                 }
 
                 gate_passed, eval_result = orch._run_eval_gate(task_text="Test task")
@@ -906,11 +924,11 @@ class TestEvalGating:
         try:
             orch.baseline_eval = {"failed_tests": [], "_passed": True}
 
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": ["test_new.py::test_fail"],
                     "_passed": False,
-                    "tests": {"total": 10, "passed": 9, "failed": 1}
+                    "tests": {"total": 10, "passed": 9, "failed": 1},
                 }
 
                 orch._run_eval_gate(task_text="Test task")
@@ -928,11 +946,11 @@ class TestEvalGating:
         try:
             orch.baseline_eval = {"failed_tests": [], "_passed": True}
 
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": [],
                     "_passed": True,
-                    "tests": {"total": 10, "passed": 10, "failed": 0}
+                    "tests": {"total": 10, "passed": 10, "failed": 0},
                 }
 
                 orch._run_eval_gate(task_text="Test task")
@@ -964,9 +982,11 @@ class TestEvalGating:
                 operation_order.append("delegate_commit")
                 return original_delegate_commit()
 
-            with patch.object(orch, '_run_eval_gate', side_effect=tracking_eval_gate):
-                with patch.object(orch, 'delegate_commit', side_effect=tracking_delegate_commit):
-                    with patch("subprocess.run", side_effect=make_mock_runner(temp_repo, responses)):
+            with patch.object(orch, "_run_eval_gate", side_effect=tracking_eval_gate):
+                with patch.object(orch, "delegate_commit", side_effect=tracking_delegate_commit):
+                    with patch(
+                        "subprocess.run", side_effect=make_mock_runner(temp_repo, responses)
+                    ):
                         orch.run()
 
             # Verify eval_gate ran before delegate_commit
@@ -992,9 +1012,11 @@ class TestEvalGating:
                 delegate_commit_called["value"] = True
                 return True
 
-            with patch.object(orch, '_run_eval_gate', side_effect=failing_eval_gate):
-                with patch.object(orch, 'delegate_commit', side_effect=tracking_delegate_commit):
-                    with patch("subprocess.run", side_effect=make_mock_runner(temp_repo, responses)):
+            with patch.object(orch, "_run_eval_gate", side_effect=failing_eval_gate):
+                with patch.object(orch, "delegate_commit", side_effect=tracking_delegate_commit):
+                    with patch(
+                        "subprocess.run", side_effect=make_mock_runner(temp_repo, responses)
+                    ):
                         exit_code = orch.run()
 
             # Commit should NOT have been called
@@ -1014,16 +1036,17 @@ class TestEvalGating:
 
             saved_metrics = []
 
-
             def tracking_save_metrics(task_text, status, cycles, eval_before=None, eval_after=None):
                 saved_metrics.append({"task": task_text, "status": status, "cycles": cycles})
 
             def failing_eval_gate(task_text=""):
                 return False, {"failed_tests": ["test_fail.py::test_new"], "_passed": False}
 
-            with patch.object(orch, '_run_eval_gate', side_effect=failing_eval_gate):
-                with patch.object(orch, 'save_task_metrics', side_effect=tracking_save_metrics):
-                    with patch("subprocess.run", side_effect=make_mock_runner(temp_repo, responses)):
+            with patch.object(orch, "_run_eval_gate", side_effect=failing_eval_gate):
+                with patch.object(orch, "save_task_metrics", side_effect=tracking_save_metrics):
+                    with patch(
+                        "subprocess.run", side_effect=make_mock_runner(temp_repo, responses)
+                    ):
                         orch.run()
 
             # Verify metrics were saved with eval_gate_failed status

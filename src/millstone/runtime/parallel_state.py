@@ -10,11 +10,9 @@ from typing import Protocol
 
 
 class StateLock(Protocol):
-    def __enter__(self) -> object:
-        ...
+    def __enter__(self) -> object: ...
 
-    def __exit__(self, _exc_type, _exc, _tb) -> None:
-        ...
+    def __exit__(self, _exc_type, _exc, _tb) -> None: ...
 
 
 class ParallelState:

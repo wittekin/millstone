@@ -49,9 +49,7 @@ class MockOpportunityProvider:
     def write_opportunity(self, opportunity: Opportunity) -> None:
         return None
 
-    def update_opportunity_status(
-        self, opportunity_id: str, status: OpportunityStatus
-    ) -> None:
+    def update_opportunity_status(self, opportunity_id: str, status: OpportunityStatus) -> None:
         return None
 
     def get_prompt_placeholders(self) -> dict[str, str]:
@@ -187,7 +185,9 @@ def test_explicit_provider_options_override_commit_flag(temp_repo):
         "opportunity_provider": "file",
         "opportunity_provider_options": {"path": str(custom_path)},
     }
-    manager = _make_outer_manager(temp_repo, provider_config=provider_config, commit_opportunities=True)
+    manager = _make_outer_manager(
+        temp_repo, provider_config=provider_config, commit_opportunities=True
+    )
     assert manager.opportunity_provider.path == custom_path
 
 
@@ -851,7 +851,9 @@ def test_run_analyze_with_reviewer_callback_approve_first_cycle(temp_repo):
         return f"```json\n{approved_verdict}\n```"
 
     result = manager.run_analyze(
-        load_prompt_callback=lambda name: f"prompt_name: {name}\n{{{{OPPORTUNITIES_CONTENT}}}}\n{{{{HARD_SIGNALS}}}}\n{{{{PROJECT_GOALS}}}}\n{{{{FEEDBACK}}}}",
+        load_prompt_callback=lambda name: (
+            f"prompt_name: {name}\n{{{{OPPORTUNITIES_CONTENT}}}}\n{{{{HARD_SIGNALS}}}}\n{{{{PROJECT_GOALS}}}}\n{{{{FEEDBACK}}}}"
+        ),
         run_agent_callback=lambda _prompt: "ok",
         reviewer_callback=reviewer,
     )
@@ -882,9 +884,21 @@ def test_run_analyze_with_reviewer_callback_reject_then_approve(temp_repo):
     def reviewer(prompt: str) -> str:
         call_count[0] += 1
         if call_count[0] == 1:
-            verdict = {"verdict": "NEEDS_REVISION", "score": 4, "strengths": [], "issues": ["Too vague"], "feedback": "Be more specific"}
+            verdict = {
+                "verdict": "NEEDS_REVISION",
+                "score": 4,
+                "strengths": [],
+                "issues": ["Too vague"],
+                "feedback": "Be more specific",
+            }
         else:
-            verdict = {"verdict": "APPROVED", "score": 8, "strengths": ["Specific"], "issues": [], "feedback": ""}
+            verdict = {
+                "verdict": "APPROVED",
+                "score": 8,
+                "strengths": ["Specific"],
+                "issues": [],
+                "feedback": "",
+            }
         return f"```json\n{_json.dumps(verdict)}\n```"
 
     def run_agent(prompt: str) -> str:
@@ -892,7 +906,9 @@ def test_run_analyze_with_reviewer_callback_reject_then_approve(temp_repo):
         return "ok"
 
     result = manager.run_analyze(
-        load_prompt_callback=lambda name: f"prompt_name: {name}\n{{{{OPPORTUNITIES_CONTENT}}}}\n{{{{HARD_SIGNALS}}}}\n{{{{PROJECT_GOALS}}}}\n{{{{FEEDBACK}}}}",
+        load_prompt_callback=lambda name: (
+            f"prompt_name: {name}\n{{{{OPPORTUNITIES_CONTENT}}}}\n{{{{HARD_SIGNALS}}}}\n{{{{PROJECT_GOALS}}}}\n{{{{FEEDBACK}}}}"
+        ),
         run_agent_callback=run_agent,
         reviewer_callback=reviewer,
     )
@@ -919,11 +935,19 @@ def test_run_analyze_with_reviewer_callback_max_cycles_exhaustion(temp_repo):
     manager.max_cycles = 2
 
     def reviewer(prompt: str) -> str:
-        verdict = {"verdict": "NEEDS_REVISION", "score": 2, "strengths": [], "issues": ["Bad"], "feedback": "Fix everything"}
+        verdict = {
+            "verdict": "NEEDS_REVISION",
+            "score": 2,
+            "strengths": [],
+            "issues": ["Bad"],
+            "feedback": "Fix everything",
+        }
         return f"```json\n{_json.dumps(verdict)}\n```"
 
     result = manager.run_analyze(
-        load_prompt_callback=lambda name: f"prompt_name: {name}\n{{{{OPPORTUNITIES_CONTENT}}}}\n{{{{HARD_SIGNALS}}}}\n{{{{PROJECT_GOALS}}}}\n{{{{FEEDBACK}}}}",
+        load_prompt_callback=lambda name: (
+            f"prompt_name: {name}\n{{{{OPPORTUNITIES_CONTENT}}}}\n{{{{HARD_SIGNALS}}}}\n{{{{PROJECT_GOALS}}}}\n{{{{FEEDBACK}}}}"
+        ),
         run_agent_callback=lambda _prompt: "ok",
         reviewer_callback=reviewer,
     )
@@ -951,11 +975,19 @@ def test_run_analyze_with_reviewer_callback_opportunities_not_reverted_on_failur
     manager.max_cycles = 1
 
     def reviewer(prompt: str) -> str:
-        verdict = {"verdict": "NEEDS_REVISION", "score": 1, "strengths": [], "issues": ["Bad"], "feedback": "Fix it"}
+        verdict = {
+            "verdict": "NEEDS_REVISION",
+            "score": 1,
+            "strengths": [],
+            "issues": ["Bad"],
+            "feedback": "Fix it",
+        }
         return f"```json\n{_json.dumps(verdict)}\n```"
 
     result = manager.run_analyze(
-        load_prompt_callback=lambda name: f"prompt_name: {name}\n{{{{OPPORTUNITIES_CONTENT}}}}\n{{{{HARD_SIGNALS}}}}\n{{{{PROJECT_GOALS}}}}\n{{{{FEEDBACK}}}}",
+        load_prompt_callback=lambda name: (
+            f"prompt_name: {name}\n{{{{OPPORTUNITIES_CONTENT}}}}\n{{{{HARD_SIGNALS}}}}\n{{{{PROJECT_GOALS}}}}\n{{{{FEEDBACK}}}}"
+        ),
         run_agent_callback=lambda _prompt: "ok",
         reviewer_callback=reviewer,
     )
@@ -998,7 +1030,13 @@ def test_run_design_accepts_reviewer_callback_parameter(temp_repo):
 
     reviewer_calls = []
     approved_verdict = _json.dumps(
-        {"verdict": "APPROVED", "approved": True, "strengths": ["Good"], "issues": [], "questions": []}
+        {
+            "verdict": "APPROVED",
+            "approved": True,
+            "strengths": ["Good"],
+            "issues": [],
+            "questions": [],
+        }
     )
 
     def reviewer(prompt: str) -> str:
@@ -1030,7 +1068,13 @@ def test_run_design_with_reviewer_callback_approve_first_cycle(temp_repo):
 
     agent_calls = []
     approved_verdict = _json.dumps(
-        {"verdict": "APPROVED", "approved": True, "strengths": ["Solid"], "issues": [], "questions": []}
+        {
+            "verdict": "APPROVED",
+            "approved": True,
+            "strengths": ["Solid"],
+            "issues": [],
+            "questions": [],
+        }
     )
 
     def run_agent(prompt: str) -> str:
@@ -1072,9 +1116,20 @@ def test_run_design_with_reviewer_callback_reject_then_approve(temp_repo):
     def reviewer(prompt: str) -> str:
         review_count[0] += 1
         if review_count[0] == 1:
-            verdict = {"verdict": "NEEDS_REVISION", "approved": False, "issues": ["Too vague"], "feedback": "Add more detail"}
+            verdict = {
+                "verdict": "NEEDS_REVISION",
+                "approved": False,
+                "issues": ["Too vague"],
+                "feedback": "Add more detail",
+            }
         else:
-            verdict = {"verdict": "APPROVED", "approved": True, "strengths": ["Detailed"], "issues": [], "feedback": ""}
+            verdict = {
+                "verdict": "APPROVED",
+                "approved": True,
+                "strengths": ["Detailed"],
+                "issues": [],
+                "feedback": "",
+            }
         return f"```json\n{_json.dumps(verdict)}\n```"
 
     result = manager.run_design(
@@ -1103,7 +1158,12 @@ def test_run_design_with_reviewer_callback_max_cycles_exhaustion(temp_repo):
         return "ok"
 
     def reviewer(prompt: str) -> str:
-        verdict = {"verdict": "NEEDS_REVISION", "approved": False, "issues": ["Still not good"], "feedback": "Keep improving"}
+        verdict = {
+            "verdict": "NEEDS_REVISION",
+            "approved": False,
+            "issues": ["Still not good"],
+            "feedback": "Keep improving",
+        }
         return f"```json\n{_json.dumps(verdict)}\n```"
 
     result = manager.run_design(
@@ -1127,7 +1187,13 @@ def test_run_design_with_reviewer_callback_opportunity_id_none(temp_repo):
     manager = _setup_design_test(temp_repo, design_provider)
 
     approved_verdict = _json.dumps(
-        {"verdict": "APPROVED", "approved": True, "strengths": ["Ok"], "issues": [], "questions": []}
+        {
+            "verdict": "APPROVED",
+            "approved": True,
+            "strengths": ["Ok"],
+            "issues": [],
+            "questions": [],
+        }
     )
 
     def run_agent(prompt: str) -> str:
@@ -1203,6 +1269,7 @@ def test_run_plan_impl_uses_configured_max_cycles(temp_repo):
 
     captured_max_cycles: list[int] = []
     import millstone.loops.outer as _outer_loops_mod
+
     OriginalLoop = _outer_loops_mod.ArtifactReviewLoop
 
     class CapturingLoop(OriginalLoop):  # type: ignore[misc]
@@ -1363,6 +1430,7 @@ def test_analyze_fix_prompt_loadable_via_load_prompt(tmp_path):
 # tasklist_filter plumbing into OuterLoopManager
 # ---------------------------------------------------------------------------
 
+
 def test_tasklist_filter_config_plumbed_to_provider_options(temp_repo, monkeypatch):
     """tasklist_filter in provider_config is merged into tasklist provider options."""
     captured = {}
@@ -1451,6 +1519,7 @@ def test_tasklist_filter_absent_in_config_does_not_set_filter_key(temp_repo, mon
 # tasklist_filter UX shortcut expansion
 # ---------------------------------------------------------------------------
 
+
 def _capture_tasklist_options(temp_repo, monkeypatch, provider_config: dict) -> dict:
     """Helper: build OuterLoopManager with provider_config and return captured options."""
     captured = {}
@@ -1470,7 +1539,8 @@ def _capture_tasklist_options(temp_repo, monkeypatch, provider_config: dict) -> 
 def test_label_shortcut_expands_to_labels_list(temp_repo, monkeypatch):
     """label shortcut produces labels = [value] in provider filter."""
     options = _capture_tasklist_options(
-        temp_repo, monkeypatch,
+        temp_repo,
+        monkeypatch,
         {"tasklist_filter": {"label": "sprint-1", "labels": [], "assignees": [], "statuses": []}},
     )
     assert options["filter"]["labels"] == ["sprint-1"]
@@ -1481,7 +1551,8 @@ def test_label_shortcut_expands_to_labels_list(temp_repo, monkeypatch):
 def test_assignee_shortcut_expands_to_assignees_list(temp_repo, monkeypatch):
     """assignee shortcut produces assignees = [value] in provider filter."""
     options = _capture_tasklist_options(
-        temp_repo, monkeypatch,
+        temp_repo,
+        monkeypatch,
         {"tasklist_filter": {"assignee": "alice", "labels": [], "assignees": [], "statuses": []}},
     )
     assert options["filter"]["assignees"] == ["alice"]
@@ -1491,7 +1562,8 @@ def test_assignee_shortcut_expands_to_assignees_list(temp_repo, monkeypatch):
 def test_status_shortcut_expands_to_statuses_list(temp_repo, monkeypatch):
     """status shortcut produces statuses = [value] in provider filter."""
     options = _capture_tasklist_options(
-        temp_repo, monkeypatch,
+        temp_repo,
+        monkeypatch,
         {"tasklist_filter": {"status": "Todo", "labels": [], "assignees": [], "statuses": []}},
     )
     assert options["filter"]["statuses"] == ["Todo"]
@@ -1501,7 +1573,8 @@ def test_status_shortcut_expands_to_statuses_list(temp_repo, monkeypatch):
 def test_all_shortcuts_together(temp_repo, monkeypatch):
     """All three shortcuts expand simultaneously."""
     options = _capture_tasklist_options(
-        temp_repo, monkeypatch,
+        temp_repo,
+        monkeypatch,
         {
             "tasklist_filter": {
                 "label": "sprint-1",
@@ -1521,7 +1594,8 @@ def test_all_shortcuts_together(temp_repo, monkeypatch):
 def test_list_form_takes_precedence_over_shortcut(temp_repo, monkeypatch):
     """Explicit list form wins when both shortcut and list are set."""
     options = _capture_tasklist_options(
-        temp_repo, monkeypatch,
+        temp_repo,
+        monkeypatch,
         {
             "tasklist_filter": {
                 "label": "shortcut-label",
@@ -1541,8 +1615,18 @@ def test_list_form_takes_precedence_over_shortcut(temp_repo, monkeypatch):
 def test_empty_shortcut_does_not_add_entry(temp_repo, monkeypatch):
     """Empty-string shortcut leaves the list empty (no filter)."""
     options = _capture_tasklist_options(
-        temp_repo, monkeypatch,
-        {"tasklist_filter": {"label": "", "assignee": "", "status": "", "labels": [], "assignees": [], "statuses": []}},
+        temp_repo,
+        monkeypatch,
+        {
+            "tasklist_filter": {
+                "label": "",
+                "assignee": "",
+                "status": "",
+                "labels": [],
+                "assignees": [],
+                "statuses": [],
+            }
+        },
     )
     assert options["filter"]["labels"] == []
     assert options["filter"]["assignees"] == []
@@ -1559,11 +1643,12 @@ def test_empty_list_treats_shortcut_as_active(temp_repo, monkeypatch):
     to an empty string.
     """
     options = _capture_tasklist_options(
-        temp_repo, monkeypatch,
+        temp_repo,
+        monkeypatch,
         {
             "tasklist_filter": {
                 "label": "sprint-1",
-                "labels": [],          # empty list: shortcut is still applied
+                "labels": [],  # empty list: shortcut is still applied
                 "assignee": "alice",
                 "assignees": [],
                 "status": "Todo",
@@ -1690,7 +1775,9 @@ def test_run_analyze_fix_prompt_contains_opportunity_write_instructions(temp_rep
             return '{"verdict": "NEEDS_REVISION", "score": 2, "strengths": [], "issues": ["Major: fix this"], "feedback": "fix it"}'
         return '{"verdict": "APPROVED", "score": 9, "strengths": [], "issues": [], "feedback": ""}'
 
-    manager2 = _make_outer_manager(temp_repo, opportunity_provider=MockOpportunityProviderWithPlaceholders())
+    manager2 = _make_outer_manager(
+        temp_repo, opportunity_provider=MockOpportunityProviderWithPlaceholders()
+    )
     manager2.max_cycles = 3
 
     manager2.run_analyze(
@@ -1741,7 +1828,9 @@ def test_run_plan_prompt_contains_tasklist_append_instructions(temp_repo):
 
     manager._run_plan_impl(
         design_path=str(temp_repo / "designs" / "placeholder-test.md"),
-        load_prompt_callback=lambda name: f"prompt_name: {name}\n{{{{TASKLIST_APPEND_INSTRUCTIONS}}}} {{{{OTHER_TOKEN}}}}",
+        load_prompt_callback=lambda name: (
+            f"prompt_name: {name}\n{{{{TASKLIST_APPEND_INSTRUCTIONS}}}} {{{{OTHER_TOKEN}}}}"
+        ),
         run_agent_callback=run_agent,
     )
 
@@ -1762,7 +1851,9 @@ def test_run_analyze_non_provider_tokens_survive(temp_repo):
     captured: list[str] = []
 
     manager.run_analyze(
-        load_prompt_callback=lambda _name: "{{HARD_SIGNALS}} {{CUSTOM_TOKEN}} {{OPPORTUNITY_WRITE_INSTRUCTIONS}}",
+        load_prompt_callback=lambda _name: (
+            "{{HARD_SIGNALS}} {{CUSTOM_TOKEN}} {{OPPORTUNITY_WRITE_INSTRUCTIONS}}"
+        ),
         run_agent_callback=lambda p: captured.append(p) or "ok",
     )
 

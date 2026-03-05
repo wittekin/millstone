@@ -63,14 +63,14 @@ class EvidenceStore:
         path.write_text(
             json.dumps(
                 {
-                    "evidence_id":     record.evidence_id,
-                    "kind":            record.kind.value,
-                    "timestamp":       record.timestamp,
-                    "outcome":         record.outcome,
-                    "work_item_id":    record.work_item_id,
-                    "work_item_kind":  record.work_item_kind,
+                    "evidence_id": record.evidence_id,
+                    "kind": record.kind.value,
+                    "timestamp": record.timestamp,
+                    "outcome": record.outcome,
+                    "work_item_id": record.work_item_id,
+                    "work_item_kind": record.work_item_kind,
                     "capability_tier": record.capability_tier,
-                    "detail":          record.detail,
+                    "detail": record.detail,
                 },
                 indent=2,
             )
@@ -139,11 +139,11 @@ def make_review_evidence(
         work_item_kind="task",
         capability_tier=capability_tier,
         detail={
-            "review_summary":       (review_summary or "")[:500],
-            "findings_count":       findings_count,
+            "review_summary": (review_summary or "")[:500],
+            "findings_count": findings_count,
             "findings_by_severity": findings_by_severity,
-            "cycles":               cycles,
-            "duration_ms":          duration_ms,
+            "cycles": cycles,
+            "duration_ms": duration_ms,
         },
     )
 
@@ -169,11 +169,11 @@ def make_eval_evidence(
         work_item_kind="task" if work_item_id else None,
         capability_tier=capability_tier,
         detail={
-            "composite_score":  eval_result.get("composite_score"),
-            "tests_passed":     tests.get("passed", 0),
-            "tests_failed":     tests.get("failed", 0),
+            "composite_score": eval_result.get("composite_score"),
+            "tests_passed": tests.get("passed", 0),
+            "tests_failed": tests.get("failed", 0),
             "duration_seconds": eval_result.get("duration_seconds"),
-            "eval_file":        eval_result.get("_eval_file"),
+            "eval_file": eval_result.get("_eval_file"),
         },
     )
 
@@ -198,10 +198,10 @@ def make_design_review_evidence(
         work_item_kind="design",
         capability_tier=capability_tier,
         detail={
-            "design_path":     design_path,
+            "design_path": design_path,
             "strengths_count": strengths_count,
-            "issues_count":    issues_count,
-            "verdict":         outcome,
+            "issues_count": issues_count,
+            "verdict": outcome,
         },
     )
 
@@ -230,10 +230,10 @@ def evidence_from_effect_record(
         work_item_kind=None,
         capability_tier=capability_tier,
         detail={
-            "effect_class":    intent.effect_class.value,
-            "description":     intent.description,
+            "effect_class": intent.effect_class.value,
+            "description": intent.description,
             "idempotency_key": intent.idempotency_key,
-            "rollback_plan":   intent.rollback_plan,
-            "error":           effect_record.error,
+            "rollback_plan": intent.rollback_plan,
+            "error": effect_record.error,
         },
     )

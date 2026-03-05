@@ -14,8 +14,6 @@ def apply_provider_placeholders(prompt: str, placeholders: dict[str, str]) -> st
         token = f"{{{{{key}}}}}"
         if token in prompt:
             if not value:
-                raise ValueError(
-                    f"Provider placeholder {token} resolved to empty string"
-                )
+                raise ValueError(f"Provider placeholder {token} resolved to empty string")
             prompt = prompt.replace(token, value)
     return prompt

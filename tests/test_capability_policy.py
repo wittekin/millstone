@@ -15,7 +15,9 @@ from millstone.policy.capability import (
 
 @pytest.mark.parametrize("gate_tier", list(CapabilityTier))
 @pytest.mark.parametrize("requested_tier", list(CapabilityTier))
-def test_assert_permitted_all_tier_combinations(gate_tier: CapabilityTier, requested_tier: CapabilityTier) -> None:
+def test_assert_permitted_all_tier_combinations(
+    gate_tier: CapabilityTier, requested_tier: CapabilityTier
+) -> None:
     gate = CapabilityPolicyGate(gate_tier)
 
     if list(CapabilityTier).index(requested_tier) <= list(CapabilityTier).index(gate_tier):

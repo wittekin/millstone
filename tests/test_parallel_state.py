@@ -8,14 +8,18 @@ from millstone.runtime.parallel_state import ParallelState
 class TestParallelState:
     def test_task_result_roundtrip(self, tmp_path):
         shared = tmp_path / "parallel"
-        state = ParallelState(shared_state_dir=shared, state_lock=AdvisoryLock(tmp_path / "locks" / "state.lock"))
+        state = ParallelState(
+            shared_state_dir=shared, state_lock=AdvisoryLock(tmp_path / "locks" / "state.lock")
+        )
 
         state.write_task_result("t1", {"status": "ok", "n": 1})
         assert state.read_task_result("t1") == {"status": "ok", "n": 1}
 
     def test_atomic_write_no_partial(self, tmp_path):
         shared = tmp_path / "parallel"
-        state = ParallelState(shared_state_dir=shared, state_lock=AdvisoryLock(tmp_path / "locks" / "state.lock"))
+        state = ParallelState(
+            shared_state_dir=shared, state_lock=AdvisoryLock(tmp_path / "locks" / "state.lock")
+        )
 
         stop = threading.Event()
         errors: list[str] = []
@@ -53,7 +57,9 @@ class TestParallelState:
 
     def test_heartbeat_roundtrip(self, tmp_path):
         shared = tmp_path / "parallel"
-        state = ParallelState(shared_state_dir=shared, state_lock=AdvisoryLock(tmp_path / "locks" / "state.lock"))
+        state = ParallelState(
+            shared_state_dir=shared, state_lock=AdvisoryLock(tmp_path / "locks" / "state.lock")
+        )
         before = time.time()
         state.write_heartbeat("t1")
         hb = state.read_heartbeat("t1")
@@ -62,6 +68,7 @@ class TestParallelState:
 
     def test_load_control_state_missing(self, tmp_path):
         shared = tmp_path / "parallel"
-        state = ParallelState(shared_state_dir=shared, state_lock=AdvisoryLock(tmp_path / "locks" / "state.lock"))
+        state = ParallelState(
+            shared_state_dir=shared, state_lock=AdvisoryLock(tmp_path / "locks" / "state.lock")
+        )
         assert state.load_control_state() is None
-

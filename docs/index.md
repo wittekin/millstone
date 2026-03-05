@@ -34,7 +34,6 @@ Paste one of these as a system prompt to let an AI agent drive millstone for you
 ## Learn more
 
 - [Getting Started](getting-started.md)
-- [Tasklist Spec](tasklist.md)
 - [Parallel Execution (Worktrees)](worktrees.md)
 - [CLI Providers](cli-providers/index.md) — Claude Code, Codex, Gemini, OpenCode
 - [Artifact Providers](providers/index.md) — GitHub, Jira, Linear, Confluence, Notion, MCP

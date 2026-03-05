@@ -95,7 +95,9 @@ class TestCapabilityPolicyGateWiring:
         registry.register(read_only_profile)
 
         with patch("millstone.runtime.orchestrator.ProfileRegistry", return_value=registry):
-            return Orchestrator(profile="test_c0_read_only", task="capability gate test", quiet=True)
+            return Orchestrator(
+                profile="test_c0_read_only", task="capability gate test", quiet=True
+            )
 
     def test_init_sets_capability_gate(self, temp_repo):
         orch = Orchestrator(task="test", quiet=True)
@@ -129,7 +131,9 @@ class TestCapabilityPolicyGateWiring:
             ("run_cycle", ()),
         ],
     )
-    def test_read_only_profile_blocks_mutating_outer_loop_methods(self, temp_repo, method_name, args):
+    def test_read_only_profile_blocks_mutating_outer_loop_methods(
+        self, temp_repo, method_name, args
+    ):
         orch = self._make_c0_orchestrator()
         try:
             method = getattr(orch, method_name)
@@ -150,24 +154,37 @@ class TestCapabilityPolicyGateWiring:
     def test_c1_profile_does_not_raise_on_mutating_paths(self, temp_repo):
         orch = Orchestrator(task="test", quiet=True)
         try:
-            with patch.object(orch._outer_loop_manager, "run_analyze", return_value={"success": True}):
+            with patch.object(
+                orch._outer_loop_manager, "run_analyze", return_value={"success": True}
+            ):
                 result = orch.run_analyze()
                 assert result["success"] is True
 
-            with patch.object(orch._outer_loop_manager, "run_design", return_value={"success": True, "design_file": None}):
+            with patch.object(
+                orch._outer_loop_manager,
+                "run_design",
+                return_value={"success": True, "design_file": None},
+            ):
                 result = orch.run_design("opportunity")
                 assert result["success"] is True
 
-            with patch.object(orch._outer_loop_manager, "run_plan", return_value={"success": True, "tasks_added": 0}):
+            with patch.object(
+                orch._outer_loop_manager,
+                "run_plan",
+                return_value={"success": True, "tasks_added": 0},
+            ):
                 result = orch.run_plan("designs/test.md")
                 assert result["success"] is True
 
             with patch.object(orch._outer_loop_manager, "run_cycle", return_value=0):
                 assert orch.run_cycle() == 0
 
-            with patch.object(orch, "save_task_metrics"), patch(
-                "millstone.runtime.orchestrator.ArtifactReviewLoop.run",
-                return_value=LoopResult(success=False, cycles=1, error="stubbed"),
+            with (
+                patch.object(orch, "save_task_metrics"),
+                patch(
+                    "millstone.runtime.orchestrator.ArtifactReviewLoop.run",
+                    return_value=LoopResult(success=False, cycles=1, error="stubbed"),
+                ),
             ):
                 assert orch.run_single_task() is False
         finally:
@@ -317,7 +334,11 @@ class TestCapabilityProfileCliPlumbing:
         [
             (["orchestrate.py", "--analyze"], "run_analyze", {"success": True}),
             (["orchestrate.py", "--design", "Add retries"], "run_design", {"success": True}),
-            (["orchestrate.py", "--review-design", "designs/test.md"], "review_design", {"approved": True}),
+            (
+                ["orchestrate.py", "--review-design", "designs/test.md"],
+                "review_design",
+                {"approved": True},
+            ),
             (["orchestrate.py", "--plan", "designs/test.md"], "run_plan", {"success": True}),
         ],
     )
@@ -338,9 +359,21 @@ class TestCapabilityProfileCliPlumbing:
     @pytest.mark.parametrize(
         ("argv", "method_name", "return_value"),
         [
-            (["orchestrate.py", "--analyze", "--max-cycles", "7"], "run_analyze", {"success": True}),
-            (["orchestrate.py", "--design", "Add retries", "--max-cycles", "7"], "run_design", {"success": True}),
-            (["orchestrate.py", "--plan", "designs/test.md", "--max-cycles", "7"], "run_plan", {"success": True}),
+            (
+                ["orchestrate.py", "--analyze", "--max-cycles", "7"],
+                "run_analyze",
+                {"success": True},
+            ),
+            (
+                ["orchestrate.py", "--design", "Add retries", "--max-cycles", "7"],
+                "run_design",
+                {"success": True},
+            ),
+            (
+                ["orchestrate.py", "--plan", "designs/test.md", "--max-cycles", "7"],
+                "run_plan",
+                {"success": True},
+            ),
         ],
     )
     def test_minimal_cli_branches_pass_max_cycles_into_orchestrator(
@@ -715,7 +748,9 @@ class TestIsEmptyResponse:
 
     def test_review_decision_schema_missing_status(self):
         """Review decision response missing status is empty."""
-        response = '{"review": "Needs changes", "summary": "Blocking issues", "findings": ["fix typo"]}'
+        response = (
+            '{"review": "Needs changes", "summary": "Blocking issues", "findings": ["fix typo"]}'
+        )
         assert is_empty_response(response, expected_schema="review_decision") is True
 
     def test_review_decision_schema_with_findings_by_severity(self):
@@ -816,11 +851,18 @@ class TestIsEmptyResponse:
         response = '{"status": "OK"}'  # 16 chars, valid sanity_check schema
         assert is_empty_response(response, expected_schema="sanity_check", min_length=50) is False
         # Long and valid schema - should also pass
-        long_response = '{"status": "OK", "details": "This is a much longer response with more content"}'
-        assert is_empty_response(long_response, expected_schema="sanity_check", min_length=50) is False
+        long_response = (
+            '{"status": "OK", "details": "This is a much longer response with more content"}'
+        )
+        assert (
+            is_empty_response(long_response, expected_schema="sanity_check", min_length=50) is False
+        )
         # Short and INVALID schema - should fail (schema validation fails)
         invalid_response = '{"foo": "bar"}'  # 14 chars, missing status
-        assert is_empty_response(invalid_response, expected_schema="sanity_check", min_length=50) is True
+        assert (
+            is_empty_response(invalid_response, expected_schema="sanity_check", min_length=50)
+            is True
+        )
 
     def test_min_length_only_applies_to_unstructured(self):
         """min_length only applies when no schema is specified."""
@@ -828,7 +870,9 @@ class TestIsEmptyResponse:
         response = "short"  # 5 chars
         assert is_empty_response(response, min_length=50) is True
         # Long unstructured response - should pass
-        long_response = "This is a longer unstructured response that exceeds the minimum length threshold"
+        long_response = (
+            "This is a longer unstructured response that exceeds the minimum length threshold"
+        )
         assert is_empty_response(long_response, min_length=50) is False
 
 
@@ -900,6 +944,7 @@ class TestLogVerbosityConfig:
     def test_orchestrator_rejects_invalid_verbosity(self, temp_repo):
         """Orchestrator raises ValueError for invalid log_verbosity."""
         import pytest
+
         with pytest.raises(ValueError) as exc_info:
             Orchestrator(log_verbosity="debug")
         assert "Invalid log_verbosity 'debug'" in str(exc_info.value)
@@ -1227,15 +1272,15 @@ class TestVerboseCliFlag:
         tasklist.parent.mkdir(parents=True, exist_ok=True)
         tasklist.write_text("# Tasklist\n\n- [ ] Test task\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--verbose', '--dry-run']):
-            with patch.object(orchestrate.Orchestrator, '__init__', return_value=None) as mock_init:
-                with patch.object(orchestrate.Orchestrator, 'run', return_value=0):
-                    with patch.object(orchestrate.Orchestrator, 'cleanup'):
+        with patch("sys.argv", ["orchestrate.py", "--verbose", "--dry-run"]):
+            with patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(orchestrate.Orchestrator, "run", return_value=0):
+                    with patch.object(orchestrate.Orchestrator, "cleanup"):
                         with contextlib.suppress(SystemExit):
                             orchestrate.main()
                         # Check that Orchestrator was called with log_verbosity='verbose'
                         _, kwargs = mock_init.call_args
-                        assert kwargs.get('log_verbosity') == 'verbose'
+                        assert kwargs.get("log_verbosity") == "verbose"
 
     def test_verbose_short_flag_works(self, temp_repo):
         """Short -v flag sets log_verbosity to 'verbose'."""
@@ -1247,14 +1292,14 @@ class TestVerboseCliFlag:
         tasklist.parent.mkdir(parents=True, exist_ok=True)
         tasklist.write_text("# Tasklist\n\n- [ ] Test task\n")
 
-        with patch('sys.argv', ['orchestrate.py', '-v', '--dry-run']):
-            with patch.object(orchestrate.Orchestrator, '__init__', return_value=None) as mock_init:
-                with patch.object(orchestrate.Orchestrator, 'run', return_value=0):
-                    with patch.object(orchestrate.Orchestrator, 'cleanup'):
+        with patch("sys.argv", ["orchestrate.py", "-v", "--dry-run"]):
+            with patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(orchestrate.Orchestrator, "run", return_value=0):
+                    with patch.object(orchestrate.Orchestrator, "cleanup"):
                         with contextlib.suppress(SystemExit):
                             orchestrate.main()
                         _, kwargs = mock_init.call_args
-                        assert kwargs.get('log_verbosity') == 'verbose'
+                        assert kwargs.get("log_verbosity") == "verbose"
 
     def test_without_verbose_flag_uses_config_default(self, temp_repo):
         """Without --verbose, log_verbosity uses config default ('normal')."""
@@ -1266,14 +1311,14 @@ class TestVerboseCliFlag:
         tasklist.parent.mkdir(parents=True, exist_ok=True)
         tasklist.write_text("# Tasklist\n\n- [ ] Test task\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--dry-run']):
-            with patch.object(orchestrate.Orchestrator, '__init__', return_value=None) as mock_init:
-                with patch.object(orchestrate.Orchestrator, 'run', return_value=0):
-                    with patch.object(orchestrate.Orchestrator, 'cleanup'):
+        with patch("sys.argv", ["orchestrate.py", "--dry-run"]):
+            with patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(orchestrate.Orchestrator, "run", return_value=0):
+                    with patch.object(orchestrate.Orchestrator, "cleanup"):
                         with contextlib.suppress(SystemExit):
                             orchestrate.main()
                         _, kwargs = mock_init.call_args
-                        assert kwargs.get('log_verbosity') == 'normal'
+                        assert kwargs.get("log_verbosity") == "normal"
 
     def test_verbose_flag_overrides_config(self, temp_repo):
         """--verbose flag overrides log_verbosity from config file."""
@@ -1291,15 +1336,15 @@ class TestVerboseCliFlag:
         config_file = config_dir / "config.toml"
         config_file.write_text('log_verbosity = "minimal"\n')
 
-        with patch('sys.argv', ['orchestrate.py', '--verbose', '--dry-run']):
-            with patch.object(orchestrate.Orchestrator, '__init__', return_value=None) as mock_init:
-                with patch.object(orchestrate.Orchestrator, 'run', return_value=0):
-                    with patch.object(orchestrate.Orchestrator, 'cleanup'):
+        with patch("sys.argv", ["orchestrate.py", "--verbose", "--dry-run"]):
+            with patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(orchestrate.Orchestrator, "run", return_value=0):
+                    with patch.object(orchestrate.Orchestrator, "cleanup"):
                         with contextlib.suppress(SystemExit):
                             orchestrate.main()
                         _, kwargs = mock_init.call_args
                         # --verbose should override the 'minimal' config setting
-                        assert kwargs.get('log_verbosity') == 'verbose'
+                        assert kwargs.get("log_verbosity") == "verbose"
 
     def test_verbose_flag_enables_python_debug_logs(self, temp_repo, caplog):
         """--verbose configures Python logging so debug logs are visible."""
@@ -1316,7 +1361,9 @@ class TestVerboseCliFlag:
             return 0
 
         with patch("sys.argv", ["orchestrate.py", "--verbose", "--task", "noop"]):
-            with patch.object(orchestrate.Orchestrator, "run", autospec=True, side_effect=run_with_debug_log):
+            with patch.object(
+                orchestrate.Orchestrator, "run", autospec=True, side_effect=run_with_debug_log
+            ):
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
 
@@ -1338,15 +1385,15 @@ class TestFullDiffCliFlag:
         tasklist.parent.mkdir(parents=True, exist_ok=True)
         tasklist.write_text("# Tasklist\n\n- [ ] Test task\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--full-diff', '--dry-run']):
-            with patch.object(orchestrate.Orchestrator, '__init__', return_value=None) as mock_init:
-                with patch.object(orchestrate.Orchestrator, 'run', return_value=0):
-                    with patch.object(orchestrate.Orchestrator, 'cleanup'):
+        with patch("sys.argv", ["orchestrate.py", "--full-diff", "--dry-run"]):
+            with patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(orchestrate.Orchestrator, "run", return_value=0):
+                    with patch.object(orchestrate.Orchestrator, "cleanup"):
                         with contextlib.suppress(SystemExit):
                             orchestrate.main()
                         # Check that Orchestrator was called with log_diff_mode='full'
                         _, kwargs = mock_init.call_args
-                        assert kwargs.get('log_diff_mode') == 'full'
+                        assert kwargs.get("log_diff_mode") == "full"
 
     def test_without_full_diff_flag_uses_config_default(self, temp_repo):
         """Without --full-diff, log_diff_mode uses config default ('summary')."""
@@ -1358,14 +1405,14 @@ class TestFullDiffCliFlag:
         tasklist.parent.mkdir(parents=True, exist_ok=True)
         tasklist.write_text("# Tasklist\n\n- [ ] Test task\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--dry-run']):
-            with patch.object(orchestrate.Orchestrator, '__init__', return_value=None) as mock_init:
-                with patch.object(orchestrate.Orchestrator, 'run', return_value=0):
-                    with patch.object(orchestrate.Orchestrator, 'cleanup'):
+        with patch("sys.argv", ["orchestrate.py", "--dry-run"]):
+            with patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(orchestrate.Orchestrator, "run", return_value=0):
+                    with patch.object(orchestrate.Orchestrator, "cleanup"):
                         with contextlib.suppress(SystemExit):
                             orchestrate.main()
                         _, kwargs = mock_init.call_args
-                        assert kwargs.get('log_diff_mode') == 'summary'
+                        assert kwargs.get("log_diff_mode") == "summary"
 
     def test_full_diff_flag_overrides_config(self, temp_repo):
         """--full-diff flag overrides log_diff_mode from config file."""
@@ -1383,15 +1430,15 @@ class TestFullDiffCliFlag:
         config_file = config_dir / "config.toml"
         config_file.write_text('log_diff_mode = "none"\n')
 
-        with patch('sys.argv', ['orchestrate.py', '--full-diff', '--dry-run']):
-            with patch.object(orchestrate.Orchestrator, '__init__', return_value=None) as mock_init:
-                with patch.object(orchestrate.Orchestrator, 'run', return_value=0):
-                    with patch.object(orchestrate.Orchestrator, 'cleanup'):
+        with patch("sys.argv", ["orchestrate.py", "--full-diff", "--dry-run"]):
+            with patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(orchestrate.Orchestrator, "run", return_value=0):
+                    with patch.object(orchestrate.Orchestrator, "cleanup"):
                         with contextlib.suppress(SystemExit):
                             orchestrate.main()
                         _, kwargs = mock_init.call_args
                         # --full-diff should override the 'none' config setting
-                        assert kwargs.get('log_diff_mode') == 'full'
+                        assert kwargs.get("log_diff_mode") == "full"
 
 
 class TestWorktreesCliFlags:
@@ -1418,10 +1465,13 @@ class TestWorktreesCliFlags:
 
         from millstone import orchestrate
 
-        with patch(
-            "sys.argv",
-            ["orchestrate.py", "--worktrees", "--shared-state-dir", "/tmp/shared", "--dry-run"],
-        ), patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+        with (
+            patch(
+                "sys.argv",
+                ["orchestrate.py", "--worktrees", "--shared-state-dir", "/tmp/shared", "--dry-run"],
+            ),
+            patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init,
+        ):
             with patch.object(orchestrate.Orchestrator, "run", return_value=0):
                 with patch.object(orchestrate.Orchestrator, "cleanup"):
                     with contextlib.suppress(SystemExit):
@@ -1445,11 +1495,23 @@ class TestWorktreesCliFlags:
                         with contextlib.suppress(SystemExit):
                             orchestrate.main()
                         _, kwargs = mock_init.call_args
-                        assert kwargs.get("parallel_enabled") == bool(DEFAULT_CONFIG["parallel_enabled"])
-                        assert kwargs.get("parallel_concurrency") == int(DEFAULT_CONFIG["parallel_concurrency"])
-                        assert kwargs.get("integration_branch") == DEFAULT_CONFIG["parallel_integration_branch"]
-                        assert kwargs.get("merge_strategy") == DEFAULT_CONFIG["parallel_merge_strategy"]
-                        assert kwargs.get("worktree_root") == DEFAULT_CONFIG["parallel_worktree_root"]
+                        assert kwargs.get("parallel_enabled") == bool(
+                            DEFAULT_CONFIG["parallel_enabled"]
+                        )
+                        assert kwargs.get("parallel_concurrency") == int(
+                            DEFAULT_CONFIG["parallel_concurrency"]
+                        )
+                        assert (
+                            kwargs.get("integration_branch")
+                            == DEFAULT_CONFIG["parallel_integration_branch"]
+                        )
+                        assert (
+                            kwargs.get("merge_strategy")
+                            == DEFAULT_CONFIG["parallel_merge_strategy"]
+                        )
+                        assert (
+                            kwargs.get("worktree_root") == DEFAULT_CONFIG["parallel_worktree_root"]
+                        )
                         assert kwargs.get("worktree_cleanup") == DEFAULT_CONFIG["parallel_cleanup"]
                         assert kwargs.get("merge_max_retries") == 2
                         assert kwargs.get("high_risk_concurrency") == 1
@@ -1680,14 +1742,10 @@ All done."""
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout="## FINDINGS\n\n1. Found important patterns\n\n## RECOMMENDATIONS\n\n- Do this",
-                stderr=""
+                stderr="",
             )
 
-            orch = Orchestrator(
-                tasklist="docs/tasklist.md",
-                research=True,
-                cli="claude"
-            )
+            orch = Orchestrator(tasklist="docs/tasklist.md", research=True, cli="claude")
             try:
                 result = orch.run_single_task()
                 assert result is True
@@ -1725,18 +1783,10 @@ All done."""
                 for i, arg in enumerate(cmd_list):
                     if arg == "-p" and i + 1 < len(cmd_list):
                         prompts_received.append(cmd_list[i + 1])
-            return MagicMock(
-                returncode=0,
-                stdout="Research output here",
-                stderr=""
-            )
+            return MagicMock(returncode=0, stdout="Research output here", stderr="")
 
         with patch("subprocess.run", side_effect=capture_prompt):
-            orch = Orchestrator(
-                tasklist="docs/tasklist.md",
-                research=True,
-                cli="claude"
-            )
+            orch = Orchestrator(tasklist="docs/tasklist.md", research=True, cli="claude")
             try:
                 orch.run_single_task()
 
@@ -1753,16 +1803,10 @@ All done."""
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout="Direct task research output",
-                stderr=""
+                returncode=0, stdout="Direct task research output", stderr=""
             )
 
-            orch = Orchestrator(
-                task="Analyze performance bottlenecks",
-                research=True,
-                cli="claude"
-            )
+            orch = Orchestrator(task="Analyze performance bottlenecks", research=True, cli="claude")
             try:
                 result = orch.run_single_task()
                 assert result is True
@@ -2035,9 +2079,13 @@ class TestTasklistFlag:
             def patched_placeholders():
                 result = original()
                 # Force one value to empty to trigger the guard
-                return {k: ("" if k == "TASKLIST_READ_INSTRUCTIONS" else v) for k, v in result.items()}
+                return {
+                    k: ("" if k == "TASKLIST_READ_INSTRUCTIONS" else v) for k, v in result.items()
+                }
 
-            orch._outer_loop_manager.tasklist_provider.get_prompt_placeholders = patched_placeholders
+            orch._outer_loop_manager.tasklist_provider.get_prompt_placeholders = (
+                patched_placeholders
+            )
             with pytest.raises(ValueError, match="TASKLIST_READ_INSTRUCTIONS"):
                 orch.get_tasklist_prompt()
         finally:
@@ -2086,7 +2134,6 @@ class TestTasklistFlag:
         finally:
             orch.cleanup()
 
-
     def test_get_review_prompt_legacy_tasklist_path(self, temp_repo):
         """get_review_prompt() rewrites literal .millstone/tasklist.md to configured tasklist."""
         (temp_repo / "my_prompts").mkdir(exist_ok=True)
@@ -2113,9 +2160,7 @@ class TestTasklistFlag:
         try:
             builder_output = "modified .millstone/tasklist.md directly"
             git_diff = "diff --git a/.millstone/tasklist.md b/.millstone/tasklist.md"
-            prompt = orch.get_review_prompt(
-                builder_output=builder_output, git_diff=git_diff
-            )
+            prompt = orch.get_review_prompt(builder_output=builder_output, git_diff=git_diff)
             assert builder_output in prompt
             assert git_diff in prompt
         finally:
@@ -2164,7 +2209,9 @@ class TestTasklistFlag:
 
         with patch("sys.argv", ["millstone"]):
             with patch("millstone.runtime.orchestrator.load_config", return_value=config):
-                with patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(
+                    orchestrate.Orchestrator, "__init__", return_value=None
+                ) as mock_init:
                     with patch.object(orchestrate.Orchestrator, "run", return_value=0):
                         with patch.object(orchestrate.Orchestrator, "cleanup"):
                             with contextlib.suppress(SystemExit):
@@ -2187,7 +2234,9 @@ class TestTasklistFlag:
 
         with patch("sys.argv", ["millstone"]):
             with patch("millstone.runtime.orchestrator.load_config", return_value=config):
-                with patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(
+                    orchestrate.Orchestrator, "__init__", return_value=None
+                ) as mock_init:
                     with patch.object(orchestrate.Orchestrator, "run", return_value=0):
                         with patch.object(orchestrate.Orchestrator, "cleanup"):
                             with contextlib.suppress(SystemExit):
@@ -2280,6 +2329,7 @@ class TestPreflightChecks:
         try:
             # Should not raise - temp_repo fixture creates valid git repo with tasklist
             with patch("subprocess.run") as mock_run:
+
                 def run_side_effect(cmd, *args, **kwargs):
                     if cmd[0] == "claude":
                         return MagicMock(returncode=0, stdout="claude 1.0.0", stderr="")
@@ -2322,6 +2372,7 @@ class TestPreflightChecks:
     def test_fails_when_not_git_repo(self, tmp_path):
         """Pre-flight checks fail when not in a git repository."""
         import os
+
         original_cwd = os.getcwd()
         non_git_dir = tmp_path / "not_a_repo"
         non_git_dir.mkdir()
@@ -2330,6 +2381,7 @@ class TestPreflightChecks:
             orch = Orchestrator()
             try:
                 with patch("subprocess.run") as mock_run:
+
                     def run_side_effect(cmd, *args, **kwargs):
                         if cmd[0] == "claude":
                             return MagicMock(returncode=0, stdout="claude 1.0.0", stderr="")
@@ -2356,6 +2408,7 @@ class TestPreflightChecks:
         orch = Orchestrator()
         try:
             with patch("subprocess.run") as mock_run:
+
                 def run_side_effect(cmd, *args, **kwargs):
                     if cmd[0] == "claude":
                         return MagicMock(returncode=0, stdout="claude 1.0.0", stderr="")
@@ -2380,6 +2433,7 @@ class TestPreflightChecks:
         orch = Orchestrator(task="implement feature X")
         try:
             with patch("subprocess.run") as mock_run:
+
                 def run_side_effect(cmd, *args, **kwargs):
                     if cmd[0] == "claude":
                         return MagicMock(returncode=0, stdout="claude 1.0.0", stderr="")
@@ -2398,6 +2452,7 @@ class TestPreflightChecks:
         orch = Orchestrator(tasklist="custom/path/tasks.md")
         try:
             with patch("subprocess.run") as mock_run:
+
                 def run_side_effect(cmd, *args, **kwargs):
                     if cmd[0] == "claude":
                         return MagicMock(returncode=0, stdout="claude 1.0.0", stderr="")
@@ -2509,7 +2564,9 @@ class TestDryRun:
                 # Check that claude was never called
                 for call in mock_run.call_args_list:
                     if call.args and len(call.args[0]) > 0:
-                        assert call.args[0][0] != "claude", "claude CLI should not be invoked in dry-run mode"
+                        assert call.args[0][0] != "claude", (
+                            "claude CLI should not be invoked in dry-run mode"
+                        )
         finally:
             orch.cleanup()
 
@@ -2570,7 +2627,7 @@ class TestWorkerMode:
             base_branch="master",
         )
         # Avoid invoking real CLIs.
-        orch.run_agent = lambda *a, **k: "worker output"
+        orch.run_agent = lambda *_, **__: "worker output"
         try:
             assert orch.run_single_task() is True
             result_path = shared / "tasks" / "t1" / "result.json"
@@ -2626,7 +2683,9 @@ class TestWorkerMode:
             t.join(timeout=2.0)
             orch.cleanup()
 
-    def test_worker_mode_logs_debug_on_best_effort_write_failures(self, temp_repo, tmp_path, caplog):
+    def test_worker_mode_logs_debug_on_best_effort_write_failures(
+        self, temp_repo, tmp_path, caplog
+    ):
         """Worker mode logs debug details when heartbeat/result writes fail."""
         shared = tmp_path / "shared"
         orch = Orchestrator(
@@ -2636,7 +2695,7 @@ class TestWorkerMode:
             parallel_heartbeat_interval=0.01,
             base_branch="master",
         )
-        orch.run_agent = lambda *a, **k: "worker output"
+        orch.run_agent = lambda *_, **__: "worker output"
         try:
             with (
                 patch(
@@ -2664,8 +2723,15 @@ class TestWorkerMode:
             # Commit a tasklist edit (working tree clean afterwards).
             tasklist = temp_repo / "docs" / "tasklist.md"
             tasklist.write_text(tasklist.read_text() + "\n- [ ] extra\n")
-            subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-            subprocess.run(["git", "commit", "-m", "edit tasklist"], cwd=temp_repo, capture_output=True, check=True)
+            subprocess.run(
+                ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "edit tasklist"],
+                cwd=temp_repo,
+                capture_output=True,
+                check=True,
+            )
 
             assert orch.mechanical_checks() is False
         finally:
@@ -2677,7 +2743,9 @@ class TestWorkerMode:
 
         orch = Orchestrator(task="task", no_tasklist_edits=False)
         try:
-            with patch.object(orch._inner_loop_manager, "mechanical_checks", return_value=(True, False)) as mc:
+            with patch.object(
+                orch._inner_loop_manager, "mechanical_checks", return_value=(True, False)
+            ) as mc:
                 assert orch.mechanical_checks() is True
                 _, kwargs = mc.call_args
                 assert kwargs.get("tasklist_path") is None
@@ -2690,7 +2758,7 @@ class TestTaskModeRiskParsing:
         orch = Orchestrator(task="**Foo**: bar\n  - Risk: high\n", research=True)
         # Avoid interactive approval prompt in tests.
         orch.risk_settings["high"]["require_approval"] = False
-        orch.run_agent = lambda *a, **k: "ok"
+        orch.run_agent = lambda *_, **__: "ok"
         try:
             assert orch.run_single_task() is True
             assert orch.current_task_risk == "high"
@@ -2700,7 +2768,7 @@ class TestTaskModeRiskParsing:
 
     def test_task_mode_no_risk_defaults(self, temp_repo):
         orch = Orchestrator(task="simple task", research=True)
-        orch.run_agent = lambda *a, **k: "ok"
+        orch.run_agent = lambda *_, **__: "ok"
         try:
             assert orch.run_single_task() is True
             assert orch.current_task_risk is None
@@ -3103,7 +3171,7 @@ compact_threshold = 50
 """)
                 return "Compaction done"
 
-            with patch.object(orch, 'run_claude', side_effect=mock_compaction):
+            with patch.object(orch, "run_claude", side_effect=mock_compaction):
                 result = orch.run_compaction()
 
             assert result is True
@@ -3142,7 +3210,7 @@ compact_threshold = 50
 """)
                 return "Compaction done"
 
-            with patch.object(orch, 'run_claude', side_effect=mock_compaction):
+            with patch.object(orch, "run_claude", side_effect=mock_compaction):
                 orch.run_compaction()
 
             # After compaction, count should be re-read from file
@@ -3327,7 +3395,7 @@ Some extra content that makes it longer
 """)
                 return "Compaction done"
 
-            with patch.object(orch, 'run_claude', side_effect=mock_bad_compaction):
+            with patch.object(orch, "run_claude", side_effect=mock_bad_compaction):
                 result = orch.run_compaction()
 
             assert result is False
@@ -3355,7 +3423,7 @@ Some extra content that makes it longer
                 tasklist_path.write_text(original_content + "\nExtra content added")
                 return "Compaction done"
 
-            with patch.object(orch, 'run_claude', side_effect=mock_bad_compaction):
+            with patch.object(orch, "run_claude", side_effect=mock_bad_compaction):
                 result = orch.run_compaction()
 
             assert result is False
@@ -3388,7 +3456,7 @@ Some extra content that makes it longer
 """)
                 return "Compaction done"
 
-            with patch.object(orch, 'run_claude', side_effect=mock_good_compaction):
+            with patch.object(orch, "run_claude", side_effect=mock_good_compaction):
                 result = orch.run_compaction()
 
             assert result is True
@@ -3421,7 +3489,7 @@ Some extra content that makes it longer
 """)
                 return "Compaction done"
 
-            with patch.object(orch, 'run_claude', side_effect=mock_reorder_compaction):
+            with patch.object(orch, "run_claude", side_effect=mock_reorder_compaction):
                 result = orch.run_compaction()
 
             # Should fail because task order changed (Task A became Task C)
@@ -3680,7 +3748,7 @@ class TestManualCompactFlag:
         """--compact cannot be used with --task."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--compact', '--task', 'some task']):
+        with patch("sys.argv", ["orchestrate.py", "--compact", "--task", "some task"]):
             with pytest.raises(SystemExit) as exc_info:
                 orchestrate.main()
             # argparse error returns exit code 2
@@ -3695,7 +3763,7 @@ class TestManualCompactFlag:
         if tasklist.exists():
             tasklist.unlink()
 
-        with patch('sys.argv', ['orchestrate.py', '--compact', '--tasklist', 'docs/tasklist.md']):
+        with patch("sys.argv", ["orchestrate.py", "--compact", "--tasklist", "docs/tasklist.md"]):
             with pytest.raises(SystemExit) as exc_info:
                 orchestrate.main()
             assert exc_info.value.code == 1
@@ -3708,8 +3776,8 @@ class TestManualCompactFlag:
         tasklist = temp_repo / ".millstone" / "tasklist.md"
         tasklist.write_text("# Tasks\n\n- [ ] Task 1\n- [ ] Task 2\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--compact']):
-            with patch.object(orchestrate.Orchestrator, 'preflight_checks'):
+        with patch("sys.argv", ["orchestrate.py", "--compact"]):
+            with patch.object(orchestrate.Orchestrator, "preflight_checks"):
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
                 assert exc_info.value.code == 0
@@ -3720,11 +3788,15 @@ class TestManualCompactFlag:
 
         # Create tasklist with completed tasks
         tasklist = temp_repo / ".millstone" / "tasklist.md"
-        tasklist.write_text("# Tasks\n\n- [x] Done 1 with verbose details\n- [x] Done 2 with verbose details\n- [ ] Pending\n")
+        tasklist.write_text(
+            "# Tasks\n\n- [x] Done 1 with verbose details\n- [x] Done 2 with verbose details\n- [ ] Pending\n"
+        )
 
-        with patch('sys.argv', ['orchestrate.py', '--compact']):
-            with patch.object(orchestrate.Orchestrator, 'preflight_checks'):
-                with patch.object(orchestrate.Orchestrator, 'run_compaction', return_value=True) as mock_compact:
+        with patch("sys.argv", ["orchestrate.py", "--compact"]):
+            with patch.object(orchestrate.Orchestrator, "preflight_checks"):
+                with patch.object(
+                    orchestrate.Orchestrator, "run_compaction", return_value=True
+                ) as mock_compact:
                     with pytest.raises(SystemExit) as exc_info:
                         orchestrate.main()
                     assert exc_info.value.code == 0
@@ -3738,9 +3810,9 @@ class TestManualCompactFlag:
         tasklist = temp_repo / ".millstone" / "tasklist.md"
         tasklist.write_text("# Tasks\n\n- [x] Done 1\n- [ ] Pending\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--compact']):
-            with patch.object(orchestrate.Orchestrator, 'preflight_checks'):
-                with patch.object(orchestrate.Orchestrator, 'run_compaction', return_value=False):
+        with patch("sys.argv", ["orchestrate.py", "--compact"]):
+            with patch.object(orchestrate.Orchestrator, "preflight_checks"):
+                with patch.object(orchestrate.Orchestrator, "run_compaction", return_value=False):
                     with pytest.raises(SystemExit) as exc_info:
                         orchestrate.main()
                     assert exc_info.value.code == 1
@@ -3873,8 +3945,7 @@ class TestDelegateCommit:
             orch.current_task_num = 1
             orch.total_tasks = 1
 
-            with patch.object(orch, 'run_agent') as mock_run, \
-                 patch.object(orch, 'git') as mock_git:
+            with patch.object(orch, "run_agent") as mock_run, patch.object(orch, "git") as mock_git:
                 mock_run.return_value = "Committed"
                 mock_git.return_value = ""  # No uncommitted changes = success
                 result = orch.delegate_commit()
@@ -3882,7 +3953,7 @@ class TestDelegateCommit:
                 mock_run.assert_called_once()
                 call_args = mock_run.call_args
                 # Should have resume argument with session_id
-                assert call_args.kwargs.get('resume') == "test-session-123"
+                assert call_args.kwargs.get("resume") == "test-session-123"
                 assert result is True
         finally:
             orch.cleanup()
@@ -3895,8 +3966,7 @@ class TestDelegateCommit:
             orch.current_task_num = 1
             orch.total_tasks = 1
 
-            with patch.object(orch, 'run_agent') as mock_run, \
-                 patch.object(orch, 'git') as mock_git:
+            with patch.object(orch, "run_agent") as mock_run, patch.object(orch, "git") as mock_git:
                 mock_run.return_value = "Committed"
                 mock_git.return_value = ""  # No uncommitted changes = success
                 result = orch.delegate_commit()
@@ -3904,7 +3974,7 @@ class TestDelegateCommit:
                 mock_run.assert_called_once()
                 call_args = mock_run.call_args
                 # Should not have resume argument
-                assert call_args.kwargs.get('resume') is None
+                assert call_args.kwargs.get("resume") is None
                 assert result is True
         finally:
             orch.cleanup()
@@ -3920,8 +3990,7 @@ class TestDelegateCommit:
             # Get the expected prompt content from file
             expected_prompt = orch.load_prompt("commit_prompt.md")
 
-            with patch.object(orch, 'run_agent') as mock_run, \
-                 patch.object(orch, 'git') as mock_git:
+            with patch.object(orch, "run_agent") as mock_run, patch.object(orch, "git") as mock_git:
                 mock_run.return_value = "Committed"
                 mock_git.return_value = ""  # No uncommitted changes = success
                 orch.delegate_commit()
@@ -3940,8 +4009,7 @@ class TestDelegateCommit:
             orch.current_task_num = 1
             orch.total_tasks = 1
 
-            with patch.object(orch, 'run_agent') as mock_run, \
-                 patch.object(orch, 'git') as mock_git:
+            with patch.object(orch, "run_agent") as mock_run, patch.object(orch, "git") as mock_git:
                 mock_run.return_value = "I couldn't commit"
                 mock_git.return_value = "M orchestrate.py"  # Uncommitted changes remain
                 result = orch.delegate_commit()
@@ -3960,8 +4028,7 @@ class TestDelegateCommit:
             orch.current_task_num = 1
             orch.total_tasks = 1
 
-            with patch.object(orch, 'run_agent') as mock_run, \
-                 patch.object(orch, 'git') as mock_git:
+            with patch.object(orch, "run_agent") as mock_run, patch.object(orch, "git") as mock_git:
                 mock_run.return_value = "Builder output: attempted commit but hooks failed"
                 mock_git.return_value = "M orchestrate.py\nA new_file.txt"  # Uncommitted changes
                 result = orch.delegate_commit()
@@ -3982,15 +4049,19 @@ class TestDelegateCommit:
             orch.current_task_num = 1
             orch.total_tasks = 1
 
-            with patch.object(orch, 'run_agent') as mock_run, \
-                 patch.object(orch, 'git') as mock_git, \
-                 patch.object(orch, 'log') as mock_log:
+            with (
+                patch.object(orch, "run_agent") as mock_run,
+                patch.object(orch, "git") as mock_git,
+                patch.object(orch, "log") as mock_log,
+            ):
                 mock_run.return_value = "Commit rejected by pre-commit hook"
                 mock_git.return_value = "M test.py"
                 orch.delegate_commit()
 
                 # Verify log was called with commit_failed
-                commit_failed_calls = [c for c in mock_log.call_args_list if c.args[0] == "commit_failed"]
+                commit_failed_calls = [
+                    c for c in mock_log.call_args_list if c.args[0] == "commit_failed"
+                ]
                 assert len(commit_failed_calls) == 1
                 call_kwargs = commit_failed_calls[0].kwargs
                 assert "builder_output" in call_kwargs
@@ -4066,7 +4137,8 @@ class TestLocBaseline:
             # Set a specific baseline
             orch.loc_baseline_ref = "abc123"
 
-            with patch.object(orch, 'git') as mock_git:
+            with patch.object(orch, "git") as mock_git:
+
                 def side_effect(*args):
                     if args[0] == "status":
                         return "M changed.txt"  # porcelain status
@@ -4075,12 +4147,13 @@ class TestLocBaseline:
                     elif args[0] == "diff" and "--name-only" in args:
                         return "changed.txt"  # name only
                     return ""
+
                 mock_git.side_effect = side_effect
 
                 orch.mechanical_checks()
 
                 # Verify diff was called with the baseline ref
-                diff_calls = [c for c in mock_git.call_args_list if 'diff' in c.args]
+                diff_calls = [c for c in mock_git.call_args_list if "diff" in c.args]
                 assert len(diff_calls) >= 1
                 # Check that baseline was used
                 assert any("abc123" in c.args for c in diff_calls)
@@ -4094,7 +4167,8 @@ class TestLocBaseline:
             # Ensure baseline is None
             orch.loc_baseline_ref = None
 
-            with patch.object(orch, 'git') as mock_git:
+            with patch.object(orch, "git") as mock_git:
+
                 def side_effect(*args):
                     if args[0] == "status":
                         return "M changed.txt"  # porcelain status
@@ -4103,12 +4177,13 @@ class TestLocBaseline:
                     elif args[0] == "diff" and "--name-only" in args:
                         return "changed.txt"  # name only
                     return ""
+
                 mock_git.side_effect = side_effect
 
                 orch.mechanical_checks()
 
                 # Verify diff was called with HEAD
-                diff_calls = [c for c in mock_git.call_args_list if 'diff' in c.args]
+                diff_calls = [c for c in mock_git.call_args_list if "diff" in c.args]
                 assert len(diff_calls) >= 1
                 assert any("HEAD" in c.args for c in diff_calls)
         finally:
@@ -4123,8 +4198,10 @@ class TestLocBaseline:
             orch.total_tasks = 1
             orch._init_loc_baseline()
 
-            with patch.object(orch, 'run_claude') as mock_run, \
-                 patch.object(orch, 'git') as mock_git:
+            with (
+                patch.object(orch, "run_claude") as mock_run,
+                patch.object(orch, "git") as mock_git,
+            ):
                 # Simulate successful commit
                 mock_run.return_value = "Committed"
                 mock_git.side_effect = [
@@ -4148,8 +4225,10 @@ class TestLocBaseline:
             orch._init_loc_baseline()
             old_baseline = orch.loc_baseline_ref
 
-            with patch.object(orch, 'run_claude') as mock_run, \
-                 patch.object(orch, 'git') as mock_git:
+            with (
+                patch.object(orch, "run_claude") as mock_run,
+                patch.object(orch, "git") as mock_git,
+            ):
                 # Simulate failed commit
                 mock_run.return_value = "I couldn't commit"
                 mock_git.return_value = "M orchestrate.py"  # Uncommitted changes remain
@@ -4228,6 +4307,7 @@ class TestStatePersistence:
     def test_save_state_content(self, temp_repo):
         """save_state saves correct content."""
         import json
+
         orch = Orchestrator()
         try:
             orch.current_task_num = 3
@@ -4389,6 +4469,7 @@ class TestSessionMode:
     def test_session_mode_rejects_empty_string(self, temp_repo):
         """session_mode rejects empty string."""
         import pytest
+
         with pytest.raises(ValueError, match="Invalid session_mode"):
             Orchestrator(session_mode="")
 
@@ -4498,6 +4579,7 @@ class TestDualSessionIdTracking:
     def test_save_state_includes_both_session_ids(self, temp_repo):
         """save_state stores both builder_session_id and reviewer_session_id."""
         import json
+
         orch = Orchestrator()
         try:
             orch.builder_session_id = "builder-abc"
@@ -4517,6 +4599,7 @@ class TestDualSessionIdTracking:
     def test_save_state_handles_none_session_ids(self, temp_repo):
         """save_state works when session IDs are None."""
         import json
+
         orch = Orchestrator()
         try:
             orch.builder_session_id = None
@@ -4535,6 +4618,7 @@ class TestDualSessionIdTracking:
     def test_save_state_only_builder_session(self, temp_repo):
         """save_state stores builder_session_id when only builder has session."""
         import json
+
         orch = Orchestrator()
         try:
             orch.builder_session_id = "builder-only"
@@ -4556,6 +4640,7 @@ class TestSessionCleanup:
     def test_clear_sessions_clears_both_session_ids(self, temp_repo):
         """clear_sessions removes both builder and reviewer session IDs."""
         import json
+
         orch = Orchestrator()
         try:
             orch.builder_session_id = "builder-abc"
@@ -4615,6 +4700,7 @@ class TestSessionCleanup:
     def test_clear_sessions_preserves_other_state(self, temp_repo):
         """clear_sessions preserves non-session state like current_task_num."""
         import json
+
         orch = Orchestrator()
         try:
             orch.builder_session_id = "builder-123"
@@ -4642,6 +4728,7 @@ class TestSessionCleanup:
         """auto_clear_stale_sessions clears sessions older than max_age_hours."""
         import json
         from datetime import datetime, timedelta
+
         orch = Orchestrator()
         try:
             orch.builder_session_id = "old-session"
@@ -4667,6 +4754,7 @@ class TestSessionCleanup:
     def test_auto_clear_stale_sessions_does_not_clear_recent(self, temp_repo):
         """auto_clear_stale_sessions does not clear recent sessions."""
         import json
+
         orch = Orchestrator()
         try:
             orch.builder_session_id = "recent-session"
@@ -4698,6 +4786,7 @@ class TestSessionCleanup:
     def test_auto_clear_stale_sessions_returns_false_no_timestamp(self, temp_repo):
         """auto_clear_stale_sessions returns False when state has no timestamp."""
         import json
+
         orch = Orchestrator()
         try:
             # Write state without timestamp
@@ -4715,6 +4804,7 @@ class TestSessionCleanup:
         """auto_clear_stale_sessions returns False when state is old but has no sessions."""
         import json
         from datetime import datetime, timedelta
+
         orch = Orchestrator()
         try:
             # Save state without session IDs
@@ -4863,14 +4953,18 @@ class TestContinueRunIntegration:
         work_dir = temp_repo / ".millstone"
         work_dir.mkdir(exist_ok=True)
         state_file = work_dir / "state.json"
-        state_file.write_text(json.dumps({
-            "current_task_num": 1,
-            "session_id": "saved-session",
-            "loc_baseline_ref": "saved-baseline",
-            "cycle": 0,
-            "halt_reason": "test",
-            "timestamp": "2025-01-01T00:00:00",
-        }))
+        state_file.write_text(
+            json.dumps(
+                {
+                    "current_task_num": 1,
+                    "session_id": "saved-session",
+                    "loc_baseline_ref": "saved-baseline",
+                    "cycle": 0,
+                    "halt_reason": "test",
+                    "timestamp": "2025-01-01T00:00:00",
+                }
+            )
+        )
 
         # Create new orchestrator with continue_run=True
         orch = Orchestrator(continue_run=True)
@@ -4916,14 +5010,18 @@ class TestContinueRunIntegration:
         work_dir = temp_repo / ".millstone"
         work_dir.mkdir(exist_ok=True)
         state_file = work_dir / "state.json"
-        state_file.write_text(json.dumps({
-            "current_task_num": 1,
-            "session_id": None,
-            "loc_baseline_ref": "test-baseline",
-            "cycle": 0,
-            "halt_reason": "loc_threshold",
-            "timestamp": "2025-01-01T00:00:00",
-        }))
+        state_file.write_text(
+            json.dumps(
+                {
+                    "current_task_num": 1,
+                    "session_id": None,
+                    "loc_baseline_ref": "test-baseline",
+                    "cycle": 0,
+                    "halt_reason": "loc_threshold",
+                    "timestamp": "2025-01-01T00:00:00",
+                }
+            )
+        )
 
         # Create new orchestrator with continue_run=True
         orch = Orchestrator(continue_run=True)
@@ -4948,8 +5046,8 @@ class TestContinueFlagCLI:
         """--continue flag is correctly parsed by argparse."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--continue', '--dry-run']):
-            with patch.object(orchestrate.Orchestrator, 'run', return_value=0):
+        with patch("sys.argv", ["orchestrate.py", "--continue", "--dry-run"]):
+            with patch.object(orchestrate.Orchestrator, "run", return_value=0):
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
                 assert exc_info.value.code == 0
@@ -5027,7 +5125,7 @@ FAILED tests/test_baz.py::test_qux - ValueError
         """run_eval creates .millstone/evals/ directory."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
                     stdout="5 passed in 0.50s",
                     stderr="",
@@ -5045,7 +5143,7 @@ FAILED tests/test_baz.py::test_qux - ValueError
         """run_eval creates timestamped JSON file in evals directory."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
                     stdout="5 passed in 0.50s",
                     stderr="",
@@ -5064,9 +5162,10 @@ FAILED tests/test_baz.py::test_qux - ValueError
     def test_run_eval_json_schema(self, temp_repo):
         """run_eval creates JSON with correct schema."""
         import json
+
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
                     stdout="5 passed in 0.50s",
                     stderr="",
@@ -5100,7 +5199,7 @@ FAILED tests/test_baz.py::test_qux - ValueError
         """run_eval returns _passed=True when all tests pass."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
                     stdout="5 passed in 0.50s",
                     stderr="",
@@ -5116,7 +5215,7 @@ FAILED tests/test_baz.py::test_qux - ValueError
         """run_eval returns _passed=False when tests fail."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
                     stdout="3 passed, 2 failed in 0.50s",
                     stderr="",
@@ -5132,7 +5231,7 @@ FAILED tests/test_baz.py::test_qux - ValueError
         """run_eval returns _passed=False when there are errors."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
                     stdout="3 passed, 1 error in 0.50s",
                     stderr="",
@@ -5148,7 +5247,7 @@ FAILED tests/test_baz.py::test_qux - ValueError
         """run_eval captures names of failed tests."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
                     stdout="""
 FAILED tests/test_foo.py::test_bar - AssertionError
@@ -5167,7 +5266,7 @@ FAILED tests/test_foo.py::test_bar - AssertionError
         """run_eval logs eval_completed event."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
                     stdout="5 passed in 0.50s",
                     stderr="",
@@ -5185,7 +5284,7 @@ FAILED tests/test_foo.py::test_bar - AssertionError
         """run_eval prints human-readable summary."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
                     stdout="5 passed in 0.50s",
                     stderr="",
@@ -5204,7 +5303,7 @@ FAILED tests/test_foo.py::test_bar - AssertionError
         """run_eval prints failed test names in summary."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
                     stdout="""
 FAILED tests/test_foo.py::test_bar - AssertionError
@@ -5230,8 +5329,8 @@ class TestEvalCLI:
         """--eval flag invokes run_eval."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--eval']):
-            with patch.object(orchestrate.Orchestrator, 'run_eval') as mock_eval:
+        with patch("sys.argv", ["orchestrate.py", "--eval"]):
+            with patch.object(orchestrate.Orchestrator, "run_eval") as mock_eval:
                 mock_eval.return_value = {"_passed": True, "tests": {}}
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -5242,8 +5341,8 @@ class TestEvalCLI:
         """--eval exits 1 when tests fail."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--eval']):
-            with patch.object(orchestrate.Orchestrator, 'run_eval') as mock_eval:
+        with patch("sys.argv", ["orchestrate.py", "--eval"]):
+            with patch.object(orchestrate.Orchestrator, "run_eval") as mock_eval:
                 mock_eval.return_value = {"_passed": False, "tests": {"failed": 1}}
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -5253,7 +5352,7 @@ class TestEvalCLI:
         """--cov without --eval raises error."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--cov']):
+        with patch("sys.argv", ["orchestrate.py", "--cov"]):
             with pytest.raises(SystemExit) as exc_info:
                 orchestrate.main()
             # argparse error returns exit code 2
@@ -5263,8 +5362,8 @@ class TestEvalCLI:
         """--eval --cov passes coverage=True to run_eval."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--eval', '--cov']):
-            with patch.object(orchestrate.Orchestrator, 'run_eval') as mock_eval:
+        with patch("sys.argv", ["orchestrate.py", "--eval", "--cov"]):
+            with patch.object(orchestrate.Orchestrator, "run_eval") as mock_eval:
                 mock_eval.return_value = {"_passed": True, "tests": {}}
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -5278,6 +5377,7 @@ class TestEvalComparison:
     def test_compare_evals_requires_two_files(self, temp_repo):
         """compare_evals raises error if fewer than 2 eval files."""
         import json
+
         orch = Orchestrator()
         try:
             # No evals directory
@@ -5288,13 +5388,17 @@ class TestEvalComparison:
             # Create evals dir but with only 1 file
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": []
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                    }
+                )
+            )
 
             with pytest.raises(FileNotFoundError) as exc_info:
                 orch.compare_evals()
@@ -5305,20 +5409,33 @@ class TestEvalComparison:
     def test_compare_evals_finds_two_most_recent(self, temp_repo):
         """compare_evals compares the two most recent files by timestamp."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
             # Create 3 eval files
-            for i, timestamp in enumerate(["20241201_120000", "20241201_130000", "20241201_140000"]):
-                (evals_dir / f"{timestamp}.json").write_text(json.dumps({
-                    "timestamp": f"2024-12-01T1{2+i}:00:00",
-                    "git_head": f"abc12{i}",
-                    "duration_seconds": 1.0 + i,
-                    "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                    "failed_tests": []
-                }))
+            for i, timestamp in enumerate(
+                ["20241201_120000", "20241201_130000", "20241201_140000"]
+            ):
+                (evals_dir / f"{timestamp}.json").write_text(
+                    json.dumps(
+                        {
+                            "timestamp": f"2024-12-01T1{2 + i}:00:00",
+                            "git_head": f"abc12{i}",
+                            "duration_seconds": 1.0 + i,
+                            "tests": {
+                                "total": 5,
+                                "passed": 5,
+                                "failed": 0,
+                                "errors": 0,
+                                "skipped": 0,
+                            },
+                            "failed_tests": [],
+                        }
+                    )
+                )
 
             result = orch.compare_evals()
 
@@ -5331,28 +5448,37 @@ class TestEvalComparison:
     def test_compare_evals_detects_new_failures(self, temp_repo):
         """compare_evals identifies tests that started failing."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
             # Older: all passing
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": []
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                    }
+                )
+            )
 
             # Newer: one failure
-            (evals_dir / "20241201_130000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T13:00:00",
-                "git_head": "def456",
-                "duration_seconds": 1.5,
-                "tests": {"total": 5, "passed": 4, "failed": 1, "errors": 0, "skipped": 0},
-                "failed_tests": ["tests/test_foo.py::test_bar"]
-            }))
+            (evals_dir / "20241201_130000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T13:00:00",
+                        "git_head": "def456",
+                        "duration_seconds": 1.5,
+                        "tests": {"total": 5, "passed": 4, "failed": 1, "errors": 0, "skipped": 0},
+                        "failed_tests": ["tests/test_foo.py::test_bar"],
+                    }
+                )
+            )
 
             result = orch.compare_evals()
 
@@ -5366,28 +5492,37 @@ class TestEvalComparison:
     def test_compare_evals_detects_new_passes(self, temp_repo):
         """compare_evals identifies tests that started passing."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
             # Older: one failing
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 5, "passed": 4, "failed": 1, "errors": 0, "skipped": 0},
-                "failed_tests": ["tests/test_foo.py::test_bar"]
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {"total": 5, "passed": 4, "failed": 1, "errors": 0, "skipped": 0},
+                        "failed_tests": ["tests/test_foo.py::test_bar"],
+                    }
+                )
+            )
 
             # Newer: all passing
-            (evals_dir / "20241201_130000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T13:00:00",
-                "git_head": "def456",
-                "duration_seconds": 1.5,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": []
-            }))
+            (evals_dir / "20241201_130000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T13:00:00",
+                        "git_head": "def456",
+                        "duration_seconds": 1.5,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                    }
+                )
+            )
 
             result = orch.compare_evals()
 
@@ -5401,27 +5536,36 @@ class TestEvalComparison:
     def test_compare_evals_no_change(self, temp_repo):
         """compare_evals reports NO_CHANGE when no test status changes."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
             # Both passing
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": []
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                    }
+                )
+            )
 
-            (evals_dir / "20241201_130000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T13:00:00",
-                "git_head": "def456",
-                "duration_seconds": 1.5,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": []
-            }))
+            (evals_dir / "20241201_130000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T13:00:00",
+                        "git_head": "def456",
+                        "duration_seconds": 1.5,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                    }
+                )
+            )
 
             result = orch.compare_evals()
 
@@ -5433,28 +5577,37 @@ class TestEvalComparison:
     def test_compare_evals_coverage_delta(self, temp_repo):
         """compare_evals computes coverage delta when both have coverage."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": [],
-                "coverage": {"line_rate": 0.85, "branch_rate": 0.72}
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                        "coverage": {"line_rate": 0.85, "branch_rate": 0.72},
+                    }
+                )
+            )
 
-            (evals_dir / "20241201_130000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T13:00:00",
-                "git_head": "def456",
-                "duration_seconds": 1.5,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": [],
-                "coverage": {"line_rate": 0.87, "branch_rate": 0.75}
-            }))
+            (evals_dir / "20241201_130000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T13:00:00",
+                        "git_head": "def456",
+                        "duration_seconds": 1.5,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                        "coverage": {"line_rate": 0.87, "branch_rate": 0.75},
+                    }
+                )
+            )
 
             result = orch.compare_evals()
 
@@ -5466,28 +5619,37 @@ class TestEvalComparison:
     def test_compare_evals_no_coverage_delta_when_missing(self, temp_repo):
         """compare_evals returns None coverage_delta if either lacks coverage."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": []
-                # No coverage
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                        # No coverage
+                    }
+                )
+            )
 
-            (evals_dir / "20241201_130000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T13:00:00",
-                "git_head": "def456",
-                "duration_seconds": 1.5,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": [],
-                "coverage": {"line_rate": 0.87}
-            }))
+            (evals_dir / "20241201_130000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T13:00:00",
+                        "git_head": "def456",
+                        "duration_seconds": 1.5,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                        "coverage": {"line_rate": 0.87},
+                    }
+                )
+            )
 
             result = orch.compare_evals()
 
@@ -5498,26 +5660,35 @@ class TestEvalComparison:
     def test_compare_evals_duration_delta(self, temp_repo):
         """compare_evals computes duration delta."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 10.0,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": []
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 10.0,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                    }
+                )
+            )
 
-            (evals_dir / "20241201_130000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T13:00:00",
-                "git_head": "def456",
-                "duration_seconds": 12.5,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": []
-            }))
+            (evals_dir / "20241201_130000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T13:00:00",
+                        "git_head": "def456",
+                        "duration_seconds": 12.5,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                    }
+                )
+            )
 
             result = orch.compare_evals()
 
@@ -5528,26 +5699,35 @@ class TestEvalComparison:
     def test_compare_evals_prints_output(self, temp_repo, capsys):
         """compare_evals prints human-readable comparison."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 10.0,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": []
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 10.0,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                    }
+                )
+            )
 
-            (evals_dir / "20241201_130000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T13:00:00",
-                "git_head": "def456",
-                "duration_seconds": 12.5,
-                "tests": {"total": 5, "passed": 4, "failed": 1, "errors": 0, "skipped": 0},
-                "failed_tests": ["tests/test_foo.py::test_bar"]
-            }))
+            (evals_dir / "20241201_130000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T13:00:00",
+                        "git_head": "def456",
+                        "duration_seconds": 12.5,
+                        "tests": {"total": 5, "passed": 4, "failed": 1, "errors": 0, "skipped": 0},
+                        "failed_tests": ["tests/test_foo.py::test_bar"],
+                    }
+                )
+            )
 
             orch.compare_evals()
 
@@ -5568,26 +5748,35 @@ class TestEvalComparison:
     def test_compare_evals_logs_event(self, temp_repo):
         """compare_evals logs eval_comparison event."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": []
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                    }
+                )
+            )
 
-            (evals_dir / "20241201_130000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T13:00:00",
-                "git_head": "def456",
-                "duration_seconds": 1.5,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": []
-            }))
+            (evals_dir / "20241201_130000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T13:00:00",
+                        "git_head": "def456",
+                        "duration_seconds": 1.5,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                    }
+                )
+            )
 
             orch.compare_evals()
 
@@ -5604,8 +5793,8 @@ class TestEvalCompareCLI:
         """--eval-compare flag invokes compare_evals."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--eval-compare']):
-            with patch.object(orchestrate.Orchestrator, 'compare_evals') as mock_compare:
+        with patch("sys.argv", ["orchestrate.py", "--eval-compare"]):
+            with patch.object(orchestrate.Orchestrator, "compare_evals") as mock_compare:
                 mock_compare.return_value = {"_has_regressions": False}
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -5616,8 +5805,8 @@ class TestEvalCompareCLI:
         """--eval-compare exits 1 when regressions detected."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--eval-compare']):
-            with patch.object(orchestrate.Orchestrator, 'compare_evals') as mock_compare:
+        with patch("sys.argv", ["orchestrate.py", "--eval-compare"]):
+            with patch.object(orchestrate.Orchestrator, "compare_evals") as mock_compare:
                 mock_compare.return_value = {"_has_regressions": True, "new_failures": ["test"]}
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -5627,8 +5816,8 @@ class TestEvalCompareCLI:
         """--eval-compare exits 1 when insufficient eval files."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--eval-compare']):
-            with patch.object(orchestrate.Orchestrator, 'compare_evals') as mock_compare:
+        with patch("sys.argv", ["orchestrate.py", "--eval-compare"]):
+            with patch.object(orchestrate.Orchestrator, "compare_evals") as mock_compare:
                 mock_compare.side_effect = FileNotFoundError("Need at least 2 eval files")
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -5641,27 +5830,30 @@ class TestEvalDeltaTracking:
     def test_run_eval_adds_previous_eval_reference(self, temp_repo):
         """run_eval adds previous_eval field when prior eval exists."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
             # Create a prior eval
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": [],
-                "composite_score": 0.95,
-                "categories": {"tests": {"score": 1.0, "passed": 5, "failed": 0}}
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                        "composite_score": 0.95,
+                        "categories": {"tests": {"score": 1.0, "passed": 5, "failed": 0}},
+                    }
+                )
+            )
 
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
-                    stdout="5 passed in 1.00s",
-                    stderr="",
-                    returncode=0
+                    stdout="5 passed in 1.00s", stderr="", returncode=0
                 )
                 result = orch.run_eval()
 
@@ -5674,11 +5866,9 @@ class TestEvalDeltaTracking:
         """run_eval does not add previous_eval on first eval."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
-                    stdout="5 passed in 1.00s",
-                    stderr="",
-                    returncode=0
+                    stdout="5 passed in 1.00s", stderr="", returncode=0
                 )
                 result = orch.run_eval()
 
@@ -5689,27 +5879,30 @@ class TestEvalDeltaTracking:
     def test_run_eval_computes_delta_from_previous(self, temp_repo):
         """run_eval computes delta object from previous eval."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
             # Create a prior eval with known values
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 5, "passed": 4, "failed": 1, "errors": 0, "skipped": 0},
-                "failed_tests": ["test_foo"],
-                "composite_score": 0.90,
-                "categories": {"tests": {"score": 0.80, "passed": 4, "failed": 1}}
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {"total": 5, "passed": 4, "failed": 1, "errors": 0, "skipped": 0},
+                        "failed_tests": ["test_foo"],
+                        "composite_score": 0.90,
+                        "categories": {"tests": {"score": 0.80, "passed": 4, "failed": 1}},
+                    }
+                )
+            )
 
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
-                    stdout="5 passed in 1.00s",
-                    stderr="",
-                    returncode=0
+                    stdout="5 passed in 1.00s", stderr="", returncode=0
                 )
                 result = orch.run_eval()
 
@@ -5726,11 +5919,9 @@ class TestEvalDeltaTracking:
         """run_eval does not add delta on first eval."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
-                    stdout="5 passed in 1.00s",
-                    stderr="",
-                    returncode=0
+                    stdout="5 passed in 1.00s", stderr="", returncode=0
                 )
                 result = orch.run_eval()
 
@@ -5742,11 +5933,9 @@ class TestEvalDeltaTracking:
         """run_eval creates/updates summary.json file."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
-                    stdout="5 passed in 1.00s",
-                    stderr="",
-                    returncode=0
+                    stdout="5 passed in 1.00s", stderr="", returncode=0
                 )
                 orch.run_eval()
 
@@ -5754,6 +5943,7 @@ class TestEvalDeltaTracking:
             assert summary_file.exists()
 
             import json
+
             summary = json.loads(summary_file.read_text())
             assert "evals" in summary
             assert len(summary["evals"]) == 1
@@ -5765,6 +5955,7 @@ class TestEvalDeltaTracking:
     def test_run_eval_appends_to_summary_json(self, temp_repo):
         """run_eval appends to existing summary.json."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
@@ -5772,15 +5963,15 @@ class TestEvalDeltaTracking:
 
             # Create existing summary
             summary_file = evals_dir / "summary.json"
-            summary_file.write_text(json.dumps({
-                "evals": [{"timestamp": "2024-12-01T12:00:00", "composite_score": 0.90}]
-            }))
+            summary_file.write_text(
+                json.dumps(
+                    {"evals": [{"timestamp": "2024-12-01T12:00:00", "composite_score": 0.90}]}
+                )
+            )
 
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
-                    stdout="5 passed in 1.00s",
-                    stderr="",
-                    returncode=0
+                    stdout="5 passed in 1.00s", stderr="", returncode=0
                 )
                 orch.run_eval()
 
@@ -5792,6 +5983,7 @@ class TestEvalDeltaTracking:
     def test_compare_evals_excludes_summary_json(self, temp_repo):
         """compare_evals ignores summary.json when finding eval files."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
@@ -5799,20 +5991,28 @@ class TestEvalDeltaTracking:
 
             # Create summary.json and two eval files
             (evals_dir / "summary.json").write_text(json.dumps({"evals": []}))
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": []
-            }))
-            (evals_dir / "20241201_130000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T13:00:00",
-                "git_head": "def456",
-                "duration_seconds": 1.5,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": []
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                    }
+                )
+            )
+            (evals_dir / "20241201_130000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T13:00:00",
+                        "git_head": "def456",
+                        "duration_seconds": 1.5,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                    }
+                )
+            )
 
             result = orch.compare_evals()
 
@@ -5825,27 +6025,36 @@ class TestEvalDeltaTracking:
     def test_compare_evals_includes_composite_delta(self, temp_repo):
         """compare_evals returns composite_delta when both have composite_score."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": [],
-                "composite_score": 0.90
-            }))
-            (evals_dir / "20241201_130000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T13:00:00",
-                "git_head": "def456",
-                "duration_seconds": 1.5,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": [],
-                "composite_score": 0.95
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                        "composite_score": 0.90,
+                    }
+                )
+            )
+            (evals_dir / "20241201_130000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T13:00:00",
+                        "git_head": "def456",
+                        "duration_seconds": 1.5,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                        "composite_score": 0.95,
+                    }
+                )
+            )
 
             result = orch.compare_evals()
 
@@ -5856,33 +6065,36 @@ class TestEvalDeltaTracking:
     def test_compare_evals_includes_category_deltas(self, temp_repo):
         """compare_evals returns category_deltas when both have categories."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": [],
-                "categories": {
-                    "tests": {"score": 0.90},
-                    "coverage": {"score": 0.80}
-                }
-            }))
-            (evals_dir / "20241201_130000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T13:00:00",
-                "git_head": "def456",
-                "duration_seconds": 1.5,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": [],
-                "categories": {
-                    "tests": {"score": 0.95},
-                    "coverage": {"score": 0.85}
-                }
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                        "categories": {"tests": {"score": 0.90}, "coverage": {"score": 0.80}},
+                    }
+                )
+            )
+            (evals_dir / "20241201_130000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T13:00:00",
+                        "git_head": "def456",
+                        "duration_seconds": 1.5,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                        "categories": {"tests": {"score": 0.95}, "coverage": {"score": 0.85}},
+                    }
+                )
+            )
 
             result = orch.compare_evals()
 
@@ -5897,29 +6109,38 @@ class TestEvalDeltaTracking:
     def test_print_eval_comparison_shows_category_breakdown(self, temp_repo, capsys):
         """_print_eval_comparison shows category-by-category breakdown."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": [],
-                "composite_score": 0.90,
-                "categories": {"tests": {"score": 0.90}}
-            }))
-            (evals_dir / "20241201_130000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T13:00:00",
-                "git_head": "def456",
-                "duration_seconds": 1.5,
-                "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": [],
-                "composite_score": 0.95,
-                "categories": {"tests": {"score": 0.95}}
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                        "composite_score": 0.90,
+                        "categories": {"tests": {"score": 0.90}},
+                    }
+                )
+            )
+            (evals_dir / "20241201_130000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T13:00:00",
+                        "git_head": "def456",
+                        "duration_seconds": 1.5,
+                        "tests": {"total": 5, "passed": 5, "failed": 0, "errors": 0, "skipped": 0},
+                        "failed_tests": [],
+                        "composite_score": 0.95,
+                        "categories": {"tests": {"score": 0.95}},
+                    }
+                )
+            )
 
             orch.compare_evals()
             captured = capsys.readouterr()
@@ -5950,14 +6171,8 @@ class TestEvalDeltaTracking:
         """_compute_eval_delta computes coverage delta when available."""
         orch = Orchestrator()
         try:
-            previous = {
-                "tests": {"passed": 5, "failed": 0},
-                "coverage": {"line_rate": 0.80}
-            }
-            current = {
-                "tests": {"passed": 5, "failed": 0},
-                "coverage": {"line_rate": 0.85}
-            }
+            previous = {"tests": {"passed": 5, "failed": 0}, "coverage": {"line_rate": 0.80}}
+            current = {"tests": {"passed": 5, "failed": 0}, "coverage": {"line_rate": 0.85}}
 
             delta = orch._compute_eval_delta(previous, current)
 
@@ -5969,13 +6184,12 @@ class TestEvalDeltaTracking:
     def test_summary_json_includes_category_scores(self, temp_repo):
         """summary.json includes category scores when available."""
         import json
+
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
-                    stdout="5 passed in 1.00s",
-                    stderr="",
-                    returncode=0
+                    stdout="5 passed in 1.00s", stderr="", returncode=0
                 )
                 orch.run_eval()
 
@@ -6074,7 +6288,7 @@ class TestEvalTrendTracking:
             current = {"failed_tests": [], "composite_score": 0.90}
             delta = {
                 "tests": {"passed": 0, "failed": 0},
-                "categories": {"tests": -0.10, "coverage": 0.05}
+                "categories": {"tests": -0.10, "coverage": 0.05},
             }
 
             result = orch._print_eval_trend_warnings(previous, current, delta)
@@ -6098,7 +6312,7 @@ class TestEvalTrendTracking:
             delta = {
                 "composite": 0.10,
                 "tests": {"passed": 1, "failed": -1},
-                "categories": {"tests": 0.10}
+                "categories": {"tests": 0.10},
             }
 
             result = orch._print_eval_trend_warnings(previous, current, delta)
@@ -6131,28 +6345,39 @@ class TestEvalTrendTracking:
     def test_run_eval_prints_trend_warnings(self, temp_repo, capsys):
         """run_eval prints trend warnings when there are regressions."""
         import json
+
         orch = Orchestrator()
         try:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir()
 
             # Create a prior eval with all tests passing
-            (evals_dir / "20241201_120000.json").write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "git_head": "abc123",
-                "duration_seconds": 1.0,
-                "tests": {"total": 10, "passed": 10, "failed": 0, "errors": 0, "skipped": 0},
-                "failed_tests": [],
-                "composite_score": 0.95,
-                "categories": {"tests": {"score": 1.0, "passed": 10, "failed": 0}}
-            }))
+            (evals_dir / "20241201_120000.json").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "git_head": "abc123",
+                        "duration_seconds": 1.0,
+                        "tests": {
+                            "total": 10,
+                            "passed": 10,
+                            "failed": 0,
+                            "errors": 0,
+                            "skipped": 0,
+                        },
+                        "failed_tests": [],
+                        "composite_score": 0.95,
+                        "categories": {"tests": {"score": 1.0, "passed": 10, "failed": 0}},
+                    }
+                )
+            )
 
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 # Now run eval with failures
                 mock_run.return_value = MagicMock(
                     stdout="8 passed, 2 failed in 1.00s\nFAILED test_foo\nFAILED test_bar",
                     stderr="",
-                    returncode=1
+                    returncode=1,
                 )
                 orch.run_eval()
 
@@ -6165,11 +6390,9 @@ class TestEvalTrendTracking:
         """run_eval does not print warnings on first run (no previous eval)."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
-                    stdout="5 passed, 1 failed in 1.00s\nFAILED test_foo",
-                    stderr="",
-                    returncode=1
+                    stdout="5 passed, 1 failed in 1.00s\nFAILED test_foo", stderr="", returncode=1
                 )
                 orch.run_eval()
 
@@ -6233,16 +6456,16 @@ class TestEvalOnCommit:
             orch.baseline_eval = {"failed_tests": [], "_passed": True}
 
             # Mock run_eval to return a failure
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": ["test_foo.py::test_bar"],
                     "_passed": False,
-                    "tests": {"total": 10, "passed": 9, "failed": 1}
+                    "tests": {"total": 10, "passed": 9, "failed": 1},
                 }
                 # Mock git and input to handle the revert prompt
-                with patch.object(orch, 'git') as mock_git:
+                with patch.object(orch, "git") as mock_git:
                     mock_git.return_value = "abc123\n"
-                    with patch('builtins.input', return_value='n'):
+                    with patch("builtins.input", return_value="n"):
                         result = orch._run_eval_on_commit()
                         assert result is False
                         mock_eval.assert_called_once()
@@ -6257,11 +6480,11 @@ class TestEvalOnCommit:
             orch.baseline_eval = {"failed_tests": ["test_foo.py::test_bar"], "_passed": False}
 
             # Mock run_eval to return the same failure
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": ["test_foo.py::test_bar"],
                     "_passed": False,
-                    "tests": {"total": 10, "passed": 9, "failed": 1}
+                    "tests": {"total": 10, "passed": 9, "failed": 1},
                 }
 
                 result = orch._run_eval_on_commit()
@@ -6277,11 +6500,11 @@ class TestEvalOnCommit:
             orch.baseline_eval = {"failed_tests": [], "_passed": True}
 
             # Mock run_eval to return all passing
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": [],
                     "_passed": True,
-                    "tests": {"total": 10, "passed": 10, "failed": 0}
+                    "tests": {"total": 10, "passed": 10, "failed": 0},
                 }
 
                 result = orch._run_eval_on_commit()
@@ -6297,16 +6520,16 @@ class TestEvalOnCommit:
             orch.baseline_eval = None
 
             # Mock run_eval to return a failure
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": ["test_foo.py::test_bar"],
                     "_passed": False,
-                    "tests": {"total": 10, "passed": 9, "failed": 1}
+                    "tests": {"total": 10, "passed": 9, "failed": 1},
                 }
                 # Mock git and input to handle the revert prompt
-                with patch.object(orch, 'git') as mock_git:
+                with patch.object(orch, "git") as mock_git:
                     mock_git.return_value = "abc123\n"
-                    with patch('builtins.input', return_value='n'):
+                    with patch("builtins.input", return_value="n"):
                         # With no baseline, any failure is considered "new"
                         result = orch._run_eval_on_commit()
                         assert result is False
@@ -6341,8 +6564,8 @@ class TestEvalOnCommit:
                 return mock_eval_result
 
             # Mock dependencies to prevent actual task execution
-            with patch.object(orch, 'run_eval', side_effect=tracking_run_eval):
-                with patch.object(orch, 'has_remaining_tasks', return_value=False):
+            with patch.object(orch, "run_eval", side_effect=tracking_run_eval):
+                with patch.object(orch, "has_remaining_tasks", return_value=False):
                     # Run orchestrator - it should capture baseline then see no tasks
                     result = orch.run()
 
@@ -6376,8 +6599,8 @@ class TestEvalOnCommit:
                 return {"_passed": True}
 
             # Mock dependencies to prevent actual task execution
-            with patch.object(orch, 'run_eval', side_effect=tracking_run_eval):
-                with patch.object(orch, 'has_remaining_tasks', return_value=False):
+            with patch.object(orch, "run_eval", side_effect=tracking_run_eval):
+                with patch.object(orch, "has_remaining_tasks", return_value=False):
                     # Run orchestrator - it should not capture baseline
                     orch.run()
 
@@ -6408,9 +6631,9 @@ class TestEvalOnCommit:
                 return {"_passed": True}
 
             # Mock dependencies to prevent actual task execution
-            with patch.object(orch, 'run_eval', side_effect=tracking_run_eval):
-                with patch.object(orch, 'has_remaining_tasks', return_value=False):
-                    with patch.object(orch, 'load_state', return_value=False):
+            with patch.object(orch, "run_eval", side_effect=tracking_run_eval):
+                with patch.object(orch, "has_remaining_tasks", return_value=False):
+                    with patch.object(orch, "load_state", return_value=False):
                         # Run orchestrator - it should not capture baseline on continue
                         orch.run()
 
@@ -6430,7 +6653,7 @@ class TestEvalOnCommit:
         tasklist.parent.mkdir(parents=True, exist_ok=True)
         tasklist.write_text("# Tasklist\n\n- [ ] Test task\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--eval-on-commit', '--dry-run']):
+        with patch("sys.argv", ["orchestrate.py", "--eval-on-commit", "--dry-run"]):
             # Use dry-run to avoid actually running
             with pytest.raises(SystemExit) as exc_info:
                 orchestrate.main()
@@ -6440,6 +6663,7 @@ class TestEvalOnCommit:
     def test_eval_scripts_in_default_config(self):
         """eval_scripts defaults to empty list in DEFAULT_CONFIG."""
         from millstone.runtime.orchestrator import DEFAULT_CONFIG
+
         assert "eval_scripts" in DEFAULT_CONFIG
         assert DEFAULT_CONFIG["eval_scripts"] == []
 
@@ -6501,14 +6725,23 @@ class TestEvalOnCommit:
     def test_run_eval_with_custom_scripts_includes_in_json(self, temp_repo):
         """run_eval includes custom_scripts in JSON when scripts configured."""
         import json
+
         orch = Orchestrator(eval_scripts=["echo test"])
         try:
-            with patch.object(orch, '_run_custom_eval_scripts') as mock_scripts:
+            with patch.object(orch, "_run_custom_eval_scripts") as mock_scripts:
                 mock_scripts.return_value = [
-                    {"command": "echo test", "exit_code": 0, "duration": 0.1, "stdout": "test\n", "stderr": ""}
+                    {
+                        "command": "echo test",
+                        "exit_code": 0,
+                        "duration": 0.1,
+                        "stdout": "test\n",
+                        "stderr": "",
+                    }
                 ]
-                with patch('subprocess.run') as mock_run:
-                    mock_run.return_value = MagicMock(stdout="5 passed in 0.50s", stderr="", returncode=0)
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(
+                        stdout="5 passed in 0.50s", stderr="", returncode=0
+                    )
                     orch.run_eval()
 
             evals_dir = orch.work_dir / "evals"
@@ -6527,13 +6760,21 @@ class TestEvalOnCommit:
         """run_eval returns _passed=False when custom script fails."""
         orch = Orchestrator(eval_scripts=["exit 1"])
         try:
-            with patch.object(orch, '_run_custom_eval_scripts') as mock_scripts:
+            with patch.object(orch, "_run_custom_eval_scripts") as mock_scripts:
                 mock_scripts.return_value = [
-                    {"command": "exit 1", "exit_code": 1, "duration": 0.1, "stdout": "", "stderr": "error"}
+                    {
+                        "command": "exit 1",
+                        "exit_code": 1,
+                        "duration": 0.1,
+                        "stdout": "",
+                        "stderr": "error",
+                    }
                 ]
-                with patch('subprocess.run') as mock_run:
+                with patch("subprocess.run") as mock_run:
                     # pytest passes
-                    mock_run.return_value = MagicMock(stdout="5 passed in 0.50s", stderr="", returncode=0)
+                    mock_run.return_value = MagicMock(
+                        stdout="5 passed in 0.50s", stderr="", returncode=0
+                    )
                     result = orch.run_eval()
 
             assert result["_passed"] is False
@@ -6544,12 +6785,20 @@ class TestEvalOnCommit:
         """run_eval returns _passed=True when pytest and all scripts pass."""
         orch = Orchestrator(eval_scripts=["echo ok"])
         try:
-            with patch.object(orch, '_run_custom_eval_scripts') as mock_scripts:
+            with patch.object(orch, "_run_custom_eval_scripts") as mock_scripts:
                 mock_scripts.return_value = [
-                    {"command": "echo ok", "exit_code": 0, "duration": 0.1, "stdout": "ok\n", "stderr": ""}
+                    {
+                        "command": "echo ok",
+                        "exit_code": 0,
+                        "duration": 0.1,
+                        "stdout": "ok\n",
+                        "stderr": "",
+                    }
                 ]
-                with patch('subprocess.run') as mock_run:
-                    mock_run.return_value = MagicMock(stdout="5 passed in 0.50s", stderr="", returncode=0)
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(
+                        stdout="5 passed in 0.50s", stderr="", returncode=0
+                    )
                     result = orch.run_eval()
 
             assert result["_passed"] is True
@@ -6770,8 +7019,10 @@ class TestCategoryScoring:
         """run_eval includes categories in result dict."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run, \
-                 patch('shutil.which', return_value=None):  # No optional tools
+            with (
+                patch("subprocess.run") as mock_run,
+                patch("shutil.which", return_value=None),
+            ):  # No optional tools
                 mock_run.return_value = MagicMock(
                     stdout="5 passed in 0.50s",
                     stderr="",
@@ -6788,8 +7039,7 @@ class TestCategoryScoring:
         """run_eval includes composite_score in result dict."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run, \
-                 patch('shutil.which', return_value=None):
+            with patch("subprocess.run") as mock_run, patch("shutil.which", return_value=None):
                 mock_run.return_value = MagicMock(
                     stdout="5 passed in 0.50s",
                     stderr="",
@@ -6808,8 +7058,7 @@ class TestCategoryScoring:
 
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run, \
-                 patch('shutil.which', return_value=None):
+            with patch("subprocess.run") as mock_run, patch("shutil.which", return_value=None):
                 mock_run.return_value = MagicMock(
                     stdout="5 passed in 0.50s",
                     stderr="",
@@ -6876,7 +7125,7 @@ class TestCategoryScoring:
         """_run_typing correctly parses mypy-style error output."""
         orch = Orchestrator()
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
                     stdout="file.py:1: error: Something wrong\nfile.py:2: error: Another error\n",
                     stderr="",
@@ -6897,7 +7146,7 @@ class TestCategoryScoring:
         orch = Orchestrator()
         try:
             issues = [{"code": "E501"}, {"code": "F401"}, {"code": "F401"}]
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
                     stdout=json.dumps(issues),
                     stderr="",
@@ -6915,7 +7164,7 @@ class TestCategoryScoring:
         """Category is skipped when tool is not available."""
         orch = Orchestrator()
         try:
-            with patch('shutil.which', return_value=None):
+            with patch("shutil.which", return_value=None):
                 test_results = {"total": 10, "passed": 10, "failed": 0, "errors": 0}
                 result = orch.run_category_evals(test_results, None)
 
@@ -6933,7 +7182,7 @@ class TestCategoryScoring:
         orch = Orchestrator()
         orch.category_thresholds = {"typing": 10}
         try:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 # 20 errors with threshold 10 should give score 0.0
                 mock_run.return_value = MagicMock(
                     stdout=": error:\n" * 20,
@@ -6981,6 +7230,7 @@ class TestOuterLoopManagerProviderInjection:
     def test_opportunity_provider_is_protocol(self, temp_repo):
         """opportunity_provider passes isinstance check against OpportunityProvider Protocol."""
         from millstone.artifact_providers.protocols import OpportunityProvider
+
         orch = Orchestrator()
         try:
             assert isinstance(orch._outer_loop_manager.opportunity_provider, OpportunityProvider)
@@ -6990,6 +7240,7 @@ class TestOuterLoopManagerProviderInjection:
     def test_design_provider_is_protocol(self, temp_repo):
         """design_provider passes isinstance check against DesignProvider Protocol."""
         from millstone.artifact_providers.protocols import DesignProvider
+
         orch = Orchestrator()
         try:
             assert isinstance(orch._outer_loop_manager.design_provider, DesignProvider)
@@ -6999,6 +7250,7 @@ class TestOuterLoopManagerProviderInjection:
     def test_tasklist_provider_is_protocol(self, temp_repo):
         """tasklist_provider passes isinstance check against TasklistProvider Protocol."""
         from millstone.artifact_providers.protocols import TasklistProvider
+
         orch = Orchestrator()
         try:
             assert isinstance(orch._outer_loop_manager.tasklist_provider, TasklistProvider)
@@ -7047,7 +7299,7 @@ class TestAnalyzeInfrastructure:
             opportunities_file = temp_repo / ".millstone" / "opportunities.md"
             opportunities_file.write_text("# Opportunities\n\n### Test opportunity\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Call 1: analyzer; Call 2: reviewer (returns APPROVED to end loop)
                 mock_claude.side_effect = ["Analysis complete", self._APPROVED_RESPONSE]
                 orch.run_analyze()
@@ -7067,7 +7319,7 @@ class TestAnalyzeInfrastructure:
         orch = Orchestrator()
         opportunities_file = temp_repo / ".millstone" / "opportunities.md"
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -7091,7 +7343,7 @@ class TestAnalyzeInfrastructure:
         """run_analyze returns success=False when review loop exhausts without approval."""
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Never returns APPROVED → loop exhausts → success=False
                 mock_claude.return_value = "Did nothing"
                 result = orch.run_analyze()
@@ -7105,7 +7357,7 @@ class TestAnalyzeInfrastructure:
         orch = Orchestrator()
         opportunities_file = temp_repo / ".millstone" / "opportunities.md"
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -7137,7 +7389,7 @@ class TestAnalyzeInfrastructure:
         orch = Orchestrator()
         opportunities_file = temp_repo / ".millstone" / "opportunities.md"
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -7176,7 +7428,7 @@ class TestAnalyzeInfrastructure:
         orch = Orchestrator()
         opportunities_file = temp_repo / ".millstone" / "opportunities.md"
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -7201,7 +7453,7 @@ class TestAnalyzeInfrastructure:
         """run_analyze logs analyze_failed event when review loop exhausts without approval."""
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Never returns APPROVED → loop exhausts → analyze_failed logged
                 mock_claude.return_value = "Did nothing"
                 orch.run_analyze()
@@ -7217,7 +7469,7 @@ class TestAnalyzeInfrastructure:
         orch = Orchestrator()
         opportunities_file = temp_repo / ".millstone" / "opportunities.md"
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -7246,7 +7498,7 @@ class TestAnalyzeInfrastructure:
         orch = Orchestrator()
         opportunities_file = temp_repo / ".millstone" / "opportunities.md"
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -7279,7 +7531,7 @@ class TestAnalyzeInfrastructure:
         orch = Orchestrator()
         opportunities_file = temp_repo / ".millstone" / "opportunities.md"
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -7311,7 +7563,7 @@ class TestAnalyzeInfrastructure:
         orch = Orchestrator()
         opportunities_file = temp_repo / ".millstone" / "opportunities.md"
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -7342,7 +7594,7 @@ class TestAnalyzeInfrastructure:
         orch = Orchestrator()
         opportunities_file = temp_repo / ".millstone" / "opportunities.md"
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -7373,7 +7625,9 @@ class TestAnalyzeInfrastructure:
                 captured_kwargs.update(kwargs)
                 return {"success": True, "opportunities_file": None, "opportunity_count": 0}
 
-            with patch.object(orch._outer_loop_manager, "run_analyze", side_effect=fake_run_analyze):
+            with patch.object(
+                orch._outer_loop_manager, "run_analyze", side_effect=fake_run_analyze
+            ):
                 orch.run_analyze()
 
             assert "reviewer_callback" in captured_kwargs
@@ -7398,7 +7652,9 @@ class TestAnalyzeInfrastructure:
                             captured_role["role"] = mock_agent.call_args[1].get("role")
                 return {"success": True, "opportunities_file": None, "opportunity_count": 0}
 
-            with patch.object(orch._outer_loop_manager, "run_analyze", side_effect=fake_run_analyze):
+            with patch.object(
+                orch._outer_loop_manager, "run_analyze", side_effect=fake_run_analyze
+            ):
                 orch.run_analyze()
 
             assert captured_role.get("role") == "reviewer"
@@ -7413,8 +7669,8 @@ class TestAnalyzeCLI:
         """--analyze flag invokes run_analyze."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--analyze']):
-            with patch.object(Orchestrator, 'run_analyze') as mock_analyze:
+        with patch("sys.argv", ["orchestrate.py", "--analyze"]):
+            with patch.object(Orchestrator, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": True}
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -7426,8 +7682,8 @@ class TestAnalyzeCLI:
         """--analyze exits with code 1 when analysis fails."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--analyze']):
-            with patch.object(Orchestrator, 'run_analyze') as mock_analyze:
+        with patch("sys.argv", ["orchestrate.py", "--analyze"]):
+            with patch.object(Orchestrator, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": False}
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -7438,8 +7694,8 @@ class TestAnalyzeCLI:
         """--analyze exits with code 1 on exception."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--analyze']):
-            with patch.object(Orchestrator, 'run_analyze') as mock_analyze:
+        with patch("sys.argv", ["orchestrate.py", "--analyze"]):
+            with patch.object(Orchestrator, "run_analyze") as mock_analyze:
                 mock_analyze.side_effect = Exception("Test error")
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -7450,7 +7706,7 @@ class TestAnalyzeCLI:
         """--issues requires --analyze flag."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--issues', 'bugs.md']):
+        with patch("sys.argv", ["orchestrate.py", "--issues", "bugs.md"]):
             with pytest.raises(SystemExit) as exc_info:
                 orchestrate.main()
 
@@ -7464,8 +7720,8 @@ class TestAnalyzeCLI:
         issues_file = temp_repo / "bugs.md"
         issues_file.write_text("# Known Bugs\n\n- Bug 1\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--analyze', '--issues', str(issues_file)]):
-            with patch.object(Orchestrator, 'run_analyze') as mock_analyze:
+        with patch("sys.argv", ["orchestrate.py", "--analyze", "--issues", str(issues_file)]):
+            with patch.object(Orchestrator, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": True}
                 with pytest.raises(SystemExit):
                     orchestrate.main()
@@ -7482,12 +7738,15 @@ class TestAnalyzeWithIssues:
     def test_run_analyze_with_issues_file(self, temp_repo):
         """run_analyze incorporates issues file content into prompt when provided."""
         issues_file = temp_repo / "bugs.md"
-        issues_file.write_text("# Known Bugs\n\n- Bug 1: Login fails on mobile\n- Bug 2: Memory leak in cache\n")
+        issues_file.write_text(
+            "# Known Bugs\n\n- Bug 1: Login fails on mobile\n- Bug 2: Memory leak in cache\n"
+        )
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
+
                 def side_effect(*args, **kwargs):
                     call_count[0] += 1
                     if call_count[0] % 2 == 1:  # odd = analyzer/producer
@@ -7495,6 +7754,7 @@ class TestAnalyzeWithIssues:
                         opportunities_file.write_text("# Opportunities\n\n### Test\n")
                         return "Done"
                     return self._APPROVED_RESPONSE  # even = reviewer
+
                 mock_claude.side_effect = side_effect
 
                 result = orch.run_analyze(issues_file=str(issues_file))
@@ -7519,8 +7779,9 @@ class TestAnalyzeWithIssues:
         """run_analyze works normally when no issues file provided."""
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
+
                 def side_effect(*args, **kwargs):
                     call_count[0] += 1
                     if call_count[0] % 2 == 1:  # odd = analyzer/producer
@@ -7528,6 +7789,7 @@ class TestAnalyzeWithIssues:
                         opportunities_file.write_text("# Opportunities\n\n### Test\n")
                         return "Done"
                     return self._APPROVED_RESPONSE  # even = reviewer
+
                 mock_claude.side_effect = side_effect
 
                 result = orch.run_analyze()
@@ -7548,8 +7810,9 @@ class TestAnalyzeWithIssues:
         """run_analyze warns and continues when issues file doesn't exist."""
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
+
                 def side_effect(*args, **kwargs):
                     call_count[0] += 1
                     if call_count[0] % 2 == 1:  # odd = analyzer/producer
@@ -7557,6 +7820,7 @@ class TestAnalyzeWithIssues:
                         opportunities_file.write_text("# Opportunities\n\n### Test\n")
                         return "Done"
                     return self._APPROVED_RESPONSE  # even = reviewer
+
                 mock_claude.side_effect = side_effect
 
                 result = orch.run_analyze(issues_file="nonexistent.md")
@@ -7586,8 +7850,9 @@ class TestAnalyzeWithIssues:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
+
                 def side_effect(*args, **kwargs):
                     call_count[0] += 1
                     if call_count[0] % 2 == 1:  # odd = analyzer/producer
@@ -7595,6 +7860,7 @@ class TestAnalyzeWithIssues:
                         opportunities_file.write_text("# Opportunities\n\n### Test\n")
                         return "Done"
                     return self._APPROVED_RESPONSE  # even = reviewer
+
                 mock_claude.side_effect = side_effect
 
                 result = orch.run_analyze(issues_file="docs/bugs.md")
@@ -7619,8 +7885,9 @@ class TestAnalyzeWithIssues:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
+
                 def side_effect(*args, **kwargs):
                     call_count[0] += 1
                     if call_count[0] % 2 == 1:  # odd = analyzer/producer
@@ -7628,6 +7895,7 @@ class TestAnalyzeWithIssues:
                         opportunities_file.write_text("# Opportunities\n\n### Test\n")
                         return "Done"
                     return self._APPROVED_RESPONSE  # even = reviewer
+
                 mock_claude.side_effect = side_effect
 
                 orch.run_analyze(issues_file=str(issues_file))
@@ -7650,8 +7918,9 @@ class TestAnalyzeWithIssues:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
+
                 def side_effect(*args, **kwargs):
                     call_count[0] += 1
                     if call_count[0] % 2 == 1:  # odd = analyzer/producer
@@ -7659,6 +7928,7 @@ class TestAnalyzeWithIssues:
                         opportunities_file.write_text("# Opportunities\n\n### Test\n")
                         return "Done"
                     return self._APPROVED_RESPONSE  # even = reviewer
+
                 mock_claude.side_effect = side_effect
 
                 orch.run_analyze(issues_file=str(issues_file))
@@ -7731,10 +8001,14 @@ class TestHardSignals:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir(parents=True, exist_ok=True)
             eval_file = evals_dir / "20241201_120000.json"
-            eval_file.write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "failed_tests": ["test_foo.py::test_bar", "test_baz.py::test_qux"],
-            }))
+            eval_file.write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "failed_tests": ["test_foo.py::test_bar", "test_baz.py::test_qux"],
+                    }
+                )
+            )
 
             signals = orch.collect_hard_signals()
 
@@ -7808,8 +8082,9 @@ class TestHardSignals:
         """run_analyze collects hard signals and includes in result."""
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
+
                 def side_effect(*args, **kwargs):
                     call_count[0] += 1
                     if call_count[0] % 2 == 1:  # odd = analyzer/producer
@@ -7817,6 +8092,7 @@ class TestHardSignals:
                         opportunities_file.write_text("# Opportunities\n\n### Test\n")
                         return "Done"
                     return self._APPROVED_RESPONSE  # even = reviewer
+
                 mock_claude.side_effect = side_effect
 
                 result = orch.run_analyze()
@@ -7838,13 +8114,18 @@ class TestHardSignals:
             evals_dir = orch.work_dir / "evals"
             evals_dir.mkdir(parents=True, exist_ok=True)
             eval_file = evals_dir / "20241201_120000.json"
-            eval_file.write_text(json.dumps({
-                "timestamp": "2024-12-01T12:00:00",
-                "failed_tests": ["test_fail.py::test_broken"],
-            }))
+            eval_file.write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2024-12-01T12:00:00",
+                        "failed_tests": ["test_fail.py::test_broken"],
+                    }
+                )
+            )
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
+
                 def side_effect(*args, **kwargs):
                     call_count[0] += 1
                     if call_count[0] % 2 == 1:  # odd = analyzer/producer
@@ -7852,6 +8133,7 @@ class TestHardSignals:
                         opportunities_file.write_text("# Opportunities\n\n### Test\n")
                         return "Done"
                     return self._APPROVED_RESPONSE  # even = reviewer
+
                 mock_claude.side_effect = side_effect
 
                 orch.run_analyze()
@@ -7871,8 +8153,9 @@ class TestHardSignals:
         """run_analyze removes {{HARD_SIGNALS}} placeholder when no signals found."""
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
+
                 def side_effect(*args, **kwargs):
                     call_count[0] += 1
                     if call_count[0] % 2 == 1:  # odd = analyzer/producer
@@ -7880,6 +8163,7 @@ class TestHardSignals:
                         opportunities_file.write_text("# Opportunities\n\n### Test\n")
                         return "Done"
                     return self._APPROVED_RESPONSE  # even = reviewer
+
                 mock_claude.side_effect = side_effect
 
                 orch.run_analyze()
@@ -7898,8 +8182,9 @@ class TestHardSignals:
         """run_analyze prints hard signal count in summary."""
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
+
                 def side_effect(*args, **kwargs):
                     call_count[0] += 1
                     if call_count[0] % 2 == 1:  # odd = analyzer/producer
@@ -7907,6 +8192,7 @@ class TestHardSignals:
                         opportunities_file.write_text("# Opportunities\n\n### Test\n")
                         return "Done"
                     return self._APPROVED_RESPONSE  # even = reviewer
+
                 mock_claude.side_effect = side_effect
 
                 orch.run_analyze()
@@ -7923,8 +8209,9 @@ class TestHardSignals:
         """run_analyze logs hard_signals_count in log event."""
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
+
                 def side_effect(*args, **kwargs):
                     call_count[0] += 1
                     if call_count[0] % 2 == 1:  # odd = analyzer/producer
@@ -7932,6 +8219,7 @@ class TestHardSignals:
                         opportunities_file.write_text("# Opportunities\n\n### Test\n")
                         return "Done"
                     return self._APPROVED_RESPONSE  # even = reviewer
+
                 mock_claude.side_effect = side_effect
 
                 orch.run_analyze()
@@ -7951,7 +8239,9 @@ class TestHardSignals:
             prompt = orch.load_prompt("analyze_prompt.md")
             assert "- [ ]" in prompt, "Prompt must instruct checklist (- [ ]) output"
             assert "Opportunity ID:" in prompt, "Prompt must include Opportunity ID: field"
-            assert "### <" not in prompt, "Prompt must not use ### heading template for opportunities"
+            assert "### <" not in prompt, (
+                "Prompt must not use ### heading template for opportunities"
+            )
         finally:
             orch.cleanup()
 
@@ -7967,7 +8257,7 @@ class TestDesignInfrastructure:
             # Create design file to simulate successful design
             designs_dir.mkdir(exist_ok=True)
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -7994,6 +8284,7 @@ class TestDesignInfrastructure:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_run_design_forwards_opportunity_id(self, temp_repo):
@@ -8026,7 +8317,7 @@ class TestDesignInfrastructure:
             # Ensure designs dir doesn't exist
             assert not designs_dir.exists()
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = "Did nothing"
                 orch.run_design("Test opportunity")
 
@@ -8036,6 +8327,7 @@ class TestDesignInfrastructure:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_run_design_returns_success_when_design_created(self, temp_repo):
@@ -8049,7 +8341,7 @@ class TestDesignInfrastructure:
                 "  - Opportunity ID: test-opportunity\n"
                 "  - Description: Add caching layer\n"
             )
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -8081,6 +8373,7 @@ class TestDesignInfrastructure:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_run_design_returns_failure_when_no_design_created(self, temp_repo):
@@ -8088,7 +8381,7 @@ class TestDesignInfrastructure:
         orch = Orchestrator()
         designs_dir = temp_repo / ".millstone" / "designs"
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = "Did nothing"
                 result = orch.run_design("Test opportunity")
 
@@ -8098,6 +8391,7 @@ class TestDesignInfrastructure:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_run_design_logs_completed(self, temp_repo):
@@ -8111,7 +8405,7 @@ class TestDesignInfrastructure:
                 "  - Opportunity ID: test-opportunity\n"
                 "  - Description: Test opportunity\n"
             )
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -8143,6 +8437,7 @@ class TestDesignInfrastructure:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_run_design_logs_failed(self, temp_repo):
@@ -8150,7 +8445,7 @@ class TestDesignInfrastructure:
         orch = Orchestrator()
         designs_dir = temp_repo / ".millstone" / "designs"
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = "Did nothing"
                 orch.run_design("Test opportunity")
 
@@ -8161,6 +8456,7 @@ class TestDesignInfrastructure:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_run_design_prints_summary(self, temp_repo, capsys):
@@ -8174,7 +8470,7 @@ class TestDesignInfrastructure:
                 "  - Opportunity ID: test-opportunity\n"
                 "  - Description: Test opportunity\n"
             )
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -8206,6 +8502,7 @@ class TestDesignInfrastructure:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_run_design_prints_failure(self, temp_repo, capsys):
@@ -8213,7 +8510,7 @@ class TestDesignInfrastructure:
         orch = Orchestrator()
         designs_dir = temp_repo / ".millstone" / "designs"
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = "Did nothing"
                 orch.run_design("Test opportunity")
 
@@ -8223,6 +8520,7 @@ class TestDesignInfrastructure:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_run_design_detects_new_files_only(self, temp_repo):
@@ -8241,7 +8539,7 @@ class TestDesignInfrastructure:
             existing_file = designs_dir / "existing.md"
             existing_file.write_text("# Existing Design\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 call_count = [0]
 
                 def side_effect(*args, **kwargs):
@@ -8272,6 +8570,7 @@ class TestDesignInfrastructure:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_run_design_uses_file_glob_for_detection(self, temp_repo):
@@ -8311,7 +8610,7 @@ class TestDesignInfrastructure:
                     return "Done"
                 return '{"verdict": "APPROVED"}'
 
-            with patch.object(orch, 'run_claude', side_effect=create_new_file_and_return):
+            with patch.object(orch, "run_claude", side_effect=create_new_file_and_return):
                 result = orch.run_design("Add new feature")
 
             assert result["success"] is True
@@ -8322,6 +8621,7 @@ class TestDesignInfrastructure:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_run_design_wires_reviewer_callback_with_reviewer_role(self, temp_repo):
@@ -8373,11 +8673,15 @@ class TestDesignCLI:
         """--design flag invokes run_design and exits."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--design', 'Add retry logic']):
-            with patch.object(Orchestrator, 'run_design') as mock_design:
-                with patch.object(Orchestrator, 'review_design') as mock_review:
+        with patch("sys.argv", ["orchestrate.py", "--design", "Add retry logic"]):
+            with patch.object(Orchestrator, "run_design") as mock_design:
+                with patch.object(Orchestrator, "review_design") as mock_review:
                     mock_design.return_value = {"success": True, "design_file": "designs/test.md"}
-                    mock_review.return_value = {"approved": True, "verdict": "APPROVED", "output": "..."}
+                    mock_review.return_value = {
+                        "approved": True,
+                        "verdict": "APPROVED",
+                        "output": "...",
+                    }
                     with pytest.raises(SystemExit) as exc_info:
                         orchestrate.main()
 
@@ -8390,8 +8694,8 @@ class TestDesignCLI:
         """--design exits 1 when design fails."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--design', 'Test opportunity']):
-            with patch.object(Orchestrator, 'run_design') as mock_design:
+        with patch("sys.argv", ["orchestrate.py", "--design", "Test opportunity"]):
+            with patch.object(Orchestrator, "run_design") as mock_design:
                 mock_design.return_value = {"success": False, "design_file": None}
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -8402,8 +8706,8 @@ class TestDesignCLI:
         """--design exits 1 on exception."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--design', 'Test opportunity']):
-            with patch.object(Orchestrator, 'run_design') as mock_design:
+        with patch("sys.argv", ["orchestrate.py", "--design", "Test opportunity"]):
+            with patch.object(Orchestrator, "run_design") as mock_design:
                 mock_design.side_effect = Exception("Design error")
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -8424,9 +8728,11 @@ class TestReviewDesign:
             design_file = designs_dir / "test-design.md"
             design_file.write_text("# Design: Test\n\nTest design content.")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Return a valid JSON response to avoid triggering retry logic
-                mock_claude.return_value = '{"verdict": "APPROVED", "strengths": ["good"], "issues": []}'
+                mock_claude.return_value = (
+                    '{"verdict": "APPROVED", "strengths": ["good"], "issues": []}'
+                )
 
                 orch.review_design(str(design_file))
 
@@ -8444,6 +8750,7 @@ class TestReviewDesign:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_returns_approved_when_verdict_approved(self, temp_repo):
@@ -8455,8 +8762,10 @@ class TestReviewDesign:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
-                mock_claude.return_value = "## Design Review\n\n**Verdict**: APPROVED\n\n### Strengths\n- Good design"
+            with patch.object(orch, "run_claude") as mock_claude:
+                mock_claude.return_value = (
+                    "## Design Review\n\n**Verdict**: APPROVED\n\n### Strengths\n- Good design"
+                )
 
                 result = orch.review_design(str(design_file))
 
@@ -8466,6 +8775,7 @@ class TestReviewDesign:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_returns_not_approved_when_verdict_needs_revision(self, temp_repo):
@@ -8477,7 +8787,7 @@ class TestReviewDesign:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = "## Design Review\n\n**Verdict**: NEEDS_REVISION\n\n### Issues\n- Missing success criteria"
 
                 result = orch.review_design(str(design_file))
@@ -8488,6 +8798,7 @@ class TestReviewDesign:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_returns_error_when_file_not_found(self, temp_repo):
@@ -8511,7 +8822,7 @@ class TestReviewDesign:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = "**Verdict**: APPROVED"
 
                 # Use relative path
@@ -8522,6 +8833,7 @@ class TestReviewDesign:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_logs_completed(self, temp_repo):
@@ -8533,7 +8845,7 @@ class TestReviewDesign:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = "**Verdict**: APPROVED"
 
                 orch.review_design(str(design_file))
@@ -8545,6 +8857,7 @@ class TestReviewDesign:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_logs_failed_when_file_not_found(self, temp_repo):
@@ -8568,7 +8881,7 @@ class TestReviewDesign:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = "**Verdict**: APPROVED"
 
                 orch.review_design(str(design_file))
@@ -8580,6 +8893,7 @@ class TestReviewDesign:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_prints_failure(self, temp_repo, capsys):
@@ -8602,8 +8916,10 @@ class TestReviewDesign:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
-                mock_claude.return_value = "## Design Review\n\n**Verdict**: APPROVED\n\nThis is a thorough review."
+            with patch.object(orch, "run_claude") as mock_claude:
+                mock_claude.return_value = (
+                    "## Design Review\n\n**Verdict**: APPROVED\n\nThis is a thorough review."
+                )
 
                 orch.review_design(str(design_file))
 
@@ -8620,6 +8936,7 @@ class TestReviewDesign:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_logs_extraction_failed_on_empty_response(self, temp_repo):
@@ -8631,7 +8948,7 @@ class TestReviewDesign:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = ""  # Empty response (both calls)
 
                 result = orch.review_design(str(design_file))
@@ -8651,6 +8968,7 @@ class TestReviewDesign:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_logs_extraction_failed_on_whitespace_only_response(self, temp_repo):
@@ -8662,7 +8980,7 @@ class TestReviewDesign:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = "   \n\t\n   "  # Whitespace only (both calls)
 
                 result = orch.review_design(str(design_file))
@@ -8681,6 +8999,7 @@ class TestReviewDesign:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_logs_extraction_failed_on_missing_verdict_keywords(self, temp_repo):
@@ -8692,9 +9011,11 @@ class TestReviewDesign:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Response without APPROVED or NEEDS_REVISION (both calls)
-                mock_claude.return_value = "## Design Review\n\nThe design looks okay but needs work."
+                mock_claude.return_value = (
+                    "## Design Review\n\nThe design looks okay but needs work."
+                )
 
                 result = orch.review_design(str(design_file))
 
@@ -8717,6 +9038,7 @@ class TestReviewDesign:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_status_updated_to_reviewed_on_approved(self, temp_repo):
@@ -8741,6 +9063,7 @@ class TestReviewDesign:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_status_not_updated_on_needs_revision(self, temp_repo):
@@ -8767,6 +9090,7 @@ class TestReviewDesign:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_status_update_failure_does_not_propagate(self, temp_repo):
@@ -8780,11 +9104,14 @@ class TestReviewDesign:
 
             with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = '{"verdict": "APPROVED", "strengths": [], "issues": []}'
-                with patch.object(
-                    orch._outer_loop_manager.design_provider,
-                    "update_design_status",
-                    side_effect=RuntimeError("boom"),
-                ) as mock_update_status, patch("millstone.loops.outer.progress") as mock_progress:
+                with (
+                    patch.object(
+                        orch._outer_loop_manager.design_provider,
+                        "update_design_status",
+                        side_effect=RuntimeError("boom"),
+                    ) as mock_update_status,
+                    patch("millstone.loops.outer.progress") as mock_progress,
+                ):
                     result = orch.review_design(str(design_file))
 
             assert result["approved"] is True
@@ -8797,6 +9124,7 @@ class TestReviewDesign:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
 
@@ -8812,11 +9140,11 @@ class TestReviewDesignRetry:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # First call returns empty, second returns valid JSON
                 mock_claude.side_effect = [
                     "",
-                    '{"verdict": "APPROVED", "strengths": ["good"], "issues": []}'
+                    '{"verdict": "APPROVED", "strengths": ["good"], "issues": []}',
                 ]
 
                 result = orch.review_design(str(design_file))
@@ -8831,6 +9159,7 @@ class TestReviewDesignRetry:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_retries_on_malformed_response(self, temp_repo):
@@ -8842,11 +9171,11 @@ class TestReviewDesignRetry:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # First call returns text without proper format, second returns valid JSON
                 mock_claude.side_effect = [
                     "This is a review but without proper structure.",
-                    '{"verdict": "NEEDS_REVISION", "strengths": [], "issues": ["missing details"]}'
+                    '{"verdict": "NEEDS_REVISION", "strengths": [], "issues": ["missing details"]}',
                 ]
 
                 result = orch.review_design(str(design_file))
@@ -8859,6 +9188,7 @@ class TestReviewDesignRetry:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_retry_prompt_includes_format_instruction(self, temp_repo):
@@ -8870,11 +9200,11 @@ class TestReviewDesignRetry:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.side_effect = [
                     "",  # Initial
                     "",  # run_agent retry
-                    '{"verdict": "APPROVED", "strengths": [], "issues": []}' # review_design retry
+                    '{"verdict": "APPROVED", "strengths": [], "issues": []}',  # review_design retry
                 ]
 
                 orch.review_design(str(design_file))
@@ -8890,6 +9220,7 @@ class TestReviewDesignRetry:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_no_retry_on_valid_response(self, temp_repo):
@@ -8901,9 +9232,11 @@ class TestReviewDesignRetry:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Return valid JSON on first call
-                mock_claude.return_value = '{"verdict": "APPROVED", "strengths": ["well designed"], "issues": []}'
+                mock_claude.return_value = (
+                    '{"verdict": "APPROVED", "strengths": ["well designed"], "issues": []}'
+                )
 
                 result = orch.review_design(str(design_file))
 
@@ -8917,6 +9250,7 @@ class TestReviewDesignRetry:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
     def test_review_design_retry_logs_original_response(self, temp_repo):
@@ -8928,10 +9262,10 @@ class TestReviewDesignRetry:
             design_file = designs_dir / "test.md"
             design_file.write_text("# Design: Test\n")
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.side_effect = [
                     "bad response without structure",
-                    '{"verdict": "APPROVED", "strengths": [], "issues": []}'
+                    '{"verdict": "APPROVED", "strengths": [], "issues": []}',
                 ]
 
                 orch.review_design(str(design_file))
@@ -8943,6 +9277,7 @@ class TestReviewDesignRetry:
             orch.cleanup()
             if designs_dir.exists():
                 import shutil
+
                 shutil.rmtree(designs_dir)
 
 
@@ -8953,9 +9288,13 @@ class TestReviewDesignCLI:
         """--review-design flag invokes review_design and exits."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--review-design', 'designs/test.md']):
-            with patch.object(Orchestrator, 'review_design') as mock_review:
-                mock_review.return_value = {"approved": True, "verdict": "APPROVED", "output": "..."}
+        with patch("sys.argv", ["orchestrate.py", "--review-design", "designs/test.md"]):
+            with patch.object(Orchestrator, "review_design") as mock_review:
+                mock_review.return_value = {
+                    "approved": True,
+                    "verdict": "APPROVED",
+                    "output": "...",
+                }
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
 
@@ -8966,9 +9305,13 @@ class TestReviewDesignCLI:
         """--review-design exits 1 when design needs revision."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--review-design', 'designs/test.md']):
-            with patch.object(Orchestrator, 'review_design') as mock_review:
-                mock_review.return_value = {"approved": False, "verdict": "NEEDS_REVISION", "output": "..."}
+        with patch("sys.argv", ["orchestrate.py", "--review-design", "designs/test.md"]):
+            with patch.object(Orchestrator, "review_design") as mock_review:
+                mock_review.return_value = {
+                    "approved": False,
+                    "verdict": "NEEDS_REVISION",
+                    "output": "...",
+                }
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
 
@@ -8978,8 +9321,8 @@ class TestReviewDesignCLI:
         """--review-design exits 1 on exception."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--review-design', 'designs/test.md']):
-            with patch.object(Orchestrator, 'review_design') as mock_review:
+        with patch("sys.argv", ["orchestrate.py", "--review-design", "designs/test.md"]):
+            with patch.object(Orchestrator, "review_design") as mock_review:
                 mock_review.side_effect = Exception("Review error")
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -8998,11 +9341,18 @@ class TestDesignWithAutoReview:
         config_dir = temp_repo / ".millstone"
         config_dir.mkdir(exist_ok=True)
 
-        with patch('sys.argv', ['orchestrate.py', '--design', 'Add caching']):
-            with patch.object(Orchestrator, 'run_design') as mock_design:
-                with patch.object(Orchestrator, 'review_design') as mock_review:
-                    mock_design.return_value = {"success": True, "design_file": "designs/add-caching.md"}
-                    mock_review.return_value = {"approved": True, "verdict": "APPROVED", "output": "..."}
+        with patch("sys.argv", ["orchestrate.py", "--design", "Add caching"]):
+            with patch.object(Orchestrator, "run_design") as mock_design:
+                with patch.object(Orchestrator, "review_design") as mock_review:
+                    mock_design.return_value = {
+                        "success": True,
+                        "design_file": "designs/add-caching.md",
+                    }
+                    mock_review.return_value = {
+                        "approved": True,
+                        "verdict": "APPROVED",
+                        "output": "...",
+                    }
                     with pytest.raises(SystemExit) as exc_info:
                         orchestrate.main()
 
@@ -9015,9 +9365,9 @@ class TestDesignWithAutoReview:
         """--design doesn't review when design creation fails."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--design', 'Add caching']):
-            with patch.object(Orchestrator, 'run_design') as mock_design:
-                with patch.object(Orchestrator, 'review_design') as mock_review:
+        with patch("sys.argv", ["orchestrate.py", "--design", "Add caching"]):
+            with patch.object(Orchestrator, "run_design") as mock_design:
+                with patch.object(Orchestrator, "review_design") as mock_review:
                     mock_design.return_value = {"success": False, "design_file": None}
                     with pytest.raises(SystemExit) as exc_info:
                         orchestrate.main()
@@ -9031,11 +9381,18 @@ class TestDesignWithAutoReview:
         """--design exits 1 when design is created but review fails."""
         from millstone import orchestrate
 
-        with patch('sys.argv', ['orchestrate.py', '--design', 'Add caching']):
-            with patch.object(Orchestrator, 'run_design') as mock_design:
-                with patch.object(Orchestrator, 'review_design') as mock_review:
-                    mock_design.return_value = {"success": True, "design_file": "designs/add-caching.md"}
-                    mock_review.return_value = {"approved": False, "verdict": "NEEDS_REVISION", "output": "..."}
+        with patch("sys.argv", ["orchestrate.py", "--design", "Add caching"]):
+            with patch.object(Orchestrator, "run_design") as mock_design:
+                with patch.object(Orchestrator, "review_design") as mock_review:
+                    mock_design.return_value = {
+                        "success": True,
+                        "design_file": "designs/add-caching.md",
+                    }
+                    mock_review.return_value = {
+                        "approved": False,
+                        "verdict": "NEEDS_REVISION",
+                        "output": "...",
+                    }
                     with pytest.raises(SystemExit) as exc_info:
                         orchestrate.main()
 
@@ -9051,10 +9408,13 @@ class TestDesignWithAutoReview:
         config_file = config_dir / "config.toml"
         config_file.write_text("review_designs = false\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--design', 'Add caching']):
-            with patch.object(Orchestrator, 'run_design') as mock_design:
-                with patch.object(Orchestrator, 'review_design') as mock_review:
-                    mock_design.return_value = {"success": True, "design_file": "designs/add-caching.md"}
+        with patch("sys.argv", ["orchestrate.py", "--design", "Add caching"]):
+            with patch.object(Orchestrator, "run_design") as mock_design:
+                with patch.object(Orchestrator, "review_design") as mock_review:
+                    mock_design.return_value = {
+                        "success": True,
+                        "design_file": "designs/add-caching.md",
+                    }
                     with pytest.raises(SystemExit) as exc_info:
                         orchestrate.main()
 
@@ -9107,20 +9467,30 @@ class TestPlanInfrastructure:
 
         orch = Orchestrator()
         # Disable validation to test just prompt loading
-        orch.task_constraints = {"max_loc": 200, "require_tests": False, "require_criteria": False, "require_risk": False, "require_context": False, "max_split_attempts": 0}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": False,
+            "require_criteria": False,
+            "require_risk": False,
+            "require_context": False,
+            "max_split_attempts": 0,
+        }
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Simulate agent behavior:
                 # 1. Add a task
                 # 2. Approve the plan
                 def side_effect(prompt, **kwargs):
                     if "prompt_name: plan_prompt.md" in prompt:
                         content = tasklist.read_text()
-                        tasklist.write_text(content + "\n\n- [ ] **New Task**: Description\n  - Context: none")
+                        tasklist.write_text(
+                            content + "\n\n- [ ] **New Task**: Description\n  - Context: none"
+                        )
                         return "Done"
                     elif "prompt_name: plan_review_prompt.md" in prompt:
                         return '{"verdict": "APPROVED", "score": 10}'
                     return ""
+
                 mock_claude.side_effect = side_effect
 
                 orch.run_plan(str(design_file))
@@ -9153,20 +9523,31 @@ class TestPlanInfrastructure:
 
         orch = Orchestrator()
         # Disable validation but allow review
-        orch.task_constraints = {"max_loc": 200, "require_tests": False, "require_criteria": False, "require_risk": False, "require_context": False, "max_split_attempts": 0}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": False,
+            "require_criteria": False,
+            "require_risk": False,
+            "require_context": False,
+            "max_split_attempts": 0,
+        }
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Agent behavior:
                 # 1. Add tasks
                 # 2. Approve plan
                 def behavior(prompt, **kwargs):
                     if "prompt_name: plan_prompt.md" in prompt:
                         content = tasklist.read_text()
-                        tasklist.write_text(content + "\n\n- [ ] **Task 1**: Desc\n  - Context: none\n\n- [ ] **Task 2**: Desc\n  - Context: none")
+                        tasklist.write_text(
+                            content
+                            + "\n\n- [ ] **Task 1**: Desc\n  - Context: none\n\n- [ ] **Task 2**: Desc\n  - Context: none"
+                        )
                         return "Done"
                     elif "prompt_name: plan_review_prompt.md" in prompt:
                         return '{"verdict": "APPROVED", "score": 10}'
                     return ""
+
                 mock_claude.side_effect = behavior
 
                 result = orch.run_plan(str(design_file))
@@ -9191,7 +9572,7 @@ class TestPlanInfrastructure:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = "Did nothing"
                 result = orch.run_plan(str(design_file))
 
@@ -9313,20 +9694,31 @@ class TestPlanInfrastructure:
 
         orch = Orchestrator()
         # Disable validation but allow review
-        orch.task_constraints = {"max_loc": 200, "require_tests": False, "require_criteria": False, "require_risk": False, "require_context": False, "max_split_attempts": 0}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": False,
+            "require_criteria": False,
+            "require_risk": False,
+            "require_context": False,
+            "max_split_attempts": 0,
+        }
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Agent behavior:
                 # 1. Add tasks
                 # 2. Approve plan
                 def behavior(prompt, **kwargs):
                     if "prompt_name: plan_prompt.md" in prompt:
                         content = tasklist.read_text()
-                        tasklist.write_text(content + "\n\n- [ ] **New task**: Desc\n  - Context: none\n\n- [ ] **New task**: Desc\n  - Context: none\n\n- [ ] **New task**: Desc\n  - Context: none")
+                        tasklist.write_text(
+                            content
+                            + "\n\n- [ ] **New task**: Desc\n  - Context: none\n\n- [ ] **New task**: Desc\n  - Context: none\n\n- [ ] **New task**: Desc\n  - Context: none"
+                        )
                         return "Done"
                     elif "prompt_name: plan_review_prompt.md" in prompt:
                         return '{"verdict": "APPROVED", "score": 10}'
                     return ""
+
                 mock_claude.side_effect = behavior
 
                 result = orch.run_plan("designs/test-design.md")
@@ -9350,20 +9742,31 @@ class TestPlanInfrastructure:
 
         orch = Orchestrator()
         # Disable validation but allow review
-        orch.task_constraints = {"max_loc": 200, "require_tests": False, "require_criteria": False, "require_risk": False, "require_context": False, "max_split_attempts": 0}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": False,
+            "require_criteria": False,
+            "require_risk": False,
+            "require_context": False,
+            "max_split_attempts": 0,
+        }
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Agent behavior:
                 # 1. Add tasks
                 # 2. Approve plan
                 def behavior(prompt, **kwargs):
                     if "prompt_name: plan_prompt.md" in prompt:
                         content = tasklist.read_text()
-                        tasklist.write_text(content + "\n\n- [ ] **Task 1**: Desc\n  - Context: none\n\n- [ ] **Task 2**: Desc\n  - Context: none")
+                        tasklist.write_text(
+                            content
+                            + "\n\n- [ ] **Task 1**: Desc\n  - Context: none\n\n- [ ] **Task 2**: Desc\n  - Context: none"
+                        )
                         return "Done"
                     elif "prompt_name: plan_review_prompt.md" in prompt:
                         return '{"verdict": "APPROVED", "score": 10}'
                     return ""
+
                 mock_claude.side_effect = behavior
 
                 orch.run_plan(str(design_file))
@@ -9389,7 +9792,7 @@ class TestPlanInfrastructure:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = "Did nothing"
                 orch.run_plan(str(design_file))
 
@@ -9414,20 +9817,30 @@ class TestPlanInfrastructure:
 
         orch = Orchestrator()
         # Disable validation but allow review
-        orch.task_constraints = {"max_loc": 200, "require_tests": False, "require_criteria": False, "require_risk": False, "require_context": False, "max_split_attempts": 0}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": False,
+            "require_criteria": False,
+            "require_risk": False,
+            "require_context": False,
+            "max_split_attempts": 0,
+        }
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Agent behavior:
                 # 1. Add task
                 # 2. Approve plan
                 def behavior(prompt, **kwargs):
                     if "prompt_name: plan_prompt.md" in prompt:
                         content = tasklist.read_text()
-                        tasklist.write_text(content + "\n\n- [ ] **New Task**: Description\n  - Context: none")
+                        tasklist.write_text(
+                            content + "\n\n- [ ] **New Task**: Description\n  - Context: none"
+                        )
                         return "Done"
                     elif "prompt_name: plan_review_prompt.md" in prompt:
                         return '{"verdict": "APPROVED", "score": 10}'
                     return ""
+
                 mock_claude.side_effect = behavior
 
                 orch.run_plan(str(design_file))
@@ -9453,7 +9866,7 @@ class TestPlanInfrastructure:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 mock_claude.return_value = "Did nothing"
                 orch.run_plan(str(design_file))
 
@@ -9477,20 +9890,30 @@ class TestPlanInfrastructure:
         tasklist.write_text(original_content)
 
         orch = Orchestrator()
-        orch.task_constraints = {"max_loc": 200, "require_tests": False, "require_criteria": False, "require_risk": False, "require_context": False, "max_split_attempts": 0}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": False,
+            "require_criteria": False,
+            "require_risk": False,
+            "require_context": False,
+            "max_split_attempts": 0,
+        }
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Agent behavior:
                 # 1. Add task
                 # 2. Approve plan
                 def behavior(prompt, **kwargs):
                     if "prompt_name: plan_prompt.md" in prompt:
                         content = tasklist.read_text()
-                        tasklist.write_text(content + "\n\n- [ ] **New task from plan**\n  - Context: none")
+                        tasklist.write_text(
+                            content + "\n\n- [ ] **New task from plan**\n  - Context: none"
+                        )
                         return "Done"
                     elif "prompt_name: plan_review_prompt.md" in prompt:
                         return '{"verdict": "APPROVED", "score": 10}'
                     return ""
+
                 mock_claude.side_effect = behavior
 
                 orch.run_plan(str(design_file))
@@ -9606,7 +10029,12 @@ class TestTaskAtomizer:
     def test_validate_task_fails_missing_context(self, temp_repo):
         """_validate_task rejects tasks without context when required."""
         orch = Orchestrator()
-        orch.task_constraints = {"require_context": True, "require_tests": False, "require_criteria": False, "require_risk": False}
+        orch.task_constraints = {
+            "require_context": True,
+            "require_tests": False,
+            "require_criteria": False,
+            "require_risk": False,
+        }
         try:
             metadata = {
                 "title": "Task",
@@ -9692,7 +10120,13 @@ class TestTaskAtomizer:
     def test_validate_task_allows_tests_in_description(self, temp_repo):
         """_validate_task passes if tests are mentioned in description."""
         orch = Orchestrator()
-        orch.task_constraints = {"max_loc": 200, "require_tests": True, "require_criteria": False, "require_risk": False, "require_context": False}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": True,
+            "require_criteria": False,
+            "require_risk": False,
+            "require_context": False,
+        }
         try:
             metadata = {
                 "title": "Task with test mention",
@@ -9715,7 +10149,12 @@ class TestTaskAtomizer:
     def test_validate_generated_tasks_validates_all_new_tasks(self, temp_repo):
         """_validate_generated_tasks checks all newly added tasks."""
         orch = Orchestrator()
-        orch.task_constraints = {"max_loc": 200, "require_tests": True, "require_criteria": True, "require_risk": True}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": True,
+            "require_criteria": True,
+            "require_risk": True,
+        }
         try:
             old_content = "# Tasklist\n- [ ] Old task"
             new_content = """# Tasklist
@@ -9753,23 +10192,33 @@ class TestTaskAtomizer:
         tasklist.write_text("# Tasklist\n")
 
         orch = Orchestrator()
-        orch.task_constraints = {"max_loc": 200, "require_tests": True, "require_criteria": True, "require_risk": True, "require_context": True, "max_split_attempts": 0}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": True,
+            "require_criteria": True,
+            "require_risk": True,
+            "require_context": True,
+            "max_split_attempts": 0,
+        }
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Agent behavior:
                 # 1. Add valid task
                 # 2. Approve plan
                 def behavior(prompt, **kwargs):
                     if "prompt_name: plan_prompt.md" in prompt:
                         content = tasklist.read_text()
-                        tasklist.write_text(content + """
+                        tasklist.write_text(
+                            content
+                            + """
 
 - [ ] **Valid task**: Description
   - Est. LoC: 100
   - Tests: test.py
   - Risk: low
   - Criteria: Tests pass
-  - Context: none""")
+  - Context: none"""
+                        )
                         return "Done"
                     elif "prompt_name: plan_review_prompt.md" in prompt:
                         return '{"verdict": "APPROVED", "score": 10}'
@@ -9797,22 +10246,32 @@ class TestTaskAtomizer:
         tasklist.write_text("# Tasklist\n")
 
         orch = Orchestrator()
-        orch.task_constraints = {"max_loc": 200, "require_tests": True, "require_criteria": True, "require_risk": True, "require_context": True, "max_split_attempts": 2}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": True,
+            "require_criteria": True,
+            "require_risk": True,
+            "require_context": True,
+            "max_split_attempts": 2,
+        }
         try:
+            with patch.object(orch, "run_claude") as mock_claude:
 
-            with patch.object(orch, 'run_claude') as mock_claude:
                 def handle_calls(prompt, **kwargs):
                     if "prompt_name: plan_prompt.md" in prompt:
                         # First call: add oversized task
                         content = tasklist.read_text()
-                        tasklist.write_text(content + """
+                        tasklist.write_text(
+                            content
+                            + """
 
 - [ ] **Big task**: Too large
   - Est. LoC: 500
   - Tests: test.py
   - Risk: medium
   - Criteria: Done
-  - Context: none""")
+  - Context: none"""
+                        )
                         return "Done"
                     elif "prompt_name: task_split_prompt.md" in prompt:
                         # Second call (split): fix the task
@@ -9859,12 +10318,22 @@ class TestTaskAtomizer:
         tasklist.write_text("# Tasklist\n")
 
         orch = Orchestrator()
-        orch.task_constraints = {"max_loc": 200, "require_tests": True, "require_criteria": True, "require_risk": True, "require_context": True, "max_split_attempts": 2}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": True,
+            "require_criteria": True,
+            "require_risk": True,
+            "require_context": True,
+            "max_split_attempts": 2,
+        }
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Always add an invalid task (agent never fixes it)
                 def add_bad_task(prompt, **kwargs):
-                    if "prompt_name: plan_prompt.md" in prompt or "prompt_name: task_split_prompt.md" in prompt:
+                    if (
+                        "prompt_name: plan_prompt.md" in prompt
+                        or "prompt_name: task_split_prompt.md" in prompt
+                    ):
                         content = tasklist.read_text()
                         if "Bad task" not in content:
                             tasklist.write_text(content + "\n\n- [ ] **Bad task**: No metadata")
@@ -9872,6 +10341,7 @@ class TestTaskAtomizer:
                     elif "prompt_name: plan_review_prompt.md" in prompt:
                         return '{"verdict": "APPROVED", "score": 10}'
                     return ""
+
                 mock_claude.side_effect = add_bad_task
 
                 result = orch.run_plan(str(design_file))
@@ -9895,17 +10365,29 @@ class TestTaskAtomizer:
         tasklist.write_text("# Tasklist\n")
 
         orch = Orchestrator()
-        orch.task_constraints = {"max_loc": 150, "require_tests": False, "require_criteria": False, "require_risk": False, "require_context": False, "max_split_attempts": 0}
+        orch.task_constraints = {
+            "max_loc": 150,
+            "require_tests": False,
+            "require_criteria": False,
+            "require_risk": False,
+            "require_context": False,
+            "max_split_attempts": 0,
+        }
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
+
                 def side_effect(prompt, **kwargs):
                     if "prompt_name: plan_prompt.md" in prompt:
                         content = tasklist.read_text()
-                        tasklist.write_text(content + "\n\n- [ ] **Task**: Desc\n  - Est. LoC: 50\n  - Context: none")
+                        tasklist.write_text(
+                            content
+                            + "\n\n- [ ] **Task**: Desc\n  - Est. LoC: 50\n  - Context: none"
+                        )
                         return "Done"
                     elif "prompt_name: plan_review_prompt.md" in prompt:
                         return '{"verdict": "APPROVED", "score": 10}'
                     return ""
+
                 mock_claude.side_effect = side_effect
 
                 orch.run_plan(str(design_file))
@@ -9933,31 +10415,51 @@ class TestTaskAtomizer:
         alt_tasklist.write_text("# Tasklist\n\n- [ ] Existing task")
 
         orch = Orchestrator()
-        orch.task_constraints = {"max_loc": 200, "require_tests": False, "require_criteria": False, "require_risk": False, "require_context": False, "max_split_attempts": 0}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": False,
+            "require_criteria": False,
+            "require_risk": False,
+            "require_context": False,
+            "max_split_attempts": 0,
+        }
         try:
             # Override provider snapshot methods to point planning logic at alt_tasklist
             mock_tasklist_provider = MagicMock()
             mock_tasklist_provider.get_snapshot.side_effect = lambda: alt_tasklist.read_text()
-            mock_tasklist_provider.restore_snapshot.side_effect = lambda content: alt_tasklist.write_text(content)
+            mock_tasklist_provider.restore_snapshot.side_effect = lambda content: (
+                alt_tasklist.write_text(content)
+            )
+
             # list_tasks reflects current file state (used for ID-based task counting)
             def list_tasks_from_file():
                 content = alt_tasklist.read_text()
                 if "New Task" in content:
                     from millstone.artifacts.models import TasklistItem, TaskStatus
-                    return [TasklistItem(task_id="new-task-id", title="New Task", status=TaskStatus.todo)]
+
+                    return [
+                        TasklistItem(
+                            task_id="new-task-id", title="New Task", status=TaskStatus.todo
+                        )
+                    ]
                 return []
+
             mock_tasklist_provider.list_tasks.side_effect = list_tasks_from_file
             orch._outer_loop_manager.tasklist_provider = mock_tasklist_provider
 
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
+
                 def behavior(prompt, **kwargs):
                     if "prompt_name: plan_prompt.md" in prompt:
                         content = alt_tasklist.read_text()
-                        alt_tasklist.write_text(content + "\n\n- [ ] **New Task**: Desc\n  - Context: none")
+                        alt_tasklist.write_text(
+                            content + "\n\n- [ ] **New Task**: Desc\n  - Context: none"
+                        )
                         return "Done"
                     elif "prompt_name: plan_review_prompt.md" in prompt:
                         return '{"verdict": "APPROVED", "score": 10}'
                     return ""
+
                 mock_claude.side_effect = behavior
 
                 result = orch.run_plan(str(design_file))
@@ -9990,6 +10492,7 @@ class TestTaskAtomizer:
         }
         try:
             with patch.object(orch, "run_claude") as mock_claude:
+
                 def behavior(prompt, **kwargs):
                     if "prompt_name: plan_prompt.md" in prompt:
                         content = tasklist.read_text()
@@ -10008,9 +10511,7 @@ class TestTaskAtomizer:
                     result = orch.run_plan(str(design_file))
 
             assert result["success"] is True
-            mock_update_status.assert_called_once_with(
-                "test-design", DesignStatus.approved
-            )
+            mock_update_status.assert_called_once_with("test-design", DesignStatus.approved)
         finally:
             orch.cleanup()
 
@@ -10061,19 +10562,23 @@ class TestTaskAtomizer:
         }
         try:
             events = []
-            with patch.object(
-                orch._outer_loop_manager.design_provider,
-                "get_design",
-                return_value=MagicMock(status=DesignStatus.draft),
-            ), patch.object(
-                orch._outer_loop_manager.design_provider, "update_design_status"
-            ), patch("millstone.loops.outer.progress") as mock_progress:
+            with (
+                patch.object(
+                    orch._outer_loop_manager.design_provider,
+                    "get_design",
+                    return_value=MagicMock(status=DesignStatus.draft),
+                ),
+                patch.object(orch._outer_loop_manager.design_provider, "update_design_status"),
+                patch("millstone.loops.outer.progress") as mock_progress,
+            ):
+
                 def progress_side_effect(message):
                     events.append(("progress", message))
 
                 mock_progress.side_effect = progress_side_effect
 
                 with patch.object(orch, "run_claude") as mock_claude:
+
                     def behavior(prompt, **kwargs):
                         if "prompt_name: plan_prompt.md" in prompt:
                             events.append(("run_claude", "plan_prompt"))
@@ -10125,6 +10630,7 @@ class TestTaskAtomizer:
         }
         try:
             with patch.object(orch, "run_claude") as mock_claude:
+
                 def behavior(prompt, **kwargs):
                     if "prompt_name: plan_prompt.md" in prompt:
                         content = tasklist.read_text()
@@ -10137,24 +10643,24 @@ class TestTaskAtomizer:
                     return ""
 
                 mock_claude.side_effect = behavior
-                with patch.object(
-                    orch._outer_loop_manager.design_provider,
-                    "update_design_status",
-                    side_effect=RuntimeError("boom"),
-                ) as mock_update_status, patch("millstone.loops.outer.progress") as mock_progress:
+                with (
+                    patch.object(
+                        orch._outer_loop_manager.design_provider,
+                        "update_design_status",
+                        side_effect=RuntimeError("boom"),
+                    ) as mock_update_status,
+                    patch("millstone.loops.outer.progress") as mock_progress,
+                ):
                     result = orch.run_plan(str(design_file))
 
             assert result["success"] is True
-            mock_update_status.assert_called_once_with(
-                "test-design", DesignStatus.approved
-            )
+            mock_update_status.assert_called_once_with("test-design", DesignStatus.approved)
             assert any(
                 "Failed to update design status to approved" in call.args[0]
                 for call in mock_progress.call_args_list
             )
         finally:
             orch.cleanup()
-
 
 
 class TestPlanReview:
@@ -10173,7 +10679,7 @@ class TestPlanReview:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Mock responses:
                 # 1. Plan generation (add valid task)
                 # 2. Plan review (approve)
@@ -10181,7 +10687,10 @@ class TestPlanReview:
                 def plan_behavior(prompt, **kwargs):
                     if "prompt_name: plan_prompt.md" in prompt:
                         content = tasklist.read_text()
-                        tasklist.write_text(content + "\n\n- [ ] **Task 1**: Desc\n  - Est. LoC: 50\n  - Tests: t.py\n  - Risk: low\n  - Criteria: pass\n  - Context: none")
+                        tasklist.write_text(
+                            content
+                            + "\n\n- [ ] **Task 1**: Desc\n  - Est. LoC: 50\n  - Tests: t.py\n  - Risk: low\n  - Criteria: pass\n  - Context: none"
+                        )
                         return "Done"
                     elif "prompt_name: plan_review_prompt.md" in prompt:
                         return '{"verdict": "APPROVED", "score": 10}'
@@ -10212,7 +10721,7 @@ class TestPlanReview:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_claude') as mock_claude:
+            with patch.object(orch, "run_claude") as mock_claude:
                 # Sequence:
                 # 1. Plan gen (bad task)
                 # 2. Review (reject)
@@ -10225,7 +10734,10 @@ class TestPlanReview:
                     if "prompt_name: plan_prompt.md" in prompt:
                         # Initial bad plan
                         content = tasklist.read_text()
-                        tasklist.write_text(content + "\n\n- [ ] **Bad Task**: No details\n  - Est. LoC: 50\n  - Tests: t.py\n  - Risk: low\n  - Criteria: pass\n  - Context: none")
+                        tasklist.write_text(
+                            content
+                            + "\n\n- [ ] **Bad Task**: No details\n  - Est. LoC: 50\n  - Tests: t.py\n  - Risk: low\n  - Criteria: pass\n  - Context: none"
+                        )
                         return "Done"
 
                     elif "prompt_name: plan_review_prompt.md" in prompt:
@@ -10281,8 +10793,8 @@ class TestPlanCLI:
         tasklist.parent.mkdir(exist_ok=True)
         tasklist.write_text("# Tasklist\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--plan', str(design_file)]):
-            with patch.object(Orchestrator, 'run_plan') as mock_plan:
+        with patch("sys.argv", ["orchestrate.py", "--plan", str(design_file)]):
+            with patch.object(Orchestrator, "run_plan") as mock_plan:
                 mock_plan.return_value = {"success": True, "tasks_added": 3}
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -10299,8 +10811,8 @@ class TestPlanCLI:
         tasklist.parent.mkdir(exist_ok=True)
         tasklist.write_text("# Tasklist\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--plan', 'designs/test.md']):
-            with patch.object(Orchestrator, 'run_plan') as mock_plan:
+        with patch("sys.argv", ["orchestrate.py", "--plan", "designs/test.md"]):
+            with patch.object(Orchestrator, "run_plan") as mock_plan:
                 mock_plan.return_value = {"success": False, "tasks_added": 0}
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -10316,8 +10828,8 @@ class TestPlanCLI:
         tasklist.parent.mkdir(exist_ok=True)
         tasklist.write_text("# Tasklist\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--plan', 'designs/test.md']):
-            with patch.object(Orchestrator, 'run_plan') as mock_plan:
+        with patch("sys.argv", ["orchestrate.py", "--plan", "designs/test.md"]):
+            with patch.object(Orchestrator, "run_plan") as mock_plan:
                 mock_plan.side_effect = Exception("Test error")
                 with pytest.raises(SystemExit) as exc_info:
                     orchestrate.main()
@@ -10338,8 +10850,11 @@ class TestPlanCLI:
         custom_tasklist = temp_repo / "custom_tasklist.md"
         custom_tasklist.write_text("# Custom Tasklist\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--plan', str(design_file), '--tasklist', 'custom_tasklist.md']):
-            with patch.object(Orchestrator, 'run_plan') as mock_plan:
+        with patch(
+            "sys.argv",
+            ["orchestrate.py", "--plan", str(design_file), "--tasklist", "custom_tasklist.md"],
+        ):
+            with patch.object(Orchestrator, "run_plan") as mock_plan:
                 mock_plan.return_value = {"success": True, "tasks_added": 1}
                 with pytest.raises(SystemExit):
                     orchestrate.main()
@@ -10658,7 +11173,7 @@ class TestRunCycle:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run') as mock_run:
+            with patch.object(orch, "run") as mock_run:
                 mock_run.return_value = 0
                 result = orch.run_cycle()
 
@@ -10674,7 +11189,7 @@ class TestRunCycle:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
+            with patch.object(orch, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": False}
                 result = orch.run_cycle()
 
@@ -10694,7 +11209,7 @@ class TestRunCycle:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
+            with patch.object(orch, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": True}
                 result = orch.run_cycle()
 
@@ -10725,12 +11240,13 @@ class TestRunCycle:
             approve_plans=False,
         )
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze, \
-                 patch.object(orch, 'run_design') as mock_design, \
-                 patch.object(orch, 'review_design') as mock_review, \
-                 patch.object(orch, 'run_plan') as mock_plan, \
-                 patch.object(orch, 'run') as mock_run:
-
+            with (
+                patch.object(orch, "run_analyze") as mock_analyze,
+                patch.object(orch, "run_design") as mock_design,
+                patch.object(orch, "review_design") as mock_review,
+                patch.object(orch, "run_plan") as mock_plan,
+                patch.object(orch, "run") as mock_run,
+            ):
                 mock_analyze.return_value = {"success": True}
                 mock_design.return_value = {"success": True, "design_file": "designs/add-tests.md"}
                 mock_review.return_value = {"approved": True}
@@ -10765,9 +11281,10 @@ class TestRunCycle:
         # Disable approval gates to test design failure
         orch = Orchestrator(approve_opportunities=False)
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze, \
-                 patch.object(orch, 'run_design') as mock_design:
-
+            with (
+                patch.object(orch, "run_analyze") as mock_analyze,
+                patch.object(orch, "run_design") as mock_design,
+            ):
                 mock_analyze.return_value = {"success": True}
                 mock_design.return_value = {"success": False}
 
@@ -10793,10 +11310,11 @@ class TestRunCycle:
         # Disable approval gates to test design review failure
         orch = Orchestrator(review_designs=True, approve_opportunities=False)
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze, \
-                 patch.object(orch, 'run_design') as mock_design, \
-                 patch.object(orch, 'review_design') as mock_review:
-
+            with (
+                patch.object(orch, "run_analyze") as mock_analyze,
+                patch.object(orch, "run_design") as mock_design,
+                patch.object(orch, "review_design") as mock_review,
+            ):
                 mock_analyze.return_value = {"success": True}
                 mock_design.return_value = {"success": True, "design_file": "designs/test.md"}
                 mock_review.return_value = {"approved": False}
@@ -10828,12 +11346,13 @@ class TestRunCycle:
             approve_plans=False,
         )
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze, \
-                 patch.object(orch, 'run_design') as mock_design, \
-                 patch.object(orch, 'review_design') as mock_review, \
-                 patch.object(orch, 'run_plan') as mock_plan, \
-                 patch.object(orch, 'run') as mock_run:
-
+            with (
+                patch.object(orch, "run_analyze") as mock_analyze,
+                patch.object(orch, "run_design") as mock_design,
+                patch.object(orch, "review_design") as mock_review,
+                patch.object(orch, "run_plan") as mock_plan,
+                patch.object(orch, "run") as mock_run,
+            ):
                 mock_analyze.return_value = {"success": True}
                 mock_design.return_value = {"success": True, "design_file": "designs/test.md"}
                 mock_plan.return_value = {"success": True, "tasks_added": 1}
@@ -10867,10 +11386,11 @@ class TestRunCycle:
             approve_designs=False,
         )
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze, \
-                 patch.object(orch, 'run_design') as mock_design, \
-                 patch.object(orch, 'run_plan') as mock_plan:
-
+            with (
+                patch.object(orch, "run_analyze") as mock_analyze,
+                patch.object(orch, "run_design") as mock_design,
+                patch.object(orch, "run_plan") as mock_plan,
+            ):
                 mock_analyze.return_value = {"success": True}
                 mock_design.return_value = {"success": True, "design_file": "designs/test.md"}
                 mock_plan.return_value = {"success": False, "tasks_added": 0}
@@ -10896,8 +11416,10 @@ class TestRunCycle:
 
         orch = Orchestrator(approve_opportunities=True)
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze, \
-                 patch.object(orch._outer_loop_manager, '_cycle_log') as mock_cycle_log:
+            with (
+                patch.object(orch, "run_analyze") as mock_analyze,
+                patch.object(orch._outer_loop_manager, "_cycle_log") as mock_cycle_log,
+            ):
                 mock_analyze.return_value = {"success": True, "opportunity_count": 1}
                 result = orch.run_cycle()
 
@@ -10930,7 +11452,7 @@ class TestRunCycle:
 
         orch = Orchestrator(approve_opportunities=True)
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
+            with patch.object(orch, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": True, "opportunity_count": 2}
                 first_result = orch.run_cycle()
                 second_result = orch.run_cycle()
@@ -10956,12 +11478,19 @@ class TestRunCycle:
             approve_designs=True,
         )
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze, \
-                 patch.object(orch, '_select_opportunity') as mock_select, \
-                 patch.object(orch._outer_loop_manager.opportunity_provider, 'update_opportunity_status') as mock_update, \
-                 patch.object(orch, 'run_design') as mock_design, \
-                 patch.object(orch, 'review_design') as mock_review:
-                mock_design.return_value = {"success": True, "design_file": "designs/improve-onboarding.md"}
+            with (
+                patch.object(orch, "run_analyze") as mock_analyze,
+                patch.object(orch, "_select_opportunity") as mock_select,
+                patch.object(
+                    orch._outer_loop_manager.opportunity_provider, "update_opportunity_status"
+                ) as mock_update,
+                patch.object(orch, "run_design") as mock_design,
+                patch.object(orch, "review_design") as mock_review,
+            ):
+                mock_design.return_value = {
+                    "success": True,
+                    "design_file": "designs/improve-onboarding.md",
+                }
                 mock_review.return_value = {"approved": True}
 
                 result = orch.run_cycle()
@@ -10986,9 +11515,9 @@ class TestCycleCLI:
         tasklist.parent.mkdir(exist_ok=True)
         tasklist.write_text("# Tasklist\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--cycle']):
-            with patch.object(Orchestrator, 'preflight_checks'):
-                with patch.object(Orchestrator, 'run_cycle') as mock_cycle:
+        with patch("sys.argv", ["orchestrate.py", "--cycle"]):
+            with patch.object(Orchestrator, "preflight_checks"):
+                with patch.object(Orchestrator, "run_cycle") as mock_cycle:
                     mock_cycle.return_value = 0
                     with pytest.raises(SystemExit) as exc_info:
                         orchestrate.main()
@@ -11004,9 +11533,9 @@ class TestCycleCLI:
         tasklist.parent.mkdir(exist_ok=True)
         tasklist.write_text("# Tasklist\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--cycle']):
-            with patch.object(Orchestrator, 'preflight_checks'):
-                with patch.object(Orchestrator, 'run_cycle') as mock_cycle:
+        with patch("sys.argv", ["orchestrate.py", "--cycle"]):
+            with patch.object(Orchestrator, "preflight_checks"):
+                with patch.object(Orchestrator, "run_cycle") as mock_cycle:
                     mock_cycle.return_value = 1
                     with pytest.raises(SystemExit) as exc_info:
                         orchestrate.main()
@@ -11021,9 +11550,9 @@ class TestCycleCLI:
         tasklist.parent.mkdir(exist_ok=True)
         tasklist.write_text("# Tasklist\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--cycle']):
-            with patch.object(Orchestrator, 'preflight_checks'):
-                with patch.object(Orchestrator, 'run_cycle') as mock_cycle:
+        with patch("sys.argv", ["orchestrate.py", "--cycle"]):
+            with patch.object(Orchestrator, "preflight_checks"):
+                with patch.object(Orchestrator, "run_cycle") as mock_cycle:
                     mock_cycle.side_effect = Exception("Test error")
                     with pytest.raises(SystemExit) as exc_info:
                         orchestrate.main()
@@ -11038,9 +11567,12 @@ class TestCycleCLI:
         tasklist.parent.mkdir(exist_ok=True)
         tasklist.write_text("# Tasklist\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--cycle', '--max-cycles', '5', '--loc-threshold', '1000']):
-            with patch.object(Orchestrator, 'preflight_checks'):
-                with patch.object(Orchestrator, 'run_cycle') as mock_cycle:
+        with patch(
+            "sys.argv",
+            ["orchestrate.py", "--cycle", "--max-cycles", "5", "--loc-threshold", "1000"],
+        ):
+            with patch.object(Orchestrator, "preflight_checks"):
+                with patch.object(Orchestrator, "run_cycle") as mock_cycle:
                     mock_cycle.return_value = 0
                     with pytest.raises(SystemExit):
                         orchestrate.main()
@@ -11073,7 +11605,7 @@ class TestApprovalGates:
         )
         orch.repo_dir = temp_repo
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
+            with patch.object(orch, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": True}
                 result = orch.run_cycle()
 
@@ -11105,11 +11637,14 @@ class TestApprovalGates:
         )
         orch.repo_dir = temp_repo
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
-                with patch.object(orch, 'run_design') as mock_design:
-                    with patch.object(orch, 'review_design') as mock_review:
+            with patch.object(orch, "run_analyze") as mock_analyze:
+                with patch.object(orch, "run_design") as mock_design:
+                    with patch.object(orch, "review_design") as mock_review:
                         mock_analyze.return_value = {"success": True}
-                        mock_design.return_value = {"success": True, "design_file": "designs/test.md"}
+                        mock_design.return_value = {
+                            "success": True,
+                            "design_file": "designs/test.md",
+                        }
                         mock_review.return_value = {"approved": True}
 
                         result = orch.run_cycle()
@@ -11142,12 +11677,15 @@ class TestApprovalGates:
         )
         orch.repo_dir = temp_repo
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
-                with patch.object(orch, 'run_design') as mock_design:
-                    with patch.object(orch, 'review_design') as mock_review:
-                        with patch.object(orch, 'run_plan') as mock_plan:
+            with patch.object(orch, "run_analyze") as mock_analyze:
+                with patch.object(orch, "run_design") as mock_design:
+                    with patch.object(orch, "review_design") as mock_review:
+                        with patch.object(orch, "run_plan") as mock_plan:
                             mock_analyze.return_value = {"success": True}
-                            mock_design.return_value = {"success": True, "design_file": "designs/test.md"}
+                            mock_design.return_value = {
+                                "success": True,
+                                "design_file": "designs/test.md",
+                            }
                             mock_review.return_value = {"approved": True}
                             mock_plan.return_value = {"success": True, "tasks_added": 3}
 
@@ -11181,13 +11719,16 @@ class TestApprovalGates:
         )
         orch.repo_dir = temp_repo
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
-                with patch.object(orch, 'run_design') as mock_design:
-                    with patch.object(orch, 'review_design') as mock_review:
-                        with patch.object(orch, 'run_plan') as mock_plan:
-                            with patch.object(orch, 'run') as mock_run:
+            with patch.object(orch, "run_analyze") as mock_analyze:
+                with patch.object(orch, "run_design") as mock_design:
+                    with patch.object(orch, "review_design") as mock_review:
+                        with patch.object(orch, "run_plan") as mock_plan:
+                            with patch.object(orch, "run") as mock_run:
                                 mock_analyze.return_value = {"success": True}
-                                mock_design.return_value = {"success": True, "design_file": "designs/test.md"}
+                                mock_design.return_value = {
+                                    "success": True,
+                                    "design_file": "designs/test.md",
+                                }
                                 mock_review.return_value = {"approved": True}
                                 mock_plan.return_value = {"success": True, "tasks_added": 3}
                                 mock_run.return_value = 0
@@ -11211,18 +11752,18 @@ class TestApprovalGates:
         tasklist.parent.mkdir(exist_ok=True)
         tasklist.write_text("# Tasklist\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--cycle', '--no-approve']):
-            with patch.object(Orchestrator, 'preflight_checks'):
-                with patch.object(Orchestrator, '__init__', return_value=None) as mock_init:
-                    with patch.object(Orchestrator, 'run_cycle', return_value=0):
+        with patch("sys.argv", ["orchestrate.py", "--cycle", "--no-approve"]):
+            with patch.object(Orchestrator, "preflight_checks"):
+                with patch.object(Orchestrator, "__init__", return_value=None) as mock_init:
+                    with patch.object(Orchestrator, "run_cycle", return_value=0):
                         with pytest.raises(SystemExit):
                             orchestrate.main()
 
                         # Verify approval gates were set to False
                         call_kwargs = mock_init.call_args[1]
-                        assert call_kwargs.get('approve_opportunities') is False
-                        assert call_kwargs.get('approve_designs') is False
-                        assert call_kwargs.get('approve_plans') is False
+                        assert call_kwargs.get("approve_opportunities") is False
+                        assert call_kwargs.get("approve_designs") is False
+                        assert call_kwargs.get("approve_plans") is False
 
     def test_default_approval_gates_from_config(self, temp_repo):
         """Without --no-approve, approval gates use config values (default True)."""
@@ -11232,18 +11773,18 @@ class TestApprovalGates:
         tasklist.parent.mkdir(exist_ok=True)
         tasklist.write_text("# Tasklist\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--cycle']):
-            with patch.object(Orchestrator, 'preflight_checks'):
-                with patch.object(Orchestrator, '__init__', return_value=None) as mock_init:
-                    with patch.object(Orchestrator, 'run_cycle', return_value=0):
+        with patch("sys.argv", ["orchestrate.py", "--cycle"]):
+            with patch.object(Orchestrator, "preflight_checks"):
+                with patch.object(Orchestrator, "__init__", return_value=None) as mock_init:
+                    with patch.object(Orchestrator, "run_cycle", return_value=0):
                         with pytest.raises(SystemExit):
                             orchestrate.main()
 
                         # Verify approval gates use default (True)
                         call_kwargs = mock_init.call_args[1]
-                        assert call_kwargs.get('approve_opportunities') is True
-                        assert call_kwargs.get('approve_designs') is True
-                        assert call_kwargs.get('approve_plans') is True
+                        assert call_kwargs.get("approve_opportunities") is True
+                        assert call_kwargs.get("approve_designs") is True
+                        assert call_kwargs.get("approve_plans") is True
 
 
 class TestCycleLogging:
@@ -11256,7 +11797,7 @@ class TestCycleLogging:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
+            with patch.object(orch, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": False}
                 orch.run_cycle()
 
@@ -11273,7 +11814,7 @@ class TestCycleLogging:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
+            with patch.object(orch, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": False}
                 orch.run_cycle()
 
@@ -11291,7 +11832,7 @@ class TestCycleLogging:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
+            with patch.object(orch, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": False}
                 orch.run_cycle()
 
@@ -11309,7 +11850,7 @@ class TestCycleLogging:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
+            with patch.object(orch, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": False}
                 orch.run_cycle()
 
@@ -11331,7 +11872,7 @@ class TestCycleLogging:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
+            with patch.object(orch, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": True, "opportunity_count": 5}
                 orch.run_cycle()
 
@@ -11359,16 +11900,14 @@ class TestCycleLogging:
 
         orch = Orchestrator(approve_opportunities=True)
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
+            with patch.object(orch, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": True, "opportunity_count": 1}
                 orch.run_cycle()
 
                 cycles_dir = temp_repo / ".millstone" / "cycles"
                 log_file = list(cycles_dir.glob("*.log"))[0]
                 content = log_file.read_text()
-                select_line = next(
-                    line for line in content.splitlines() if "] SELECT: " in line
-                )
+                select_line = next(line for line in content.splitlines() if "] SELECT: " in line)
                 payload = json.loads(select_line.split("SELECT: ", 1)[1])
                 assert payload == {
                     "opportunity_id": "add-retry-logic",
@@ -11397,7 +11936,7 @@ class TestCycleLogging:
 
         orch = Orchestrator(approve_opportunities=True)  # Will halt at first gate
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze:
+            with patch.object(orch, "run_analyze") as mock_analyze:
                 mock_analyze.return_value = {"success": True, "opportunity_count": 1}
                 orch.run_cycle()
 
@@ -11431,12 +11970,13 @@ class TestCycleLogging:
             approve_plans=False,
         )
         try:
-            with patch.object(orch, 'run_analyze') as mock_analyze, \
-                 patch.object(orch, 'run_design') as mock_design, \
-                 patch.object(orch, 'review_design') as mock_review, \
-                 patch.object(orch, 'run_plan') as mock_plan, \
-                 patch.object(orch, 'run') as mock_run:
-
+            with (
+                patch.object(orch, "run_analyze") as mock_analyze,
+                patch.object(orch, "run_design") as mock_design,
+                patch.object(orch, "review_design") as mock_review,
+                patch.object(orch, "run_plan") as mock_plan,
+                patch.object(orch, "run") as mock_run,
+            ):
                 mock_analyze.return_value = {"success": True, "opportunity_count": 3}
                 mock_design.return_value = {"success": True, "design_file": "designs/add-tests.md"}
                 mock_review.return_value = {"approved": True, "verdict": "APPROVED"}
@@ -11452,9 +11992,7 @@ class TestCycleLogging:
                 # Verify all phases are logged
                 assert "=== Cycle Started:" in content
                 assert "ANALYZE: Found 3 opportunities" in content
-                select_line = next(
-                    line for line in content.splitlines() if "] SELECT: " in line
-                )
+                select_line = next(line for line in content.splitlines() if "] SELECT: " in line)
                 select_payload = json.loads(select_line.split("SELECT: ", 1)[1])
                 assert select_payload["title"] == "Add Tests"
                 assert "ADOPT:" in content
@@ -11474,7 +12012,7 @@ class TestCycleLogging:
 
         orch = Orchestrator()
         try:
-            with patch.object(orch, 'run') as mock_run:
+            with patch.object(orch, "run") as mock_run:
                 mock_run.return_value = 0
                 orch.run_cycle()
 
@@ -11526,9 +12064,11 @@ class TestCostTracking:
     def test_save_task_metrics_creates_json_file(self, temp_repo):
         """save_task_metrics creates a JSON file with correct schema."""
         import json
+
         orch = Orchestrator()
         try:
             from datetime import datetime
+
             orch._task_start_time = datetime.now()
             orch._task_tokens_in = 1000
             orch._task_tokens_out = 500
@@ -11559,9 +12099,11 @@ class TestCostTracking:
     def test_save_task_metrics_with_eval_delta(self, temp_repo):
         """save_task_metrics calculates eval delta when before/after provided."""
         import json
+
         orch = Orchestrator()
         try:
             from datetime import datetime
+
             orch._task_start_time = datetime.now()
 
             eval_before = {
@@ -11575,9 +12117,7 @@ class TestCostTracking:
                 "coverage": {"line_rate": 0.80},
             }
 
-            task_file = orch.save_task_metrics(
-                "Test task", "approved", 1, eval_before, eval_after
-            )
+            task_file = orch.save_task_metrics("Test task", "approved", 1, eval_before, eval_after)
 
             data = json.loads(task_file.read_text())
 
@@ -11602,9 +12142,11 @@ class TestCostTracking:
     def test_get_task_summary_returns_tasks_sorted(self, temp_repo):
         """get_task_summary returns tasks sorted by timestamp (newest first)."""
         import time
+
         orch = Orchestrator()
         try:
             from datetime import datetime
+
             tasks_dir = orch.work_dir / "tasks"
             tasks_dir.mkdir(exist_ok=True)
 
@@ -11631,9 +12173,11 @@ class TestCostTracking:
     def test_get_task_summary_respects_limit(self, temp_repo):
         """get_task_summary respects the limit parameter."""
         import time
+
         orch = Orchestrator()
         try:
             from datetime import datetime
+
             tasks_dir = orch.work_dir / "tasks"
             tasks_dir.mkdir(exist_ok=True)
 
@@ -11656,6 +12200,7 @@ class TestCostTracking:
         orch = Orchestrator()
         try:
             from datetime import datetime
+
             orch._task_start_time = datetime.now()
             orch._task_tokens_in = 100
             orch._task_tokens_out = 50
@@ -11683,7 +12228,7 @@ class TestCostTracking:
             orch._task_tokens_in = 0
             orch._task_tokens_out = 0
 
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(
                     stdout="Response from claude (about 100 chars)...",
                     stderr="",
@@ -11703,9 +12248,11 @@ class TestCostTracking:
     def test_save_task_metrics_includes_review_data(self, temp_repo):
         """save_task_metrics includes review quality metrics."""
         import json
+
         orch = Orchestrator()
         try:
             from datetime import datetime
+
             orch._task_start_time = datetime.now()
             orch._task_tokens_in = 1000
             orch._task_tokens_out = 500
@@ -11742,9 +12289,11 @@ class TestCostTracking:
     def test_save_task_metrics_review_data_defaults(self, temp_repo):
         """save_task_metrics includes default review metrics when not set."""
         import json
+
         orch = Orchestrator()
         try:
             from datetime import datetime
+
             orch._task_start_time = datetime.now()
             # Don't set review metrics, use defaults
 
@@ -11804,6 +12353,7 @@ class TestCostTracking:
     def test_append_review_metric_writes_json_line(self, temp_repo):
         """append_review_metric writes valid JSON line."""
         import json
+
         orch = Orchestrator()
         try:
             orch.append_review_metric(
@@ -11830,6 +12380,7 @@ class TestCostTracking:
     def test_append_review_metric_appends_multiple_entries(self, temp_repo):
         """append_review_metric appends multiple reviews to same file."""
         import json
+
         orch = Orchestrator()
         try:
             orch.append_review_metric(
@@ -11867,6 +12418,7 @@ class TestCostTracking:
     def test_append_review_metric_includes_severity_breakdown(self, temp_repo):
         """append_review_metric includes findings by severity."""
         import json
+
         orch = Orchestrator()
         try:
             orch.append_review_metric(
@@ -11896,6 +12448,7 @@ class TestCostTracking:
     def test_append_review_metric_records_reviewer_cli(self, temp_repo):
         """append_review_metric records the reviewer CLI used."""
         import json
+
         orch = Orchestrator(cli_reviewer="codex")
         try:
             orch.append_review_metric(
@@ -11916,6 +12469,7 @@ class TestCostTracking:
     def test_append_review_metric_includes_false_positive_indicator(self, temp_repo):
         """append_review_metric includes false_positive_indicator field."""
         import json
+
         orch = Orchestrator()
         try:
             orch.append_review_metric(
@@ -11937,6 +12491,7 @@ class TestCostTracking:
     def test_append_review_metric_false_positive_defaults_to_false(self, temp_repo):
         """append_review_metric defaults false_positive_indicator to False."""
         import json
+
         orch = Orchestrator()
         try:
             orch.append_review_metric(
@@ -12119,7 +12674,12 @@ class TestRiskLabels:
     def test_validate_task_fails_missing_risk(self, temp_repo):
         """_validate_task rejects tasks without risk level when required."""
         orch = Orchestrator()
-        orch.task_constraints = {"max_loc": 200, "require_tests": False, "require_criteria": False, "require_risk": True}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": False,
+            "require_criteria": False,
+            "require_risk": True,
+        }
         try:
             metadata = {
                 "title": "Task without risk",
@@ -12141,7 +12701,12 @@ class TestRiskLabels:
     def test_validate_task_fails_invalid_risk(self, temp_repo):
         """_validate_task rejects tasks with invalid risk levels."""
         orch = Orchestrator()
-        orch.task_constraints = {"max_loc": 200, "require_tests": False, "require_criteria": False, "require_risk": True}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": False,
+            "require_criteria": False,
+            "require_risk": True,
+        }
         try:
             metadata = {
                 "title": "Task with invalid risk",
@@ -12163,7 +12728,13 @@ class TestRiskLabels:
     def test_validate_task_passes_valid_risk(self, temp_repo):
         """_validate_task passes tasks with valid risk levels."""
         orch = Orchestrator()
-        orch.task_constraints = {"max_loc": 200, "require_tests": False, "require_criteria": False, "require_risk": True, "require_context": False}
+        orch.task_constraints = {
+            "max_loc": 200,
+            "require_tests": False,
+            "require_criteria": False,
+            "require_risk": True,
+            "require_context": False,
+        }
         try:
             for risk_level in ["low", "medium", "high"]:
                 metadata = {
@@ -12730,9 +13301,11 @@ class TestContextExtraction:
 
             # Mock extract_context_summary to verify it's called
             calls = []
+
             def mock_extract(task, diff):
                 calls.append((task, diff))
                 return {"summary": "Added new API endpoint", "key_decisions": ["Used REST pattern"]}
+
             monkeypatch.setattr(orch, "extract_context_summary", mock_extract)
 
             orch.accumulate_group_context(task_text, git_diff=git_diff)
@@ -12752,9 +13325,11 @@ class TestContextExtraction:
 
             # Mock extract_context_summary to verify it's not called
             calls = []
+
             def mock_extract(task, diff):
                 calls.append((task, diff))
                 return None
+
             monkeypatch.setattr(orch, "extract_context_summary", mock_extract)
 
             orch.accumulate_group_context(task_text)
@@ -12771,9 +13346,11 @@ class TestContextExtraction:
             task_text = "**Task**: Description"
 
             calls = []
+
             def mock_extract(task, diff):
                 calls.append((task, diff))
                 return None
+
             monkeypatch.setattr(orch, "extract_context_summary", mock_extract)
 
             # Empty string should skip extraction
@@ -12795,8 +13372,9 @@ class TestContextExtraction:
             def mock_extract(task, diff):
                 return {
                     "summary": "Built the new component",
-                    "key_decisions": ["Used TypeScript", "Added unit tests"]
+                    "key_decisions": ["Used TypeScript", "Added unit tests"],
                 }
+
             monkeypatch.setattr(orch, "extract_context_summary", mock_extract)
 
             orch.accumulate_group_context(task_text, git_diff=git_diff)
@@ -12820,6 +13398,7 @@ class TestContextExtraction:
 
             def mock_extract(task, diff):
                 return None  # Extraction failed
+
             monkeypatch.setattr(orch, "extract_context_summary", mock_extract)
 
             orch.accumulate_group_context(task_text, git_diff=git_diff)
@@ -12840,11 +13419,12 @@ class TestContextExtraction:
         try:
             # Mock run_agent to return a valid JSON response
             def mock_run_agent(prompt, role=None, output_schema=None):
-                return '''Here's the extracted context:
+                return """Here's the extracted context:
 
 ```json
 {"summary": "Added authentication", "key_decisions": ["Used JWT tokens", "Added refresh tokens"]}
-```'''
+```"""
+
             monkeypatch.setattr(orch, "run_agent", mock_run_agent)
             monkeypatch.setattr(orch, "load_prompt", lambda name: "{{TASK_TEXT}}\n{{GIT_DIFF}}")
 
@@ -12861,8 +13441,10 @@ class TestContextExtraction:
         """extract_context_summary returns None when JSON is invalid."""
         orch = Orchestrator()
         try:
+
             def mock_run_agent(prompt, role=None, output_schema=None):
                 return "No valid JSON here, just some text."
+
             monkeypatch.setattr(orch, "run_agent", mock_run_agent)
             monkeypatch.setattr(orch, "load_prompt", lambda name: "{{TASK_TEXT}}\n{{GIT_DIFF}}")
 
@@ -12877,11 +13459,15 @@ class TestContextExtraction:
         orch = Orchestrator()
         try:
             captured_prompts = []
+
             def mock_run_agent(prompt, role=None, output_schema=None):
                 captured_prompts.append(prompt)
                 return '{"summary": "test", "key_decisions": []}'
+
             monkeypatch.setattr(orch, "run_agent", mock_run_agent)
-            monkeypatch.setattr(orch, "load_prompt", lambda name: "Task: {{TASK_TEXT}}\nDiff: {{GIT_DIFF}}")
+            monkeypatch.setattr(
+                orch, "load_prompt", lambda name: "Task: {{TASK_TEXT}}\nDiff: {{GIT_DIFF}}"
+            )
 
             large_diff = "+" * 15000  # Larger than 10000 char limit
             orch.extract_context_summary("**Task**: Do thing", large_diff)
@@ -12898,8 +13484,10 @@ class TestContextExtraction:
         """extract_context_summary returns None on exception."""
         orch = Orchestrator()
         try:
+
             def mock_run_agent(prompt, role=None, output_schema=None):
                 raise RuntimeError("Connection failed")
+
             monkeypatch.setattr(orch, "run_agent", mock_run_agent)
             monkeypatch.setattr(orch, "load_prompt", lambda name: "{{TASK_TEXT}}\n{{GIT_DIFF}}")
 
@@ -13362,7 +13950,10 @@ class TestPolicyEngine:
         orch = Orchestrator()
         try:
             assert orch.policy is not None
-            assert orch.policy["limits"]["max_loc_per_task"] == DEFAULT_POLICY["limits"]["max_loc_per_task"]
+            assert (
+                orch.policy["limits"]["max_loc_per_task"]
+                == DEFAULT_POLICY["limits"]["max_loc_per_task"]
+            )
         finally:
             orch.cleanup()
 
@@ -13825,7 +14416,6 @@ max_loc_per_task = 5
             orch.cleanup()
 
 
-
 class TestEvalRollback:
     """Tests for eval regression rollback functionality."""
 
@@ -13871,17 +14461,17 @@ class TestEvalRollback:
             }
 
             # Mock run_eval to return a lower score (regression > max_regression)
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": [],
                     "_passed": True,
                     "composite_score": 0.85,  # 0.10 regression, > 0.05 default max
                     "categories": {"tests": {"score": 0.85}},
                 }
-                with patch.object(orch, 'git') as mock_git:
+                with patch.object(orch, "git") as mock_git:
                     mock_git.return_value = "abc123\n"
                     # Mock input to decline revert
-                    with patch('builtins.input', return_value='n'):
+                    with patch("builtins.input", return_value="n"):
                         result = orch._run_eval_on_commit()
 
             assert result is False  # Regression detected
@@ -13901,7 +14491,7 @@ class TestEvalRollback:
             }
 
             # Mock run_eval to return a small regression (< max_regression)
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": [],
                     "_passed": True,
@@ -13928,7 +14518,7 @@ class TestEvalRollback:
             }
 
             # Mock run_eval to return an improvement
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": [],
                     "_passed": True,
@@ -13954,33 +14544,26 @@ class TestEvalRollback:
             # Create a second commit to revert
             (temp_repo / "test.txt").write_text("changed content")
             subprocess.run(["git", "add", "."], cwd=temp_repo, capture_output=True)
-            subprocess.run(["git", "commit", "-m", "To be reverted"], cwd=temp_repo, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", "To be reverted"], cwd=temp_repo, capture_output=True
+            )
 
             # Get the commit hash
             result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=temp_repo,
-                capture_output=True,
-                text=True
+                ["git", "rev-parse", "HEAD"], cwd=temp_repo, capture_output=True, text=True
             )
             commit_hash = result.stdout.strip()
 
             # Perform rollback
             success = orch._perform_rollback(
-                commit_hash,
-                "Test task",
-                "test_reason",
-                {"detail": "test"}
+                commit_hash, "Test task", "test_reason", {"detail": "test"}
             )
 
             assert success is True
 
             # Verify revert commit was created
             result = subprocess.run(
-                ["git", "log", "-1", "--format=%s"],
-                cwd=temp_repo,
-                capture_output=True,
-                text=True
+                ["git", "log", "-1", "--format=%s"], cwd=temp_repo, capture_output=True, text=True
             )
             assert "Revert" in result.stdout
         finally:
@@ -14000,10 +14583,7 @@ class TestEvalRollback:
             subprocess.run(["git", "commit", "-m", "Change"], cwd=temp_repo, capture_output=True)
 
             result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=temp_repo,
-                capture_output=True,
-                text=True
+                ["git", "rev-parse", "HEAD"], cwd=temp_repo, capture_output=True, text=True
             )
             commit_hash = result.stdout.strip()
 
@@ -14011,7 +14591,7 @@ class TestEvalRollback:
                 commit_hash,
                 "Test task",
                 "composite_score_regression",
-                {"baseline_score": 0.95, "current_score": 0.80}
+                {"baseline_score": 0.95, "current_score": 0.80},
             )
 
             # Check context file exists
@@ -14065,10 +14645,14 @@ class TestEvalRollback:
 
             # Create file with different content
             rollback_file = orch.work_dir / "last_rollback.json"
-            rollback_file.write_text(json.dumps({
-                "task": "File task",
-                "reason": "file_reason",
-            }))
+            rollback_file.write_text(
+                json.dumps(
+                    {
+                        "task": "File task",
+                        "reason": "file_reason",
+                    }
+                )
+            )
 
             result = orch._load_rollback_context()
             assert result["task"] == "In-memory task"
@@ -14113,7 +14697,7 @@ class TestEvalRollback:
             }
 
             # Mock run_eval to return regression
-            with patch.object(orch, 'run_eval') as mock_eval:
+            with patch.object(orch, "run_eval") as mock_eval:
                 mock_eval.return_value = {
                     "failed_tests": [],
                     "_passed": True,
@@ -14127,10 +14711,7 @@ class TestEvalRollback:
 
             # Verify revert was created
             log_result = subprocess.run(
-                ["git", "log", "-1", "--format=%s"],
-                cwd=temp_repo,
-                capture_output=True,
-                text=True
+                ["git", "log", "-1", "--format=%s"], cwd=temp_repo, capture_output=True, text=True
             )
             assert "Revert" in log_result.stdout
         finally:
@@ -14145,7 +14726,7 @@ class TestEvalRollback:
         tasklist.parent.mkdir(parents=True, exist_ok=True)
         tasklist.write_text("# Tasklist\n\n- [ ] Test task\n")
 
-        with patch('sys.argv', ['orchestrate.py', '--auto-rollback', '--dry-run']):
+        with patch("sys.argv", ["orchestrate.py", "--auto-rollback", "--dry-run"]):
             with pytest.raises(SystemExit) as exc_info:
                 orchestrate.main()
             assert exc_info.value.code == 0
@@ -14211,6 +14792,7 @@ class TestMetricsReport:
     def test_metrics_report_shows_basic_stats(self, temp_repo, capsys):
         """--metrics-report shows basic approval rate stats."""
         import json
+
         orch = Orchestrator(task="metrics-report", dry_run=False)
         try:
             metrics_dir = orch.work_dir / "metrics"
@@ -14218,9 +14800,33 @@ class TestMetricsReport:
             reviews_file = metrics_dir / "reviews.jsonl"
 
             reviews = [
-                {"task_hash": "abc123", "verdict": "APPROVED", "findings": [], "findings_count": 0, "duration_ms": 1000, "timestamp": "2024-01-01T10:00:00", "reviewer_cli": "claude"},
-                {"task_hash": "def456", "verdict": "REQUEST_CHANGES", "findings": ["Issue 1"], "findings_count": 1, "duration_ms": 1500, "timestamp": "2024-01-01T11:00:00", "reviewer_cli": "claude"},
-                {"task_hash": "def456", "verdict": "APPROVED", "findings": [], "findings_count": 0, "duration_ms": 800, "timestamp": "2024-01-01T11:30:00", "reviewer_cli": "claude"},
+                {
+                    "task_hash": "abc123",
+                    "verdict": "APPROVED",
+                    "findings": [],
+                    "findings_count": 0,
+                    "duration_ms": 1000,
+                    "timestamp": "2024-01-01T10:00:00",
+                    "reviewer_cli": "claude",
+                },
+                {
+                    "task_hash": "def456",
+                    "verdict": "REQUEST_CHANGES",
+                    "findings": ["Issue 1"],
+                    "findings_count": 1,
+                    "duration_ms": 1500,
+                    "timestamp": "2024-01-01T11:00:00",
+                    "reviewer_cli": "claude",
+                },
+                {
+                    "task_hash": "def456",
+                    "verdict": "APPROVED",
+                    "findings": [],
+                    "findings_count": 0,
+                    "duration_ms": 800,
+                    "timestamp": "2024-01-01T11:30:00",
+                    "reviewer_cli": "claude",
+                },
             ]
             reviews_file.write_text("\n".join(json.dumps(r) for r in reviews) + "\n")
 
@@ -14236,6 +14842,7 @@ class TestMetricsReport:
     def test_metrics_report_shows_cycles_to_approval(self, temp_repo, capsys):
         """--metrics-report shows average cycles to approval."""
         import json
+
         orch = Orchestrator(task="metrics-report", dry_run=False)
         try:
             metrics_dir = orch.work_dir / "metrics"
@@ -14245,9 +14852,33 @@ class TestMetricsReport:
             # Task 1: approved on first try (1 cycle)
             # Task 2: approved on second try (2 cycles)
             reviews = [
-                {"task_hash": "task1", "verdict": "APPROVED", "findings": [], "findings_count": 0, "duration_ms": 1000, "timestamp": "2024-01-01T10:00:00", "reviewer_cli": "claude"},
-                {"task_hash": "task2", "verdict": "REQUEST_CHANGES", "findings": ["Fix bug"], "findings_count": 1, "duration_ms": 1500, "timestamp": "2024-01-01T11:00:00", "reviewer_cli": "claude"},
-                {"task_hash": "task2", "verdict": "APPROVED", "findings": [], "findings_count": 0, "duration_ms": 800, "timestamp": "2024-01-01T11:30:00", "reviewer_cli": "claude"},
+                {
+                    "task_hash": "task1",
+                    "verdict": "APPROVED",
+                    "findings": [],
+                    "findings_count": 0,
+                    "duration_ms": 1000,
+                    "timestamp": "2024-01-01T10:00:00",
+                    "reviewer_cli": "claude",
+                },
+                {
+                    "task_hash": "task2",
+                    "verdict": "REQUEST_CHANGES",
+                    "findings": ["Fix bug"],
+                    "findings_count": 1,
+                    "duration_ms": 1500,
+                    "timestamp": "2024-01-01T11:00:00",
+                    "reviewer_cli": "claude",
+                },
+                {
+                    "task_hash": "task2",
+                    "verdict": "APPROVED",
+                    "findings": [],
+                    "findings_count": 0,
+                    "duration_ms": 800,
+                    "timestamp": "2024-01-01T11:30:00",
+                    "reviewer_cli": "claude",
+                },
             ]
             reviews_file.write_text("\n".join(json.dumps(r) for r in reviews) + "\n")
 
@@ -14262,6 +14893,7 @@ class TestMetricsReport:
     def test_metrics_report_shows_finding_categories(self, temp_repo, capsys):
         """--metrics-report categorizes findings by keywords."""
         import json
+
         orch = Orchestrator(task="metrics-report", dry_run=False)
         try:
             metrics_dir = orch.work_dir / "metrics"
@@ -14269,8 +14901,24 @@ class TestMetricsReport:
             reviews_file = metrics_dir / "reviews.jsonl"
 
             reviews = [
-                {"task_hash": "task1", "verdict": "REQUEST_CHANGES", "findings": ["Security vulnerability in auth", "Missing test coverage"], "findings_count": 2, "duration_ms": 1000, "timestamp": "2024-01-01T10:00:00", "reviewer_cli": "claude"},
-                {"task_hash": "task2", "verdict": "REQUEST_CHANGES", "findings": ["Error handling needed", "Type annotation missing"], "findings_count": 2, "duration_ms": 1500, "timestamp": "2024-01-01T11:00:00", "reviewer_cli": "claude"},
+                {
+                    "task_hash": "task1",
+                    "verdict": "REQUEST_CHANGES",
+                    "findings": ["Security vulnerability in auth", "Missing test coverage"],
+                    "findings_count": 2,
+                    "duration_ms": 1000,
+                    "timestamp": "2024-01-01T10:00:00",
+                    "reviewer_cli": "claude",
+                },
+                {
+                    "task_hash": "task2",
+                    "verdict": "REQUEST_CHANGES",
+                    "findings": ["Error handling needed", "Type annotation missing"],
+                    "findings_count": 2,
+                    "duration_ms": 1500,
+                    "timestamp": "2024-01-01T11:00:00",
+                    "reviewer_cli": "claude",
+                },
             ]
             reviews_file.write_text("\n".join(json.dumps(r) for r in reviews) + "\n")
 
@@ -14289,6 +14937,7 @@ class TestMetricsReport:
     def test_metrics_report_shows_severity_breakdown(self, temp_repo, capsys):
         """--metrics-report shows findings by severity."""
         import json
+
         orch = Orchestrator(task="metrics-report", dry_run=False)
         try:
             metrics_dir = orch.work_dir / "metrics"
@@ -14321,6 +14970,7 @@ class TestMetricsReport:
     def test_metrics_report_shows_reviewer_comparison(self, temp_repo, capsys):
         """--metrics-report compares multiple reviewer CLIs."""
         import json
+
         orch = Orchestrator(task="metrics-report", dry_run=False)
         try:
             metrics_dir = orch.work_dir / "metrics"
@@ -14328,9 +14978,33 @@ class TestMetricsReport:
             reviews_file = metrics_dir / "reviews.jsonl"
 
             reviews = [
-                {"task_hash": "task1", "verdict": "APPROVED", "findings": [], "findings_count": 0, "duration_ms": 1000, "timestamp": "2024-01-01T10:00:00", "reviewer_cli": "claude"},
-                {"task_hash": "task2", "verdict": "REQUEST_CHANGES", "findings": ["Issue"], "findings_count": 1, "duration_ms": 2000, "timestamp": "2024-01-01T11:00:00", "reviewer_cli": "codex"},
-                {"task_hash": "task3", "verdict": "APPROVED", "findings": [], "findings_count": 0, "duration_ms": 800, "timestamp": "2024-01-01T12:00:00", "reviewer_cli": "codex"},
+                {
+                    "task_hash": "task1",
+                    "verdict": "APPROVED",
+                    "findings": [],
+                    "findings_count": 0,
+                    "duration_ms": 1000,
+                    "timestamp": "2024-01-01T10:00:00",
+                    "reviewer_cli": "claude",
+                },
+                {
+                    "task_hash": "task2",
+                    "verdict": "REQUEST_CHANGES",
+                    "findings": ["Issue"],
+                    "findings_count": 1,
+                    "duration_ms": 2000,
+                    "timestamp": "2024-01-01T11:00:00",
+                    "reviewer_cli": "codex",
+                },
+                {
+                    "task_hash": "task3",
+                    "verdict": "APPROVED",
+                    "findings": [],
+                    "findings_count": 0,
+                    "duration_ms": 800,
+                    "timestamp": "2024-01-01T12:00:00",
+                    "reviewer_cli": "codex",
+                },
             ]
             reviews_file.write_text("\n".join(json.dumps(r) for r in reviews) + "\n")
 
@@ -14346,6 +15020,7 @@ class TestMetricsReport:
     def test_metrics_report_single_reviewer_shows_stats(self, temp_repo, capsys):
         """--metrics-report shows stats for single reviewer."""
         import json
+
         orch = Orchestrator(task="metrics-report", dry_run=False)
         try:
             metrics_dir = orch.work_dir / "metrics"
@@ -14353,7 +15028,15 @@ class TestMetricsReport:
             reviews_file = metrics_dir / "reviews.jsonl"
 
             reviews = [
-                {"task_hash": "task1", "verdict": "APPROVED", "findings": [], "findings_count": 0, "duration_ms": 1000, "timestamp": "2024-01-01T10:00:00", "reviewer_cli": "claude"},
+                {
+                    "task_hash": "task1",
+                    "verdict": "APPROVED",
+                    "findings": [],
+                    "findings_count": 0,
+                    "duration_ms": 1000,
+                    "timestamp": "2024-01-01T10:00:00",
+                    "reviewer_cli": "claude",
+                },
             ]
             reviews_file.write_text("\n".join(json.dumps(r) for r in reviews) + "\n")
 
@@ -14361,13 +15044,16 @@ class TestMetricsReport:
 
             captured = capsys.readouterr()
             assert "Reviewer: claude" in captured.out
-            assert "Reviewer comparison:" not in captured.out  # No comparison table for single reviewer
+            assert (
+                "Reviewer comparison:" not in captured.out
+            )  # No comparison table for single reviewer
         finally:
             orch.cleanup()
 
     def test_metrics_report_shows_duration_stats(self, temp_repo, capsys):
         """--metrics-report shows total and average review duration."""
         import json
+
         orch = Orchestrator(task="metrics-report", dry_run=False)
         try:
             metrics_dir = orch.work_dir / "metrics"
@@ -14375,8 +15061,24 @@ class TestMetricsReport:
             reviews_file = metrics_dir / "reviews.jsonl"
 
             reviews = [
-                {"task_hash": "task1", "verdict": "APPROVED", "findings": [], "findings_count": 0, "duration_ms": 2000, "timestamp": "2024-01-01T10:00:00", "reviewer_cli": "claude"},
-                {"task_hash": "task2", "verdict": "APPROVED", "findings": [], "findings_count": 0, "duration_ms": 4000, "timestamp": "2024-01-01T11:00:00", "reviewer_cli": "claude"},
+                {
+                    "task_hash": "task1",
+                    "verdict": "APPROVED",
+                    "findings": [],
+                    "findings_count": 0,
+                    "duration_ms": 2000,
+                    "timestamp": "2024-01-01T10:00:00",
+                    "reviewer_cli": "claude",
+                },
+                {
+                    "task_hash": "task2",
+                    "verdict": "APPROVED",
+                    "findings": [],
+                    "findings_count": 0,
+                    "duration_ms": 4000,
+                    "timestamp": "2024-01-01T11:00:00",
+                    "reviewer_cli": "claude",
+                },
             ]
             reviews_file.write_text("\n".join(json.dumps(r) for r in reviews) + "\n")
 
@@ -14412,6 +15114,7 @@ class TestMetricsReport:
     def test_metrics_report_shows_false_positive_count(self, temp_repo, capsys):
         """--metrics-report shows count of potential false positives."""
         import json
+
         orch = Orchestrator(task="metrics-report", dry_run=False)
         try:
             metrics_dir = orch.work_dir / "metrics"
@@ -14419,9 +15122,36 @@ class TestMetricsReport:
             reviews_file = metrics_dir / "reviews.jsonl"
 
             reviews = [
-                {"task_hash": "task1", "verdict": "REQUEST_CHANGES", "findings": ["Issue"], "findings_count": 1, "duration_ms": 1000, "timestamp": "2024-01-01T10:00:00", "reviewer_cli": "claude", "false_positive_indicator": False},
-                {"task_hash": "task1", "verdict": "APPROVED", "findings": [], "findings_count": 0, "duration_ms": 800, "timestamp": "2024-01-01T10:30:00", "reviewer_cli": "claude", "false_positive_indicator": True},
-                {"task_hash": "task2", "verdict": "APPROVED", "findings": [], "findings_count": 0, "duration_ms": 1000, "timestamp": "2024-01-01T11:00:00", "reviewer_cli": "claude", "false_positive_indicator": False},
+                {
+                    "task_hash": "task1",
+                    "verdict": "REQUEST_CHANGES",
+                    "findings": ["Issue"],
+                    "findings_count": 1,
+                    "duration_ms": 1000,
+                    "timestamp": "2024-01-01T10:00:00",
+                    "reviewer_cli": "claude",
+                    "false_positive_indicator": False,
+                },
+                {
+                    "task_hash": "task1",
+                    "verdict": "APPROVED",
+                    "findings": [],
+                    "findings_count": 0,
+                    "duration_ms": 800,
+                    "timestamp": "2024-01-01T10:30:00",
+                    "reviewer_cli": "claude",
+                    "false_positive_indicator": True,
+                },
+                {
+                    "task_hash": "task2",
+                    "verdict": "APPROVED",
+                    "findings": [],
+                    "findings_count": 0,
+                    "duration_ms": 1000,
+                    "timestamp": "2024-01-01T11:00:00",
+                    "reviewer_cli": "claude",
+                    "false_positive_indicator": False,
+                },
             ]
             reviews_file.write_text("\n".join(json.dumps(r) for r in reviews) + "\n")
 
@@ -14436,6 +15166,7 @@ class TestMetricsReport:
     def test_metrics_report_hides_false_positive_when_zero(self, temp_repo, capsys):
         """--metrics-report hides false positive section when count is zero."""
         import json
+
         orch = Orchestrator(task="metrics-report", dry_run=False)
         try:
             metrics_dir = orch.work_dir / "metrics"
@@ -14443,7 +15174,16 @@ class TestMetricsReport:
             reviews_file = metrics_dir / "reviews.jsonl"
 
             reviews = [
-                {"task_hash": "task1", "verdict": "APPROVED", "findings": [], "findings_count": 0, "duration_ms": 1000, "timestamp": "2024-01-01T10:00:00", "reviewer_cli": "claude", "false_positive_indicator": False},
+                {
+                    "task_hash": "task1",
+                    "verdict": "APPROVED",
+                    "findings": [],
+                    "findings_count": 0,
+                    "duration_ms": 1000,
+                    "timestamp": "2024-01-01T10:00:00",
+                    "reviewer_cli": "claude",
+                    "false_positive_indicator": False,
+                },
             ]
             reviews_file.write_text("\n".join(json.dumps(r) for r in reviews) + "\n")
 
@@ -14457,6 +15197,7 @@ class TestMetricsReport:
     def test_metrics_report_handles_missing_false_positive_field(self, temp_repo, capsys):
         """--metrics-report handles reviews without false_positive_indicator field."""
         import json
+
         orch = Orchestrator(task="metrics-report", dry_run=False)
         try:
             metrics_dir = orch.work_dir / "metrics"
@@ -14465,7 +15206,15 @@ class TestMetricsReport:
 
             # Old review format without false_positive_indicator
             reviews = [
-                {"task_hash": "task1", "verdict": "APPROVED", "findings": [], "findings_count": 0, "duration_ms": 1000, "timestamp": "2024-01-01T10:00:00", "reviewer_cli": "claude"},
+                {
+                    "task_hash": "task1",
+                    "verdict": "APPROVED",
+                    "findings": [],
+                    "findings_count": 0,
+                    "duration_ms": 1000,
+                    "timestamp": "2024-01-01T10:00:00",
+                    "reviewer_cli": "claude",
+                },
             ]
             reviews_file.write_text("\n".join(json.dumps(r) for r in reviews) + "\n")
 
@@ -14648,8 +15397,12 @@ class TestAnalyzeTasklist:
             order = result["suggested_order"]
             # Check that simpler tasks come before harder ones
             # Find all task positions by complexity
-            simple_positions = [i for i, idx in enumerate(order) if result["tasks"][idx]["complexity"] == "simple"]
-            complex_positions = [i for i, idx in enumerate(order) if result["tasks"][idx]["complexity"] == "complex"]
+            simple_positions = [
+                i for i, idx in enumerate(order) if result["tasks"][idx]["complexity"] == "simple"
+            ]
+            complex_positions = [
+                i for i, idx in enumerate(order) if result["tasks"][idx]["complexity"] == "complex"
+            ]
             # At least one simple task should exist and come before complex tasks
             assert len(simple_positions) > 0
             if complex_positions:
@@ -15064,6 +15817,7 @@ class TestSplitTask:
                 returncode = 0
                 stdout = '{"result": "suggested splits"}'
                 stderr = ""
+
             return MockResult()
 
         monkeypatch.setattr("subprocess.run", mock_subprocess_run)
@@ -15338,8 +16092,10 @@ class TestAutonomousOrgHooks:
         """run_review_diff parses APPROVED verdict correctly."""
         orch = Orchestrator(cli="claude")
         try:
-            with patch.object(orch, 'run_agent') as mock_agent:
-                mock_agent.return_value = '## QA Review\n\n```json\n{"verdict": "APPROVED", "reason": "Looks good"}\n```'
+            with patch.object(orch, "run_agent") as mock_agent:
+                mock_agent.return_value = (
+                    '## QA Review\n\n```json\n{"verdict": "APPROVED", "reason": "Looks good"}\n```'
+                )
                 result = orch.run_review_diff("diff content")
                 assert result["approved"] is True
                 assert "APPROVED" in result["output"]
@@ -15350,7 +16106,7 @@ class TestAutonomousOrgHooks:
         """run_review_diff parses REJECTED verdict correctly."""
         orch = Orchestrator(cli="claude")
         try:
-            with patch.object(orch, 'run_agent') as mock_agent:
+            with patch.object(orch, "run_agent") as mock_agent:
                 mock_agent.return_value = '{"verdict": "REJECTED", "reason": "Security risk"}'
                 result = orch.run_review_diff("diff content")
                 assert result["approved"] is False
@@ -15366,14 +16122,16 @@ class TestAutonomousOrgHooks:
             changelog = temp_repo / "CHANGELOG.md"
             changelog.parent.mkdir(parents=True, exist_ok=True)
 
-            with patch.object(orch, 'run_agent') as mock_agent:
-                mock_agent.return_value = '# Changelog\n\n## [1.2.3] - 2025-12-28\n- Feature X\n'
-                with patch.object(orch, 'git') as mock_git:
+            with patch.object(orch, "run_agent") as mock_agent:
+                mock_agent.return_value = "# Changelog\n\n## [1.2.3] - 2025-12-28\n- Feature X\n"
+                with patch.object(orch, "git") as mock_git:
                     result = orch.run_prepare_release()
 
                     assert result["tag"] == "v1.2.3"
                     assert changelog.read_text() == mock_agent.return_value
-                    mock_git.assert_called_with("tag", "-a", "v1.2.3", "-m", "Release 1.2.3", check=True)
+                    mock_git.assert_called_with(
+                        "tag", "-a", "v1.2.3", "-m", "Release 1.2.3", check=True
+                    )
         finally:
             orch.cleanup()
 
@@ -15385,7 +16143,7 @@ class TestAutonomousOrgHooks:
             infra_manifest_path = temp_repo / "docs/maintainer/infrastructure/manifest.md"
             infra_manifest_path.parent.mkdir(parents=True, exist_ok=True)
             infra_manifest_path.write_text("Service: millstone")
-            with patch.object(orch, 'run_agent') as mock_agent:
+            with patch.object(orch, "run_agent") as mock_agent:
                 mock_agent.return_value = "Diagnosis: High CPU"
                 result = orch.run_sre_diagnose()
                 assert "High CPU" in result["mitigation_plan"]

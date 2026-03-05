@@ -16,6 +16,7 @@ def test_builder_producer_stages_untracked_files(temp_repo):
         return "I created the file."
 
     call_count = 0
+
     def mock_run_agent_side_effect(*args, **kwargs):
         nonlocal call_count
         call_count += 1
@@ -30,7 +31,7 @@ def test_builder_producer_stages_untracked_files(temp_repo):
             return '{"status": "APPROVED", "verdict": "APPROVED"}'
         return ""
 
-    with patch.object(orch, 'run_agent') as mock_agent:
+    with patch.object(orch, "run_agent") as mock_agent:
         mock_agent.side_effect = mock_run_agent_side_effect
 
         # Mock git calls to let the orchestrator do its thing,
@@ -61,7 +62,10 @@ def test_builder_producer_stages_untracked_files(temp_repo):
 
         # Use git status to verify it's now tracked (intent-to-add)
         import subprocess
-        status = subprocess.run(["git", "status", "--short"], cwd=temp_repo, capture_output=True, text=True).stdout
+
+        status = subprocess.run(
+            ["git", "status", "--short"], cwd=temp_repo, capture_output=True, text=True
+        ).stdout
 
         # Expectation: orchestrator ran git add -N, so it should NOT be '??' anymore,
         # OR it is tracked so it appears in diff.

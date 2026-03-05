@@ -74,9 +74,7 @@ class EvalManager:
 
     def git(self, *args) -> str:
         """Run git command and return output."""
-        result = subprocess.run(
-            ["git", *args], capture_output=True, text=True, cwd=self.repo_dir
-        )
+        result = subprocess.run(["git", *args], capture_output=True, text=True, cwd=self.repo_dir)
         return result.stdout
 
     # =========================================================================
@@ -217,9 +215,7 @@ class EvalManager:
         evals_dir.mkdir(exist_ok=True)
 
         # Find previous eval for delta tracking (exclude summary.json)
-        json_files = sorted(
-            f for f in evals_dir.glob("*.json") if f.name != "summary.json"
-        )
+        json_files = sorted(f for f in evals_dir.glob("*.json") if f.name != "summary.json")
         previous_eval = None
         previous_eval_file = None
         if json_files:
@@ -257,14 +253,10 @@ class EvalManager:
         # Print trend warnings if there's a previous eval to compare against
         delta = eval_result.get("delta")
         if previous_eval and isinstance(delta, dict):
-            self._print_eval_trend_warnings(
-                previous_eval, eval_result, delta, log_callback
-            )
+            self._print_eval_trend_warnings(previous_eval, eval_result, delta, log_callback)
 
         # Store pass/fail status for exit code (pytest must pass AND all custom scripts must pass)
-        pytest_passed = (
-            test_results.get("failed", 0) == 0 and test_results.get("errors", 0) == 0
-        )
+        pytest_passed = test_results.get("failed", 0) == 0 and test_results.get("errors", 0) == 0
         eval_result["_passed"] = pytest_passed and all_scripts_passed
 
         if emit_evidence_callback:
@@ -299,9 +291,7 @@ class EvalManager:
             raise FileNotFoundError("No evals directory found. Run --eval first.")
 
         # Find all JSON files, sorted by filename (exclude summary.json)
-        json_files = sorted(
-            f for f in evals_dir.glob("*.json") if f.name != "summary.json"
-        )
+        json_files = sorted(f for f in evals_dir.glob("*.json") if f.name != "summary.json")
         if len(json_files) < 2:
             raise FileNotFoundError(
                 f"Need at least 2 eval files to compare, found {len(json_files)}. "
@@ -442,9 +432,7 @@ class EvalManager:
         # Composite score (if available)
         composite_delta = result.get("composite_delta")
         if composite_delta is not None:
-            delta_str = (
-                f"({composite_delta:+.4f})" if composite_delta != 0 else "(no change)"
-            )
+            delta_str = f"({composite_delta:+.4f})" if composite_delta != 0 else "(no change)"
             print(f"Composite Score: {delta_str}")
 
         # Category-by-category breakdown
@@ -542,10 +530,7 @@ class EvalManager:
             results["skipped"] = int(skipped_match.group(1))
 
         results["total"] = (
-            results["passed"]
-            + results["failed"]
-            + results["errors"]
-            + results["skipped"]
+            results["passed"] + results["failed"] + results["errors"] + results["skipped"]
         )
 
         return results
@@ -652,9 +637,7 @@ class EvalManager:
     # Category scoring methods
     # =========================================================================
 
-    def run_category_evals(
-        self, test_results: dict, coverage_data: dict | None
-    ) -> dict:
+    def run_category_evals(self, test_results: dict, coverage_data: dict | None) -> dict:
         """Run category evaluations and compute scores.
 
         Runs available tools (mypy, ruff, bandit, radon) and computes
@@ -979,14 +962,10 @@ class EvalManager:
                     details.append(f"errors={errors}" if errors >= 0 else "tool failed")
                 elif name == "security":
                     issues = data.get("issues", 0)
-                    details.append(
-                        f"issues={issues}" if issues >= 0 else "tool failed"
-                    )
+                    details.append(f"issues={issues}" if issues >= 0 else "tool failed")
                 elif name == "complexity":
                     funcs = data.get("high_complexity_functions", 0)
-                    details.append(
-                        f"high_complexity={funcs}" if funcs >= 0 else "tool failed"
-                    )
+                    details.append(f"high_complexity={funcs}" if funcs >= 0 else "tool failed")
                 detail_str = f" ({', '.join(details)})" if details else ""
                 print(f"  {name}: {score:.2f}{detail_str}")
 
@@ -999,9 +978,7 @@ class EvalManager:
         # Calculate overall status
         pytest_passed = failed == 0 and errors == 0
         scripts_passed = (
-            all(s.get("exit_code", 0) == 0 for s in custom_scripts)
-            if custom_scripts
-            else True
+            all(s.get("exit_code", 0) == 0 for s in custom_scripts) if custom_scripts else True
         )
 
         print()
@@ -1150,17 +1127,13 @@ class EvalManager:
                 new_failures=str(len(new_failures)),
                 passed_delta=str(passed_delta),
                 failed_delta=str(failed_delta),
-                composite_delta=(
-                    str(composite_delta) if composite_delta is not None else "none"
-                ),
+                composite_delta=(str(composite_delta) if composite_delta is not None else "none"),
                 regressed_categories=str([cat for cat, _ in regressed_categories]),
             )
 
         return warnings_printed
 
-    def _update_eval_summary(
-        self, evals_dir: Path, timestamp_str: str, eval_result: dict
-    ) -> None:
+    def _update_eval_summary(self, evals_dir: Path, timestamp_str: str, eval_result: dict) -> None:
         """Update summary.json with time-series data for trend analysis.
 
         Appends the current eval's composite score and key metrics to
@@ -1331,10 +1304,8 @@ class EvalManager:
             after_tests = eval_after.get("tests", {})
             if before_tests and after_tests:
                 delta["tests"] = {
-                    "passed": after_tests.get("passed", 0)
-                    - before_tests.get("passed", 0),
-                    "failed": after_tests.get("failed", 0)
-                    - before_tests.get("failed", 0),
+                    "passed": after_tests.get("passed", 0) - before_tests.get("passed", 0),
+                    "failed": after_tests.get("failed", 0) - before_tests.get("failed", 0),
                 }
 
             # Add coverage delta
@@ -1565,9 +1536,7 @@ class EvalManager:
             "3.0",
         }
         file_refs = [
-            ref
-            for ref in file_matches
-            if ref not in excluded and not ref.startswith("http")
+            ref for ref in file_matches if ref not in excluded and not ref.startswith("http")
         ]
         dir_refs = [ref for ref in dir_matches if len(ref) > 2]
 
@@ -1830,9 +1799,7 @@ class EvalManager:
         # Show recent tasks table
         print("Recent tasks:")
         print("-" * 80)
-        print(
-            f"{'Task':<40} {'Outcome':<10} {'Duration':>8} {'Tokens':>10} {'Delta':>8}"
-        )
+        print(f"{'Task':<40} {'Outcome':<10} {'Duration':>8} {'Tokens':>10} {'Delta':>8}")
         print("-" * 80)
 
         for task in tasks[:10]:
@@ -1892,9 +1859,7 @@ class EvalManager:
         # Basic counts
         total_reviews = len(reviews)
         approved_count = sum(1 for r in reviews if r.get("verdict") == "APPROVED")
-        changes_count = sum(
-            1 for r in reviews if r.get("verdict") == "REQUEST_CHANGES"
-        )
+        changes_count = sum(1 for r in reviews if r.get("verdict") == "REQUEST_CHANGES")
 
         approval_rate = (approved_count / total_reviews * 100) if total_reviews > 0 else 0
         print(f"Total reviews: {total_reviews}")
@@ -1915,9 +1880,7 @@ class EvalManager:
         cycles_list = []
         for _task_hash, task_review_list in task_reviews.items():
             # Sort by timestamp to ensure order
-            sorted_reviews = sorted(
-                task_review_list, key=lambda r: r.get("timestamp", "")
-            )
+            sorted_reviews = sorted(task_review_list, key=lambda r: r.get("timestamp", ""))
             # Count total reviews for this task (cycles)
             cycle_count = len(sorted_reviews)
             # Check if task was eventually approved
@@ -1983,9 +1946,7 @@ class EvalManager:
         for review in reviews:
             findings_by_severity = review.get("findings_by_severity", {})
             for severity, findings in findings_by_severity.items():
-                severity_totals[severity] = severity_totals.get(severity, 0) + len(
-                    findings
-                )
+                severity_totals[severity] = severity_totals.get(severity, 0) + len(findings)
 
         if severity_totals:
             print("Findings by severity:")
@@ -2000,9 +1961,7 @@ class EvalManager:
             print()
 
         # False positive indicators
-        false_positive_count = sum(
-            1 for r in reviews if r.get("false_positive_indicator", False)
-        )
+        false_positive_count = sum(1 for r in reviews if r.get("false_positive_indicator", False))
         if false_positive_count > 0:
             print(f"Potential false positives: {false_positive_count}")
             print("  (Tasks approved on retry without meaningful code changes)")
@@ -2031,19 +1990,13 @@ class EvalManager:
         if len(reviewers) > 1:
             print("Reviewer comparison:")
             print("-" * 70)
-            print(
-                f"{'CLI':<15} {'Reviews':>8} {'Approved':>10} {'Findings':>10} {'Avg Time':>12}"
-            )
+            print(f"{'CLI':<15} {'Reviews':>8} {'Approved':>10} {'Findings':>10} {'Avg Time':>12}")
             print("-" * 70)
             for cli, stats in sorted(reviewers.items()):
                 approval_pct = (
-                    (stats["approved"] / stats["total"] * 100)
-                    if stats["total"] > 0
-                    else 0
+                    (stats["approved"] / stats["total"] * 100) if stats["total"] > 0 else 0
                 )
-                avg_time = (
-                    stats["duration_ms"] / stats["total"] if stats["total"] > 0 else 0
-                )
+                avg_time = stats["duration_ms"] / stats["total"] if stats["total"] > 0 else 0
                 print(
                     f"{cli:<15} {stats['total']:>8} "
                     f"{stats['approved']:>5} ({approval_pct:>4.0f}%) "
@@ -2108,9 +2061,7 @@ class EvalManager:
         new_failures = current_failed - baseline_failed
 
         # Check composite score regression
-        baseline_score = (
-            self.baseline_eval.get("composite_score") if self.baseline_eval else None
-        )
+        baseline_score = self.baseline_eval.get("composite_score") if self.baseline_eval else None
         current_score = current_eval.get("composite_score")
         max_regression = self.policy.get("eval", {}).get("max_regression", 0.05)
         score_regression = 0.0
@@ -2129,12 +2080,8 @@ class EvalManager:
                 current_failed_count=str(len(current_failed)),
                 new_failures_count=str(len(new_failures)),
                 new_failures=str(list(new_failures)[:10]),
-                baseline_score=(
-                    str(baseline_score) if baseline_score is not None else "none"
-                ),
-                current_score=(
-                    str(current_score) if current_score is not None else "none"
-                ),
+                baseline_score=(str(baseline_score) if baseline_score is not None else "none"),
+                current_score=(str(current_score) if current_score is not None else "none"),
                 score_regression=str(round(score_regression, 4)),
                 has_score_regression=str(has_score_regression),
             )
@@ -2204,9 +2151,7 @@ class EvalManager:
             if baseline_score is not None:
                 delta = current_score - baseline_score
                 delta_str = f"+{delta:.4f}" if delta >= 0 else f"{delta:.4f}"
-                progress(
-                    f"{task_prefix} Composite score: {current_score:.4f} ({delta_str})"
-                )
+                progress(f"{task_prefix} Composite score: {current_score:.4f} ({delta_str})")
             else:
                 progress(f"{task_prefix} Composite score: {current_score:.4f}")
 
@@ -2249,9 +2194,7 @@ class EvalManager:
         if mode == "none":
             return True  # Eval disabled
 
-        mode_display = (
-            f"({mode} mode)" if mode in ("smoke", "full") else f"(custom: {mode})"
-        )
+        mode_display = f"({mode} mode)" if mode in ("smoke", "full") else f"(custom: {mode})"
         progress(f"{task_prefix} Running post-task eval {mode_display}...")
 
         # Run eval with the configured mode (use callback if provided)
@@ -2270,9 +2213,7 @@ class EvalManager:
         new_failures = current_failed - baseline_failed
 
         # Check composite score regression
-        baseline_score = (
-            self.baseline_eval.get("composite_score") if self.baseline_eval else None
-        )
+        baseline_score = self.baseline_eval.get("composite_score") if self.baseline_eval else None
         current_score = current_eval.get("composite_score")
         max_regression = self.policy.get("eval", {}).get("max_regression", 0.05)
         score_regression = 0.0
@@ -2292,12 +2233,8 @@ class EvalManager:
                 current_failed_count=str(len(current_failed)),
                 new_failures_count=str(len(new_failures)),
                 new_failures=str(list(new_failures)[:10]),
-                baseline_score=(
-                    str(baseline_score) if baseline_score is not None else "none"
-                ),
-                current_score=(
-                    str(current_score) if current_score is not None else "none"
-                ),
+                baseline_score=(str(baseline_score) if baseline_score is not None else "none"),
+                current_score=(str(current_score) if current_score is not None else "none"),
                 score_regression=str(round(score_regression, 4)),
                 has_score_regression=str(has_score_regression),
             )
@@ -2367,9 +2304,7 @@ class EvalManager:
             if baseline_score is not None:
                 delta = current_score - baseline_score
                 delta_str = f"+{delta:.4f}" if delta >= 0 else f"{delta:.4f}"
-                progress(
-                    f"{task_prefix} Composite score: {current_score:.4f} ({delta_str})"
-                )
+                progress(f"{task_prefix} Composite score: {current_score:.4f} ({delta_str})")
             else:
                 progress(f"{task_prefix} Composite score: {current_score:.4f}")
 
@@ -2409,9 +2344,7 @@ class EvalManager:
         if mode == "none":
             return True, None  # Eval gating disabled
 
-        mode_display = (
-            f"({mode} mode)" if mode in ("smoke", "full") else f"(custom: {mode})"
-        )
+        mode_display = f"({mode} mode)" if mode in ("smoke", "full") else f"(custom: {mode})"
         progress(f"{task_prefix} Running eval gate {mode_display}...")
 
         # Run eval with the configured mode (use callback if provided)
@@ -2430,9 +2363,7 @@ class EvalManager:
         new_failures = current_failed - baseline_failed
 
         # Check composite score regression
-        baseline_score = (
-            self.baseline_eval.get("composite_score") if self.baseline_eval else None
-        )
+        baseline_score = self.baseline_eval.get("composite_score") if self.baseline_eval else None
         current_score = current_eval.get("composite_score")
         max_regression = self.policy.get("eval", {}).get("max_regression", 0.05)
         score_regression = 0.0
@@ -2456,12 +2387,8 @@ class EvalManager:
                     current_failed_count=str(len(current_failed)),
                     new_failures_count=str(len(new_failures)),
                     new_failures=str(list(new_failures)[:10]),
-                    baseline_score=(
-                        str(baseline_score) if baseline_score is not None else "none"
-                    ),
-                    current_score=(
-                        str(current_score) if current_score is not None else "none"
-                    ),
+                    baseline_score=(str(baseline_score) if baseline_score is not None else "none"),
+                    current_score=(str(current_score) if current_score is not None else "none"),
                     score_regression=str(round(score_regression, 4)),
                     has_score_regression=str(has_score_regression),
                     task_text=task_text[:200] if task_text else "",
@@ -2469,9 +2396,7 @@ class EvalManager:
 
             # Print failure details
             if new_failures:
-                progress(
-                    f"{task_prefix} EVAL GATE FAILED: {len(new_failures)} new test failure(s)"
-                )
+                progress(f"{task_prefix} EVAL GATE FAILED: {len(new_failures)} new test failure(s)")
                 print()
                 print("New test failures preventing commit:")
                 for test in sorted(new_failures)[:10]:
@@ -2502,9 +2427,7 @@ class EvalManager:
                 "eval_gate_passed",
                 mode=mode,
                 current_failed_count=str(len(current_failed)),
-                current_score=(
-                    str(current_score) if current_score is not None else "none"
-                ),
+                current_score=(str(current_score) if current_score is not None else "none"),
             )
 
         if current_failed:
@@ -2522,9 +2445,7 @@ class EvalManager:
         Args:
             current_eval: The current eval result dict.
         """
-        baseline_cats = (
-            self.baseline_eval.get("categories", {}) if self.baseline_eval else {}
-        )
+        baseline_cats = self.baseline_eval.get("categories", {}) if self.baseline_eval else {}
         current_cats = current_eval.get("categories", {})
 
         if not baseline_cats and not current_cats:
@@ -2540,9 +2461,7 @@ class EvalManager:
                 delta = current_score - baseline_score
                 delta_str = f"+{delta:.2f}" if delta >= 0 else f"{delta:.2f}"
                 status = "↑" if delta > 0.01 else ("↓" if delta < -0.01 else "→")
-                print(
-                    f"  {cat}: {baseline_score:.2f} → {current_score:.2f} ({delta_str}) {status}"
-                )
+                print(f"  {cat}: {baseline_score:.2f} → {current_score:.2f} ({delta_str}) {status}")
             elif current_score is not None:
                 print(f"  {cat}: {current_score:.2f} (new)")
             elif baseline_score is not None:
@@ -2583,21 +2502,15 @@ class EvalManager:
         if auto_rollback:
             # Auto-revert mode
             print(f"Auto-reverting commit {short_hash} due to eval regression...")
-            success = self._perform_rollback(
-                commit_hash, task_text, reason, details, log_callback
-            )
+            success = self._perform_rollback(commit_hash, task_text, reason, details, log_callback)
             if success:
                 print(f"Commit {short_hash} has been reverted.")
                 if cycle_log_callback:
                     cycle_log_callback("AUTO_ROLLBACK", f"Reverted commit {short_hash}")
             else:
-                print(
-                    f"Failed to revert commit {short_hash}. Manual intervention required."
-                )
+                print(f"Failed to revert commit {short_hash}. Manual intervention required.")
                 if cycle_log_callback:
-                    cycle_log_callback(
-                        "ROLLBACK_FAILED", f"Failed to revert {short_hash}"
-                    )
+                    cycle_log_callback("ROLLBACK_FAILED", f"Failed to revert {short_hash}")
             return False
         else:
             # Interactive mode - prompt user
@@ -2623,15 +2536,11 @@ class EvalManager:
                             "USER_ROLLBACK", f"User requested revert of {short_hash}"
                         )
                 else:
-                    print(
-                        f"Failed to revert commit {short_hash}. Manual intervention required."
-                    )
+                    print(f"Failed to revert commit {short_hash}. Manual intervention required.")
             else:
                 print("Commit kept. Halting for manual intervention.")
                 if cycle_log_callback:
-                    cycle_log_callback(
-                        "ROLLBACK_DECLINED", f"User declined revert of {short_hash}"
-                    )
+                    cycle_log_callback("ROLLBACK_DECLINED", f"User declined revert of {short_hash}")
 
             return False
 
