@@ -1,0 +1,137 @@
+[project]
+name = "millstone"
+version = "0.3.3"
+description = "Orchestrator for agentic coding tools"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "millstone contributors" },
+]
+keywords = [
+    "agentic",
+    "automation",
+    "cli",
+    "developer-tools",
+    "orchestration",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+    "requests>=2.31.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/wittekin/millstone"
+Repository = "https://github.com/wittekin/millstone"
+Issues = "https://github.com/wittekin/millstone/issues"
+Changelog = "https://github.com/wittekin/millstone/blob/main/CHANGELOG.md"
+Documentation = "https://wittekin.github.io/millstone/"
+
+[project.scripts]
+millstone = "millstone.runtime.orchestrator:main"
+
+[build-system]
+requires = ["setuptools>=77.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+millstone = ["prompts/*.md"]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+quality = [
+    "ruff>=0.6.0",
+    "mypy>=1.10.0",
+    "types-requests>=2.31.0",
+    "vulture>=2.11",
+]
+security = [
+    "pip-audit>=2.7.0",
+]
+release = [
+    "build>=1.2.0",
+    "twine>=5.1.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.6.0",
+    "mypy>=1.10.0",
+    "types-requests>=2.31.0",
+    "vulture>=2.11",
+]
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+]
+viz = [
+    "graphviz>=0.20",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks integration tests (deselect with '-m \"not integration\"')",
+    "real_cli: marks real-CLI tests requiring API keys and --run-real-cli flag",
+    "real_mcp: marks real-MCP tests requiring GH_TOKEN and --run-real-mcp flag",
+]
+
+[tool.coverage.run]
+source = ["millstone"]
+omit = ["tests/*", "**/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501", # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/test_integration.py" = ["SIM117"]
+"tests/test_orchestrator.py" = ["SIM117"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
