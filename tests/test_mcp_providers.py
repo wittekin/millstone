@@ -14,6 +14,7 @@ from millstone.artifact_providers.mcp import (
     MCPDesignProvider,
     MCPOpportunityProvider,
     MCPTasklistProvider,
+    _strip_json_fences,
 )
 from millstone.artifact_providers.registry import (
     list_design_backends,
@@ -1419,3 +1420,168 @@ def test_restore_snapshot_removes_only_interleaved_task():
     assert not any(t.task_id == "t-3" for t in final_tasks), (
         "t-3 (interleaved task) must be absent from the store after restore_snapshot()"
     )
+
+
+# ---------------------------------------------------------------------------
+# _strip_json_fences — unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestStripJsonFences:
+    def test_plain_json_unchanged(self):
+        text = '[{"id": "t1"}]'
+        assert _strip_json_fences(text) == text
+
+    def test_lowercase_json_fence_stripped(self):
+        text = '```json\n[{"id": "t1"}]\n```'
+        assert _strip_json_fences(text) == '[{"id": "t1"}]'
+
+    def test_bare_fence_stripped(self):
+        text = '```\n[{"id": "t1"}]\n```'
+        assert _strip_json_fences(text) == '[{"id": "t1"}]'
+
+    def test_surrounding_whitespace_stripped_before_match(self):
+        text = '  \n```json\n[{"id": "t1"}]\n```\n  '
+        assert _strip_json_fences(text) == '[{"id": "t1"}]'
+
+    def test_uppercase_json_tag_not_stripped(self):
+        # Regex uses (?:json)? (literal lowercase) — uppercase tag is not matched.
+        text = '```JSON\n[{"id": "t1"}]\n```'
+        # Falls through: _strip_json_fences returns the original stripped text.
+        result = _strip_json_fences(text)
+        assert result == text.strip()
+
+    def test_multiline_content_preserved(self):
+        inner = '[\n  {"id": "t1"},\n  {"id": "t2"}\n]'
+        text = f"```json\n{inner}\n```"
+        assert _strip_json_fences(text) == inner
+
+
+# ---------------------------------------------------------------------------
+# Fenced JSON responses — integration tests for MCP read paths
+# ---------------------------------------------------------------------------
+
+
+class TestMCPFencedJsonResponses:
+    """Verify that fenced ```json ... ``` agent responses are correctly parsed
+    by all six MCP read methods: list_tasks, get_task, list_designs, get_design,
+    list_opportunities, get_opportunity."""
+
+    # --- MCPTasklistProvider ---
+
+    def test_list_tasks_fenced_response(self):
+        provider = MCPTasklistProvider("linear")
+        payload = [{"id": "t1", "title": "A", "status": "todo", "description": ""}]
+        fenced = f"```json\n{json.dumps(payload)}\n```"
+        provider.set_agent_callback(lambda _prompt: fenced)
+        tasks = provider.list_tasks()
+        assert len(tasks) == 1
+        assert tasks[0].task_id == "t1"
+        assert tasks[0].status == TaskStatus.todo
+
+    def test_list_tasks_invalid_json_raises_value_error(self):
+        provider = MCPTasklistProvider("linear")
+        provider.set_agent_callback(lambda _prompt: "```json\nnot-json\n```")
+        with pytest.raises(ValueError, match="invalid JSON"):
+            provider.list_tasks()
+
+    def test_get_task_fenced_response(self):
+        provider = MCPTasklistProvider("linear")
+        payload = {
+            "id": "t1",
+            "title": "A",
+            "status": "in_progress",
+            "context": "ctx",
+            "criteria": "crit",
+        }
+        fenced = f"```json\n{json.dumps(payload)}\n```"
+        provider.set_agent_callback(lambda _prompt: fenced)
+        task = provider.get_task("t1")
+        assert task is not None
+        assert task.task_id == "t1"
+        assert task.status == TaskStatus.in_progress
+
+    def test_get_task_invalid_json_returns_none(self):
+        provider = MCPTasklistProvider("linear")
+        provider.set_agent_callback(lambda _prompt: "```json\nnot-json\n```")
+        assert provider.get_task("t1") is None
+
+    # --- MCPDesignProvider ---
+
+    def test_list_designs_fenced_response(self):
+        provider = MCPDesignProvider("notion")
+        payload = [
+            {
+                "id": "d1",
+                "title": "Design A",
+                "status": "draft",
+                "opportunity_ref": None,
+                "body": "body text",
+            }
+        ]
+        fenced = f"```json\n{json.dumps(payload)}\n```"
+        provider.set_agent_callback(lambda _prompt: fenced)
+        designs = provider.list_designs()
+        assert len(designs) == 1
+        assert designs[0].design_id == "d1"
+        assert designs[0].status == DesignStatus.draft
+
+    def test_list_designs_invalid_json_returns_empty(self):
+        provider = MCPDesignProvider("notion")
+        provider.set_agent_callback(lambda _prompt: "```json\nnot-json\n```")
+        assert provider.list_designs() == []
+
+    def test_get_design_fenced_response(self):
+        provider = MCPDesignProvider("notion")
+        payload = {
+            "id": "d1",
+            "title": "Design A",
+            "status": "reviewed",
+            "body": "body",
+            "opportunity_ref": "o1",
+        }
+        fenced = f"```json\n{json.dumps(payload)}\n```"
+        provider.set_agent_callback(lambda _prompt: fenced)
+        design = provider.get_design("d1")
+        assert design is not None
+        assert design.design_id == "d1"
+        assert design.status == DesignStatus.reviewed
+
+    def test_get_design_invalid_json_returns_none(self):
+        provider = MCPDesignProvider("notion")
+        provider.set_agent_callback(lambda _prompt: "```json\nnot-json\n```")
+        assert provider.get_design("d1") is None
+
+    # --- MCPOpportunityProvider ---
+
+    def test_list_opportunities_fenced_response(self):
+        provider = MCPOpportunityProvider("github")
+        payload = [
+            {"id": "o1", "title": "Opportunity A", "status": "identified", "description": "desc"}
+        ]
+        fenced = f"```json\n{json.dumps(payload)}\n```"
+        provider.set_agent_callback(lambda _prompt: fenced)
+        opps = provider.list_opportunities()
+        assert len(opps) == 1
+        assert opps[0].opportunity_id == "o1"
+        assert opps[0].status == OpportunityStatus.identified
+
+    def test_list_opportunities_invalid_json_returns_empty(self):
+        provider = MCPOpportunityProvider("github")
+        provider.set_agent_callback(lambda _prompt: "```json\nnot-json\n```")
+        assert provider.list_opportunities() == []
+
+    def test_get_opportunity_fenced_response(self):
+        provider = MCPOpportunityProvider("github")
+        payload = {"id": "o1", "title": "Opportunity A", "status": "adopted", "description": "desc"}
+        fenced = f"```json\n{json.dumps(payload)}\n```"
+        provider.set_agent_callback(lambda _prompt: fenced)
+        opp = provider.get_opportunity("o1")
+        assert opp is not None
+        assert opp.opportunity_id == "o1"
+        assert opp.status == OpportunityStatus.adopted
+
+    def test_get_opportunity_invalid_json_returns_none(self):
+        provider = MCPOpportunityProvider("github")
+        provider.set_agent_callback(lambda _prompt: "```json\nnot-json\n```")
+        assert provider.get_opportunity("o1") is None
