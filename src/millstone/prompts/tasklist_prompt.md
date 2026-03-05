@@ -42,7 +42,7 @@ Implement **ONLY the selected task** with minimal, repo-consistent changes.
 - **DO NOT** stray into the implementation of any other tasks in the list.
 - Add tests only if behavior changes or new behavior is introduced.
 - If a tool/command fails, diagnose once and try the next simplest alternative that still verifies correctness.
-</phase_2_execution>
+{{ACCEPTANCE_CRITERIA}}</phase_2_execution>
 
 <phase_3_verification>
 Run the smallest reasonable verification set for **ONLY the changes you made**:

@@ -85,3 +85,102 @@ class TestTaskGroups:
         tasklist.write_text("# Tasklist\n\n- [ ] A\n- [ ] B\n- [ ] C\n")
         groups = mgr.extract_all_task_groups()
         assert groups == {0: None, 1: None, 2: None}
+
+
+class TestAcceptanceCriteria:
+    def test_extract_criteria_basic(self, temp_repo):
+        mgr = TasklistManager(repo_dir=temp_repo)
+        task_text = (
+            "**Add retry logic**: To the HTTP client\n"
+            "  **Acceptance criteria:**\n"
+            "  - Retries up to 3 times on 5xx responses\n"
+            "  - Uses exponential backoff with jitter\n"
+        )
+        result = mgr._extract_acceptance_criteria(task_text)
+        assert result == [
+            "Retries up to 3 times on 5xx responses",
+            "Uses exponential backoff with jitter",
+        ]
+
+    def test_extract_criteria_absent(self, temp_repo):
+        mgr = TasklistManager(repo_dir=temp_repo)
+        task_text = "**Simple task**: No criteria here\n  - Risk: low\n"
+        result = mgr._extract_acceptance_criteria(task_text)
+        assert result == []
+
+    def test_extract_criteria_case_insensitive_header(self, temp_repo):
+        mgr = TasklistManager(repo_dir=temp_repo)
+        task_text = "**Task**: description\n  **Acceptance Criteria:**\n  - Item one\n"
+        result = mgr._extract_acceptance_criteria(task_text)
+        assert result == ["Item one"]
+
+    def test_extract_criteria_fully_lowercase_header(self, temp_repo):
+        """Fully lowercase header must be recognised (case-insensitive match)."""
+        mgr = TasklistManager(repo_dir=temp_repo)
+        task_text = "**Task**: description\n  **acceptance criteria:**\n  - Item one\n"
+        result = mgr._extract_acceptance_criteria(task_text)
+        assert result == ["Item one"]
+
+    def test_extract_criteria_stops_before_metadata_bullets(self, temp_repo):
+        """Metadata bullets (Tests:, Risk:, etc.) must NOT be captured as criteria."""
+        mgr = TasklistManager(repo_dir=temp_repo)
+        task_text = (
+            "**Task**: description\n"
+            "  **Acceptance criteria:**\n"
+            "  - Criterion A\n"
+            "  - Criterion B\n"
+            "  - Tests: test_foo.py\n"
+            "  - Risk: low\n"
+        )
+        result = mgr._extract_acceptance_criteria(task_text)
+        assert result == ["Criterion A", "Criterion B"]
+
+    def test_extract_criteria_stops_at_blank_line(self, temp_repo):
+        mgr = TasklistManager(repo_dir=temp_repo)
+        task_text = (
+            "**Task**: description\n"
+            "  **Acceptance criteria:**\n"
+            "  - Criterion A\n"
+            "\n"
+            "  - Should not be included\n"
+        )
+        result = mgr._extract_acceptance_criteria(task_text)
+        assert result == ["Criterion A"]
+
+    def test_parse_task_metadata_includes_acceptance_criteria(self, temp_repo):
+        mgr = TasklistManager(repo_dir=temp_repo)
+        task_text = (
+            "**Add retry logic**: To the HTTP client\n"
+            "  - Risk: low\n"
+            "  **Acceptance criteria:**\n"
+            "  - Retries on 5xx\n"
+            "  - Backoff with jitter\n"
+        )
+        meta = mgr._parse_task_metadata(task_text)
+        assert meta["acceptance_criteria"] == ["Retries on 5xx", "Backoff with jitter"]
+
+    def test_extract_current_task_acceptance_criteria(self, temp_repo):
+        mgr = TasklistManager(repo_dir=temp_repo)
+        tasklist = temp_repo / "docs" / "tasklist.md"
+        tasklist.write_text(
+            "# Tasklist\n\n"
+            "- [ ] **Add retry**: desc\n"
+            "  **Acceptance criteria:**\n"
+            "  - Retries 3 times\n"
+            "  - Backoff applied\n"
+            "- [ ] **Other task**: second\n"
+        )
+        result = mgr.extract_current_task_acceptance_criteria()
+        assert result == ["Retries 3 times", "Backoff applied"]
+
+    def test_extract_current_task_no_criteria(self, temp_repo):
+        mgr = TasklistManager(repo_dir=temp_repo)
+        tasklist = temp_repo / "docs" / "tasklist.md"
+        tasklist.write_text("# Tasklist\n\n- [ ] **Plain task**: no criteria\n")
+        result = mgr.extract_current_task_acceptance_criteria()
+        assert result == []
+
+    def test_extract_current_task_no_file(self, temp_repo):
+        mgr = TasklistManager(repo_dir=temp_repo)
+        result = mgr.extract_current_task_acceptance_criteria()
+        assert result == []

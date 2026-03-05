@@ -136,6 +136,69 @@ class TasklistManager:
 
         return self._parse_task_metadata(match.group(1))
 
+    def extract_current_task_acceptance_criteria(self) -> list[str]:
+        """Extract acceptance criteria for the first unchecked task.
+
+        Looks for a ``**Acceptance criteria:**`` (or ``**Acceptance Criteria:**``)
+        block in the task body followed by indented bullet lines.
+
+        Returns:
+            List of criterion strings (stripped), or empty list if none found.
+        """
+        tasklist_path = self._tasklist_path()
+        if not tasklist_path.exists():
+            return []
+
+        content = tasklist_path.read_text()
+        match = re.search(r"^- \[ \] (.+(?:\n(?:  .+))*)", content, re.MULTILINE)
+        if not match:
+            return []
+
+        return self._extract_acceptance_criteria(match.group(1))
+
+    def _extract_acceptance_criteria(self, task_text: str) -> list[str]:
+        """Parse the ``**Acceptance criteria:**`` block from task text.
+
+        Recognises a header line matching ``**Acceptance criteria:**`` (case-
+        insensitive, optional trailing colon) and collects the immediately
+        following indented ``- ...`` bullet lines as individual criteria.
+
+        Returns:
+            List of criterion strings (stripped), or empty list if absent.
+        """
+        # Matches known metadata bullet labels; such bullets end the criteria block.
+        _METADATA_LABEL = re.compile(
+            r"^(?:ID|Est\.?\s*LoC|Tests?|Risk|Design[-_]Ref|Opportunity[-_]Ref"
+            r"|Success|Criteria|Acceptance|Context):\s",
+            re.IGNORECASE,
+        )
+
+        lines = task_text.strip().split("\n")
+        criteria: list[str] = []
+        in_criteria_block = False
+
+        for line in lines:
+            stripped = line.strip()
+            # Detect the acceptance criteria header (case-insensitive)
+            if re.match(r"\*\*Acceptance\s+Criteria:?\*\*", stripped, re.IGNORECASE):
+                in_criteria_block = True
+                continue
+            if in_criteria_block:
+                if stripped.startswith("-"):
+                    bullet_content = stripped[1:].strip()
+                    if _METADATA_LABEL.match(bullet_content):
+                        # metadata bullet ends the criteria block
+                        break
+                    criteria.append(bullet_content)
+                elif stripped == "":
+                    # blank line ends the block
+                    break
+                else:
+                    # non-bullet, non-blank line ends the block
+                    break
+
+        return criteria
+
     def extract_current_task_context_file(self) -> str | None:
         """Extract the context file path for the first unchecked task from the tasklist.
 
@@ -555,7 +618,7 @@ class TasklistManager:
             - context_file: Path to context file (or None if not specified)
             - raw: The original task text
         """
-        result: dict[str, int | str | None] = {
+        result: dict[str, int | str | list | None] = {
             "title": "",
             "description": "",
             "task_id": None,
@@ -565,6 +628,7 @@ class TasklistManager:
             "design_ref": None,
             "opportunity_ref": None,
             "criteria": None,
+            "acceptance_criteria": [],
             "context": None,
             "context_file": None,
             "raw": task_text,
@@ -658,6 +722,9 @@ class TasklistManager:
         context_match = re.search(r"<!--\s*context:\s*([^\s>]+)\s*-->", task_text)
         if context_match:
             result["context_file"] = context_match.group(1).strip()
+
+        # Parse multi-line acceptance criteria block
+        result["acceptance_criteria"] = self._extract_acceptance_criteria(task_text)
 
         return result
 

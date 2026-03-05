@@ -13731,6 +13731,80 @@ class TestContextFileAnnotation:
             orch.cleanup()
 
 
+class TestAcceptanceCriteriaInjection:
+    """Tests for acceptance criteria injection into builder and reviewer prompts."""
+
+    def test_get_tasklist_prompt_includes_criteria(self, temp_repo):
+        """get_tasklist_prompt injects acceptance criteria when present."""
+        tasklist = temp_repo / ".millstone" / "tasklist.md"
+        tasklist.parent.mkdir(parents=True, exist_ok=True)
+        tasklist.write_text(
+            "# Tasklist\n\n"
+            "- [ ] **Add retry**: To the HTTP client\n"
+            "  **Acceptance criteria:**\n"
+            "  - Retries up to 3 times\n"
+            "  - Uses exponential backoff\n"
+        )
+
+        orch = Orchestrator()
+        try:
+            prompt = orch.get_tasklist_prompt()
+            assert "Your implementation must satisfy:" in prompt
+            assert "Retries up to 3 times" in prompt
+            assert "Uses exponential backoff" in prompt
+        finally:
+            orch.cleanup()
+
+    def test_get_tasklist_prompt_no_criteria_section_when_absent(self, temp_repo):
+        """get_tasklist_prompt has no criteria injection when task has none."""
+        tasklist = temp_repo / ".millstone" / "tasklist.md"
+        tasklist.parent.mkdir(parents=True, exist_ok=True)
+        tasklist.write_text("# Tasklist\n\n- [ ] **Plain task**: nothing special\n")
+
+        orch = Orchestrator()
+        try:
+            prompt = orch.get_tasklist_prompt()
+            assert "Your implementation must satisfy:" not in prompt
+            assert "{{ACCEPTANCE_CRITERIA}}" not in prompt
+        finally:
+            orch.cleanup()
+
+    def test_get_review_prompt_includes_criteria(self, temp_repo):
+        """get_review_prompt injects acceptance criteria for the reviewer."""
+        tasklist = temp_repo / ".millstone" / "tasklist.md"
+        tasklist.parent.mkdir(parents=True, exist_ok=True)
+        tasklist.write_text(
+            "# Tasklist\n\n"
+            "- [ ] **Add retry**: desc\n"
+            "  **Acceptance criteria:**\n"
+            "  - Retries 3 times on 5xx\n"
+            "  - Existing tests pass\n"
+        )
+
+        orch = Orchestrator()
+        try:
+            prompt = orch.get_review_prompt(builder_output="done", git_diff="diff")
+            assert "Verify each criterion is met:" in prompt
+            assert "Retries 3 times on 5xx" in prompt
+            assert "Existing tests pass" in prompt
+        finally:
+            orch.cleanup()
+
+    def test_get_review_prompt_no_criteria_section_when_absent(self, temp_repo):
+        """get_review_prompt has no criteria injection when task has none."""
+        tasklist = temp_repo / ".millstone" / "tasklist.md"
+        tasklist.parent.mkdir(parents=True, exist_ok=True)
+        tasklist.write_text("# Tasklist\n\n- [ ] **Plain task**: nothing special\n")
+
+        orch = Orchestrator()
+        try:
+            prompt = orch.get_review_prompt(builder_output="done", git_diff="diff")
+            assert "Verify each criterion is met:" not in prompt
+            assert "{{ACCEPTANCE_CRITERIA}}" not in prompt
+        finally:
+            orch.cleanup()
+
+
 class TestProjectAdapterInterface:
     """Tests for .millstone/project.toml project adapter interface."""
 

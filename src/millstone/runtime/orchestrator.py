@@ -166,6 +166,7 @@ class Orchestrator:
         "extract_current_task_risk": "_tasklist_manager",
         "extract_current_task_context_file": "_tasklist_manager",
         "extract_current_task_group": "_tasklist_manager",
+        "extract_current_task_acceptance_criteria": "_tasklist_manager",
         "count_completed_tasks": "_tasklist_manager",
         "_extract_unchecked_tasks": "_tasklist_manager",
         "_get_referenced_code_size": "_tasklist_manager",
@@ -2141,6 +2142,15 @@ class Orchestrator:
         # Backward-compat: custom --prompts-dir templates may still use {{TASKLIST_PATH}}
         prompt = prompt.replace("{{TASKLIST_PATH}}", self.tasklist)
 
+        # Inject acceptance criteria for the builder
+        acceptance_criteria = self.extract_current_task_acceptance_criteria()
+        if acceptance_criteria:
+            criteria_lines = "\n".join(f"- {c}" for c in acceptance_criteria)
+            criteria_blurb = f"\nYour implementation must satisfy:\n{criteria_lines}\n"
+        else:
+            criteria_blurb = ""
+        prompt = prompt.replace("{{ACCEPTANCE_CRITERIA}}", criteria_blurb)
+
         # Append group context if available
         group_context = self.get_group_context()
         if group_context:
@@ -2176,6 +2186,14 @@ class Orchestrator:
             prompt = prompt.replace("{{GIT_DIFF}}", git_diff or "")
         if "{{AUTHOR_OUTPUT}}" in prompt:
             prompt = prompt.replace("{{AUTHOR_OUTPUT}}", builder_output)
+        # Inject acceptance criteria for the reviewer
+        acceptance_criteria = self.extract_current_task_acceptance_criteria()
+        if acceptance_criteria:
+            criteria_lines = "\n".join(f"- {c}" for c in acceptance_criteria)
+            criteria_blurb = f"Verify each criterion is met:\n{criteria_lines}\n\n"
+        else:
+            criteria_blurb = ""
+        prompt = prompt.replace("{{ACCEPTANCE_CRITERIA}}", criteria_blurb)
         return prompt
 
     def get_compact_prompt(self) -> str:
