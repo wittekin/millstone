@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from tests.e2e.conftest import _real_cli_skip_reason, _real_mcp_skip_reason
 
 

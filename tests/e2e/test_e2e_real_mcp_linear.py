@@ -10,7 +10,6 @@ from pathlib import Path
 import pytest
 import requests
 
-
 # ---------------------------------------------------------------------------
 # Linear API helpers
 # ---------------------------------------------------------------------------
@@ -167,12 +166,12 @@ def _archive_issue(issue_id: str) -> None:
 
 def _teardown_label_issues(team_id: str, label_name: str) -> None:
     """Archive all non-completed, non-cancelled issues with the given label."""
+    import contextlib
+
     for issue in _list_issues_with_label(team_id, label_name):
         if issue["state_type"] not in ("completed", "cancelled"):
-            try:
+            with contextlib.suppress(Exception):
                 _archive_issue(issue["id"])
-            except Exception:
-                pass
 
 
 # ---------------------------------------------------------------------------

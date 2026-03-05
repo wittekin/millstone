@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from millstone.artifact_providers.file import FileTasklistProvider
 from millstone.artifact_providers.mcp import MCPDesignProvider, MCPTasklistProvider
 from millstone.prompts.utils import apply_provider_placeholders
-
 
 TASKLIST_KEYS = {
     "TASKLIST_READ_INSTRUCTIONS",

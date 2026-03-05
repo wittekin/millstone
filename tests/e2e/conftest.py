@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import contextlib
-import os
 import subprocess
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 
 from millstone.agent_providers.registry import get_provider
-
 
 # ---------------------------------------------------------------------------
 # Real-CLI / real-MCP marker skip helpers
@@ -151,7 +150,7 @@ class StubCli:
         side_effect: Callable[[Path], None] | None = None,
         output_schema: str | None = None,
         prompt_substring: str | None = None,
-    ) -> "StubCli":
+    ) -> StubCli:
         """Add a stub response entry. Returns self for chaining."""
         self._entries.append(
             _StubEntry(
