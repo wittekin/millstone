@@ -137,27 +137,21 @@ class OuterLoopManager:
 
         raw_opportunity_options = config.get("opportunity_provider_options", {})
         opportunity_options = (
-            dict(raw_opportunity_options)
-            if isinstance(raw_opportunity_options, dict)
-            else {}
+            dict(raw_opportunity_options) if isinstance(raw_opportunity_options, dict) else {}
         )
-        _opp_default = repo_dir / ("opportunities.md" if commit_opportunities else ".millstone/opportunities.md")
+        _opp_default = repo_dir / (
+            "opportunities.md" if commit_opportunities else ".millstone/opportunities.md"
+        )
         opportunity_options.setdefault("path", str(_opp_default))
 
         raw_design_options = config.get("design_provider_options", {})
-        design_options = (
-            dict(raw_design_options)
-            if isinstance(raw_design_options, dict)
-            else {}
-        )
+        design_options = dict(raw_design_options) if isinstance(raw_design_options, dict) else {}
         _design_default = repo_dir / ("designs" if commit_designs else ".millstone/designs")
         design_options.setdefault("path", str(_design_default))
 
         raw_tasklist_options = config.get("tasklist_provider_options", {})
         tasklist_options = (
-            dict(raw_tasklist_options)
-            if isinstance(raw_tasklist_options, dict)
-            else {}
+            dict(raw_tasklist_options) if isinstance(raw_tasklist_options, dict) else {}
         )
         tasklist_options.setdefault("path", str(repo_dir / tasklist))
         # Merge the provider-agnostic filter schema into tasklist options so that
@@ -404,9 +398,7 @@ class OuterLoopManager:
         last_eval = None
         json_files = []
         if evals_dir.exists():
-            json_files = sorted(
-                f for f in evals_dir.glob("*.json") if f.name != "summary.json"
-            )
+            json_files = sorted(f for f in evals_dir.glob("*.json") if f.name != "summary.json")
             if json_files:
                 last_eval = json.loads(json_files[-1].read_text())
                 signals["test_failures"] = last_eval.get("failed_tests", [])
@@ -430,11 +422,13 @@ class OuterLoopManager:
                         if num_statements > 0:
                             coverage_pct = covered_lines / num_statements
                             if coverage_pct < 0.80:
-                                signals["coverage_gaps"].append({
-                                    "file": filepath,
-                                    "coverage": round(coverage_pct * 100, 1),
-                                    "missing_lines": summary.get("missing_lines", 0),
-                                })
+                                signals["coverage_gaps"].append(
+                                    {
+                                        "file": filepath,
+                                        "coverage": round(coverage_pct * 100, 1),
+                                        "missing_lines": summary.get("missing_lines", 0),
+                                    }
+                                )
                 except (json.JSONDecodeError, KeyError):
                     pass
 
@@ -452,11 +446,13 @@ class OuterLoopManager:
                     # Parse format: ./file.py:123:# TODO: description
                     parts = line.split(":", 2)
                     if len(parts) >= 3:
-                        signals["todo_comments"].append({
-                            "file": parts[0].lstrip("./"),
-                            "line": int(parts[1]) if parts[1].isdigit() else 0,
-                            "text": parts[2].strip()[:100],  # Truncate long comments
-                        })
+                        signals["todo_comments"].append(
+                            {
+                                "file": parts[0].lstrip("./"),
+                                "line": int(parts[1]) if parts[1].isdigit() else 0,
+                                "text": parts[2].strip()[:100],  # Truncate long comments
+                            }
+                        )
         except (subprocess.TimeoutExpired, Exception):
             pass
 
@@ -473,12 +469,14 @@ class OuterLoopManager:
                 try:
                     issues = json.loads(result.stdout)
                     for issue in issues[:30]:  # Limit to 30
-                        signals["lint_errors"].append({
-                            "file": issue.get("filename", ""),
-                            "line": issue.get("location", {}).get("row", 0),
-                            "code": issue.get("code", ""),
-                            "message": issue.get("message", "")[:100],
-                        })
+                        signals["lint_errors"].append(
+                            {
+                                "file": issue.get("filename", ""),
+                                "line": issue.get("location", {}).get("row", 0),
+                                "code": issue.get("code", ""),
+                                "message": issue.get("message", "")[:100],
+                            }
+                        )
                 except json.JSONDecodeError:
                     pass
             except (subprocess.TimeoutExpired, Exception):
@@ -498,11 +496,13 @@ class OuterLoopManager:
                 for line in (result.stdout + result.stderr).strip().split("\n")[:30]:
                     match = re.match(r"([^:]+):(\d+): error: (.+)", line)
                     if match:
-                        signals["typing_errors"].append({
-                            "file": match.group(1),
-                            "line": int(match.group(2)),
-                            "message": match.group(3)[:100],
-                        })
+                        signals["typing_errors"].append(
+                            {
+                                "file": match.group(1),
+                                "line": int(match.group(2)),
+                                "message": match.group(3)[:100],
+                            }
+                        )
             except (subprocess.TimeoutExpired, Exception):
                 pass
 
@@ -522,13 +522,15 @@ class OuterLoopManager:
                         for item in file_results:
                             complexity = item.get("complexity", 0)
                             if complexity >= 11:  # Grade C or worse
-                                signals["complexity_hotspots"].append({
-                                    "file": filepath,
-                                    "function": item.get("name", ""),
-                                    "line": item.get("lineno", 0),
-                                    "complexity": complexity,
-                                    "rank": item.get("rank", ""),
-                                })
+                                signals["complexity_hotspots"].append(
+                                    {
+                                        "file": filepath,
+                                        "function": item.get("name", ""),
+                                        "line": item.get("lineno", 0),
+                                        "complexity": complexity,
+                                        "rank": item.get("rank", ""),
+                                    }
+                                )
                 except json.JSONDecodeError:
                     pass
             except (subprocess.TimeoutExpired, Exception):
@@ -538,8 +540,12 @@ class OuterLoopManager:
         total_signals = sum(
             len(signals.get(key, []))
             for key in [
-                "test_failures", "coverage_gaps", "todo_comments",
-                "lint_errors", "typing_errors", "complexity_hotspots"
+                "test_failures",
+                "coverage_gaps",
+                "todo_comments",
+                "lint_errors",
+                "typing_errors",
+                "complexity_hotspots",
             ]
         )
         signals["total_signals"] = total_signals
@@ -579,7 +585,9 @@ class OuterLoopManager:
         if signals.get("coverage_gaps"):
             lines = ["### Coverage Gaps (<80%)"]
             for gap in signals["coverage_gaps"][:10]:
-                lines.append(f"- `{gap['file']}`: {gap['coverage']}% ({gap['missing_lines']} lines missing)")
+                lines.append(
+                    f"- `{gap['file']}`: {gap['coverage']}% ({gap['missing_lines']} lines missing)"
+                )
             if len(signals["coverage_gaps"]) > 10:
                 lines.append(f"- ... and {len(signals['coverage_gaps']) - 10} more")
             sections.append("\n".join(lines))
@@ -799,9 +807,9 @@ The following issues have been reported. Consider these alongside your codebase 
 
 A previous attempt at a task was rolled back due to eval regression. Consider this when suggesting approaches:
 
-- **Task that failed**: {rollback_context.get('task', 'Unknown')}
-- **Reason for rollback**: {rollback_context.get('reason', 'Unknown')}
-- **Details**: {json.dumps(rollback_context.get('details', {}), indent=2)}
+- **Task that failed**: {rollback_context.get("task", "Unknown")}
+- **Reason for rollback**: {rollback_context.get("reason", "Unknown")}
+- **Details**: {json.dumps(rollback_context.get("details", {}), indent=2)}
 
 When addressing similar areas, try a different approach than what caused the regression."""
             analyze_prompt = analyze_prompt.replace("{{ROLLBACK_CONTEXT}}", rollback_section)
@@ -1029,7 +1037,10 @@ When addressing similar areas, try a different approach than what caused the reg
                         new = [rev]
                 if not new:
                     for d in current:
-                        if d.design_id in existing_design_ids and d.body != existing_design_bodies.get(d.design_id):
+                        if (
+                            d.design_id in existing_design_ids
+                            and d.body != existing_design_bodies.get(d.design_id)
+                        ):
                             new = [d]
                             break
                 return new[0] if new else None
@@ -1568,7 +1579,7 @@ When addressing similar areas, try a different approach than what caused the reg
             "verdict": verdict,
             "feedback": feedback,
             "score": score,
-            "output": output
+            "output": output,
         }
 
         if log_callback:
@@ -1576,7 +1587,7 @@ When addressing similar areas, try a different approach than what caused the reg
                 "plan_review_completed",
                 verdict=verdict,
                 score=str(score),
-                feedback_count=str(len(feedback))
+                feedback_count=str(len(feedback)),
             )
 
         print()
@@ -1745,10 +1756,12 @@ When addressing similar areas, try a different approach than what caused the reg
             metadata = self._parse_task_metadata(task_text)
             validation = self._validate_task(metadata)
 
-            results.append({
-                "metadata": metadata,
-                "validation": validation,
-            })
+            results.append(
+                {
+                    "metadata": metadata,
+                    "validation": validation,
+                }
+            )
 
             if not validation["valid"]:
                 title = metadata["title"] or metadata["description"][:50]
@@ -1842,9 +1855,7 @@ When addressing similar areas, try a different approach than what caused the reg
             print(f"\n=== Planning Failed ===\n{error_msg}")
             return {"success": False, "tasks_added": 0, "error": error_msg}
         if design.status == DesignStatus.draft:
-            progress(
-                f"Warning: Planning design {design_id} with draft status (unreviewed)"
-            )
+            progress(f"Warning: Planning design {design_id} with draft status (unreviewed)")
         if load_prompt_callback is None:
             raise ValueError("load_prompt_callback is required")
         if run_agent_callback is None:
@@ -1889,9 +1900,7 @@ When addressing similar areas, try a different approach than what caused the reg
                     for t in self.tasklist_provider.list_tasks()
                     if t.task_id not in tasks_before_ids
                 ]
-                current_added = "\n".join(
-                    f"- [ ] {t.raw or t.title}" for t in current_tasks
-                )
+                current_added = "\n".join(f"- [ ] {t.raw or t.title}" for t in current_tasks)
 
                 fix_prompt = load_prompt_callback("plan_fix_prompt.md")
                 fix_prompt = fix_prompt.replace("{{DESIGN_CONTENT}}", design_content)
@@ -1924,11 +1933,17 @@ When addressing similar areas, try a different approach than what caused the reg
             while not validation["valid"] and split_attempt < max_split_attempts:
                 split_attempt += 1
                 state["split_attempts"] += 1
-                progress(f"Task validation failed (attempt {split_attempt}/{max_split_attempts}), requesting fixes...")
+                progress(
+                    f"Task validation failed (attempt {split_attempt}/{max_split_attempts}), requesting fixes..."
+                )
 
                 split_prompt = load_prompt_callback("task_split_prompt.md")
-                split_prompt = split_prompt.replace("{{VIOLATIONS}}", validation["violations_summary"])
-                split_prompt = split_prompt.replace("{{TASKLIST_CONTENT}}", self.tasklist_provider.get_snapshot())
+                split_prompt = split_prompt.replace(
+                    "{{VIOLATIONS}}", validation["violations_summary"]
+                )
+                split_prompt = split_prompt.replace(
+                    "{{TASKLIST_CONTENT}}", self.tasklist_provider.get_snapshot()
+                )
                 split_prompt = apply_provider_placeholders(split_prompt, tasklist_placeholders)
                 # Backward-compat: custom --prompts-dir templates may still use {{TASKLIST_PATH}}
                 split_prompt = split_prompt.replace("{{TASKLIST_PATH}}", self.tasklist)
@@ -1951,7 +1966,7 @@ When addressing similar areas, try a different approach than what caused the reg
                 plan_content=added_content,
                 load_prompt_callback=load_prompt_callback,
                 run_agent_callback=run_agent_callback,
-                log_callback=log_callback
+                log_callback=log_callback,
             )
 
         # Run the generic loop
@@ -1960,7 +1975,7 @@ When addressing similar areas, try a different approach than what caused the reg
             producer=produce_tasks,
             reviewer=review_tasks,
             is_approved=lambda v: v.get("approved", False),
-            max_cycles=self.max_cycles
+            max_cycles=self.max_cycles,
         )
 
         loop_result = loop.run()
@@ -2006,9 +2021,7 @@ When addressing similar areas, try a different approach than what caused the reg
                 "validation": state["validation"],
             }
             try:
-                self.design_provider.update_design_status(
-                    design_id, DesignStatus.approved
-                )
+                self.design_provider.update_design_status(design_id, DesignStatus.approved)
             except Exception as e:
                 progress(
                     f"Warning: Failed to update design status to approved for {design_id}: {e}"
@@ -2033,7 +2046,9 @@ When addressing similar areas, try a different approach than what caused the reg
                 print("Warning: Some tasks still have constraint violations after attempts:")
                 print(state["validation"]["violations_summary"])
             elif state["split_attempts"] > 0 or loop_result.cycles > 1:
-                print(f"Tasks finalized after {loop_result.cycles} review cycle(s) and {state['split_attempts']} split attempt(s)")
+                print(
+                    f"Tasks finalized after {loop_result.cycles} review cycle(s) and {state['split_attempts']} split attempt(s)"
+                )
         else:
             result = {
                 "success": False,
@@ -2045,7 +2060,6 @@ When addressing similar areas, try a different approach than what caused the reg
             print(f"\n=== Planning Failed ===\n{result['error']}")
 
         return result
-
 
     # =========================================================================
     # Opportunity selection
@@ -2197,9 +2211,7 @@ When addressing similar areas, try a different approach than what caused the reg
             progress("=" * 60)
             progress("")
             if selected is not None:
-                progress(
-                    f"Selected opportunity: {selected.opportunity_id} ({selected.title})"
-                )
+                progress(f"Selected opportunity: {selected.opportunity_id} ({selected.title})")
             progress("Review opportunities.md and re-run with:")
             progress("  millstone --design '<opportunity description>'")
             progress("")

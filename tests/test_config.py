@@ -24,11 +24,13 @@ def test_parallel_config_defaults(temp_repo):
 def test_parallel_config_from_toml(temp_repo):
     config_dir = temp_repo / ".millstone"
     config_dir.mkdir(exist_ok=True)
-    (config_dir / "config.toml").write_text(textwrap.dedent("""\
+    (config_dir / "config.toml").write_text(
+        textwrap.dedent("""\
         parallel_enabled = true
         parallel_concurrency = 4
         parallel_merge_strategy = "cherry-pick"
-    """))
+    """)
+    )
 
     cfg = load_config(temp_repo)
     assert cfg["parallel_enabled"] is True
@@ -39,6 +41,7 @@ def test_parallel_config_from_toml(temp_repo):
 # ---------------------------------------------------------------------------
 # tasklist_filter schema
 # ---------------------------------------------------------------------------
+
 
 def test_tasklist_filter_defaults(temp_repo):
     """tasklist_filter defaults to empty lists for all filter keys."""
@@ -53,6 +56,7 @@ def test_tasklist_filter_defaults(temp_repo):
 # tasklist_filter UX shortcuts
 # ---------------------------------------------------------------------------
 
+
 def test_tasklist_filter_shortcut_defaults(temp_repo):
     """Shortcut keys default to empty string."""
     cfg = load_config(temp_repo)
@@ -66,10 +70,12 @@ def test_tasklist_filter_label_shortcut_from_toml(temp_repo):
     """label shortcut is loaded from config.toml as a string."""
     config_dir = temp_repo / ".millstone"
     config_dir.mkdir(exist_ok=True)
-    (config_dir / "config.toml").write_text(textwrap.dedent("""\
+    (config_dir / "config.toml").write_text(
+        textwrap.dedent("""\
         [tasklist_filter]
         label = "sprint-1"
-    """))
+    """)
+    )
 
     cfg = load_config(temp_repo)
     tf = cfg["tasklist_filter"]
@@ -80,12 +86,14 @@ def test_tasklist_filter_all_shortcuts_from_toml(temp_repo):
     """All three shortcuts are loaded from config.toml."""
     config_dir = temp_repo / ".millstone"
     config_dir.mkdir(exist_ok=True)
-    (config_dir / "config.toml").write_text(textwrap.dedent("""\
+    (config_dir / "config.toml").write_text(
+        textwrap.dedent("""\
         [tasklist_filter]
         label = "sprint-1"
         assignee = "alice"
         status = "Todo"
-    """))
+    """)
+    )
 
     cfg = load_config(temp_repo)
     tf = cfg["tasklist_filter"]
@@ -98,12 +106,14 @@ def test_tasklist_filter_from_toml(temp_repo):
     """tasklist_filter values are loaded from config.toml."""
     config_dir = temp_repo / ".millstone"
     config_dir.mkdir(exist_ok=True)
-    (config_dir / "config.toml").write_text(textwrap.dedent("""\
+    (config_dir / "config.toml").write_text(
+        textwrap.dedent("""\
         [tasklist_filter]
         labels = ["sprint-1", "backend"]
         assignees = ["alice"]
         statuses = ["Todo", "In Progress"]
-    """))
+    """)
+    )
 
     cfg = load_config(temp_repo)
     tf = cfg["tasklist_filter"]
@@ -116,10 +126,12 @@ def test_tasklist_filter_partial_override(temp_repo):
     """Unspecified filter keys retain empty-list defaults."""
     config_dir = temp_repo / ".millstone"
     config_dir.mkdir(exist_ok=True)
-    (config_dir / "config.toml").write_text(textwrap.dedent("""\
+    (config_dir / "config.toml").write_text(
+        textwrap.dedent("""\
         [tasklist_filter]
         labels = ["urgent"]
-    """))
+    """)
+    )
 
     cfg = load_config(temp_repo)
     tf = cfg["tasklist_filter"]
@@ -133,10 +145,12 @@ def test_tasklist_filter_backward_compat_no_filter_section(temp_repo):
     """Configs without [tasklist_filter] produce empty filter defaults."""
     config_dir = temp_repo / ".millstone"
     config_dir.mkdir(exist_ok=True)
-    (config_dir / "config.toml").write_text(textwrap.dedent("""\
+    (config_dir / "config.toml").write_text(
+        textwrap.dedent("""\
         max_cycles = 5
         tasklist_provider = "file"
-    """))
+    """)
+    )
 
     cfg = load_config(temp_repo)
     tf = cfg["tasklist_filter"]
@@ -148,6 +162,7 @@ def test_tasklist_filter_backward_compat_no_filter_section(temp_repo):
 # ---------------------------------------------------------------------------
 # CLI --help: tasklist_filter scoping section
 # ---------------------------------------------------------------------------
+
 
 def _help_output() -> str:
     result = subprocess.run(
@@ -183,4 +198,3 @@ def test_help_list_form_examples_present():
 def test_help_shortcut_equivalence_annotation_present():
     """--help output documents that shortcut is equivalent to list form."""
     assert "equivalent to" in _help_output()
-

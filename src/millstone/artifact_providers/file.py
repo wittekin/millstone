@@ -32,6 +32,7 @@ from millstone.artifacts.tasklist import TasklistManager
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _title_slug(title: str) -> str:
     """Derive a URL-safe slug from title.
 
@@ -39,18 +40,18 @@ def _title_slug(title: str) -> str:
     collapse consecutive hyphens, strip leading/trailing hyphens.
     """
     s = title.lower()
-    s = re.sub(r'[^a-z0-9-]', '-', s)
-    s = re.sub(r'-+', '-', s)
-    return s.strip('-')
+    s = re.sub(r"[^a-z0-9-]", "-", s)
+    s = re.sub(r"-+", "-", s)
+    return s.strip("-")
 
 
 def _normalize_meta_key(key: str) -> str:
     """Normalize a metadata key: lowercase, spaces/hyphens → underscores."""
-    return key.lower().strip().replace(' ', '_').replace('-', '_')
+    return key.lower().strip().replace(" ", "_").replace("-", "_")
 
 
 # Normalized key spellings that map to Opportunity.design_ref
-_DESIGN_REF_KEYS = {'design_ref', 'design_reference'}
+_DESIGN_REF_KEYS = {"design_ref", "design_reference"}
 
 
 def _meta_get(meta: dict[str, str], *keys: str) -> str | None:
@@ -66,6 +67,7 @@ def _meta_get(meta: dict[str, str], *keys: str) -> str | None:
 # ---------------------------------------------------------------------------
 # FileOpportunityProvider
 # ---------------------------------------------------------------------------
+
 
 class FileOpportunityProvider(OpportunityProviderBase):
     """File-backed OpportunityProvider reading/writing opportunities.md.
@@ -112,17 +114,15 @@ class FileOpportunityProvider(OpportunityProviderBase):
         block = self._to_checklist_block(opportunity)
         if self.path.exists():
             existing = self.path.read_text()
-            if existing and not existing.endswith('\n'):
-                existing += '\n'
-            sep = '\n' if existing.strip() else ''
-            self.path.write_text(existing + sep + block + '\n')
+            if existing and not existing.endswith("\n"):
+                existing += "\n"
+            sep = "\n" if existing.strip() else ""
+            self.path.write_text(existing + sep + block + "\n")
         else:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text(block + '\n')
+            self.path.write_text(block + "\n")
 
-    def update_opportunity_status(
-        self, opportunity_id: str, status: OpportunityStatus
-    ) -> None:
+    def update_opportunity_status(self, opportunity_id: str, status: OpportunityStatus) -> None:
         """Mutate checkbox and Status: metadata in-place."""
         if not self.path.exists():
             raise FileNotFoundError(f"opportunities file not found: {self.path}")
@@ -130,18 +130,18 @@ class FileOpportunityProvider(OpportunityProviderBase):
         lines = content.splitlines(keepends=True)
         i = 0
         while i < len(lines):
-            line = lines[i].rstrip('\n').rstrip('\r')
-            m = re.match(r'^- \[([ x])\] (.+)', line)
+            line = lines[i].rstrip("\n").rstrip("\r")
+            m = re.match(r"^- \[([ x])\] (.+)", line)
             if m:
                 raw_title = m.group(2).strip()
-                title = re.sub(r'^\*\*(.+)\*\*$', r'\1', raw_title)
+                title = re.sub(r"^\*\*(.+)\*\*$", r"\1", raw_title)
 
                 # Collect block extent (indented lines + blank lines)
                 block_start = i
                 j = i + 1
                 while j < len(lines):
-                    bl = lines[j].rstrip('\n').rstrip('\r')
-                    if bl.startswith('  ') or bl == '':
+                    bl = lines[j].rstrip("\n").rstrip("\r")
+                    if bl.startswith("  ") or bl == "":
                         j += 1
                     else:
                         break
@@ -149,14 +149,11 @@ class FileOpportunityProvider(OpportunityProviderBase):
 
                 # Parse entry id from block metadata
                 meta = self._parse_meta_lines(lines, block_start + 1, block_end)
-                entry_id = (
-                    _meta_get(meta, 'Opportunity ID', 'ID')
-                    or _title_slug(title)
-                )
+                entry_id = _meta_get(meta, "Opportunity ID", "ID") or _title_slug(title)
 
                 if entry_id == opportunity_id:
                     self._apply_status_to_block(lines, block_start, block_end, status)
-                    self.path.write_text(''.join(lines))
+                    self.path.write_text("".join(lines))
                     return
 
                 i = block_end
@@ -175,18 +172,18 @@ class FileOpportunityProvider(OpportunityProviderBase):
         i = 0
         while i < len(lines):
             line = lines[i]
-            m = re.match(r'^- \[([ x])\] (.+)', line)
+            m = re.match(r"^- \[([ x])\] (.+)", line)
             if m:
-                checked = m.group(1) == 'x'
+                checked = m.group(1) == "x"
                 raw_title = m.group(2).strip()
-                title = re.sub(r'^\*\*(.+)\*\*$', r'\1', raw_title)
+                title = re.sub(r"^\*\*(.+)\*\*$", r"\1", raw_title)
 
                 # Collect indented metadata lines and blank separators
                 block_lines = [line]
                 j = i + 1
                 while j < len(lines):
                     bl = lines[j]
-                    if bl.startswith('  ') or bl == '':
+                    if bl.startswith("  ") or bl == "":
                         block_lines.append(bl)
                         j += 1
                     else:
@@ -195,34 +192,32 @@ class FileOpportunityProvider(OpportunityProviderBase):
                 # Parse key: value metadata
                 meta: dict[str, str] = {}
                 for bl in block_lines[1:]:
-                    bm = re.match(r'^\s+- (.+?):\s*(.*)', bl)
+                    bm = re.match(r"^\s+- (.+?):\s*(.*)", bl)
                     if bm:
                         raw_key = bm.group(1).strip()
-                        meta[raw_key.strip('*').strip()] = bm.group(2).strip()
+                        meta[raw_key.strip("*").strip()] = bm.group(2).strip()
 
                 # Status: checkbox provides base; explicit Status: metadata overrides
-                base_status = (
-                    OpportunityStatus.adopted if checked else OpportunityStatus.identified
-                )
-                status_val = _meta_get(meta, 'Status')
+                base_status = OpportunityStatus.adopted if checked else OpportunityStatus.identified
+                status_val = _meta_get(meta, "Status")
                 if status_val:
                     sv = status_val.lower()
-                    if sv == 'rejected':
+                    if sv == "rejected":
                         status = OpportunityStatus.rejected
-                    elif sv == 'adopted':
+                    elif sv == "adopted":
                         status = OpportunityStatus.adopted
                     else:
                         status = base_status
                 else:
                     status = base_status
 
-                opp_id = _meta_get(meta, 'Opportunity ID', 'ID') or _title_slug(title)
-                description = _meta_get(meta, 'Description') or ''
+                opp_id = _meta_get(meta, "Opportunity ID", "ID") or _title_slug(title)
+                description = _meta_get(meta, "Description") or ""
 
                 requires_design: bool | None = None
-                rd_val = _meta_get(meta, 'Requires Design')
+                rd_val = _meta_get(meta, "Requires Design")
                 if rd_val is not None:
-                    requires_design = rd_val.lower() == 'true'
+                    requires_design = rd_val.lower() == "true"
 
                 design_ref: str | None = None
                 for k, v in meta.items():
@@ -231,24 +226,26 @@ class FileOpportunityProvider(OpportunityProviderBase):
                         break
 
                 roi_score: float | None = None
-                roi_raw = _meta_get(meta, 'ROI Score')
+                roi_raw = _meta_get(meta, "ROI Score")
                 if roi_raw is not None:
                     try:
                         roi_score = float(roi_raw)
                     except ValueError:
                         roi_score = None
 
-                raw = '\n'.join(block_lines)
-                results.append(Opportunity(
-                    opportunity_id=opp_id,
-                    title=title,
-                    status=status,
-                    description=description,
-                    requires_design=requires_design,
-                    design_ref=design_ref,
-                    roi_score=roi_score,
-                    raw=raw,
-                ))
+                raw = "\n".join(block_lines)
+                results.append(
+                    Opportunity(
+                        opportunity_id=opp_id,
+                        title=title,
+                        status=status,
+                        description=description,
+                        requires_design=requires_design,
+                        design_ref=design_ref,
+                        roi_score=roi_score,
+                        raw=raw,
+                    )
+                )
                 i = j
             else:
                 i += 1
@@ -261,28 +258,28 @@ class FileOpportunityProvider(OpportunityProviderBase):
         i = 0
         while i < len(lines):
             line = lines[i]
-            m = re.match(r'^### (.+)', line)
+            m = re.match(r"^### (.+)", line)
             if m:
                 title = m.group(1).strip()
                 block_lines = [line]
                 j = i + 1
-                while j < len(lines) and not re.match(r'^### ', lines[j]):
+                while j < len(lines) and not re.match(r"^### ", lines[j]):
                     block_lines.append(lines[j])
                     j += 1
 
                 # Parse "Key: value" lines from block body
                 meta: dict[str, str] = {}
                 for bl in block_lines[1:]:
-                    bm = re.match(r'^([\w][\w ]*?):\s*(.*)', bl.strip())
+                    bm = re.match(r"^([\w][\w ]*?):\s*(.*)", bl.strip())
                     if bm:
                         meta[bm.group(1).strip()] = bm.group(2).strip()
 
-                description = _meta_get(meta, 'Description') or ''
+                description = _meta_get(meta, "Description") or ""
                 roi_score: float | None = None
-                roi_raw = _meta_get(meta, 'ROI Score')
+                roi_raw = _meta_get(meta, "ROI Score")
                 if roi_raw is None:
                     for bl in block_lines[1:]:
-                        rm = re.match(r'^\*\*ROI Score\*\*:\s*(.*)', bl.strip())
+                        rm = re.match(r"^\*\*ROI Score\*\*:\s*(.*)", bl.strip())
                         if rm:
                             roi_raw = rm.group(1).strip()
                             break
@@ -293,28 +290,28 @@ class FileOpportunityProvider(OpportunityProviderBase):
                         roi_score = None
 
                 opp_id = _title_slug(title)
-                raw = '\n'.join(block_lines)
-                results.append(Opportunity(
-                    opportunity_id=opp_id,
-                    title=title,
-                    status=OpportunityStatus.identified,
-                    description=description,
-                    roi_score=roi_score,
-                    raw=raw,
-                ))
+                raw = "\n".join(block_lines)
+                results.append(
+                    Opportunity(
+                        opportunity_id=opp_id,
+                        title=title,
+                        status=OpportunityStatus.identified,
+                        description=description,
+                        roi_score=roi_score,
+                        raw=raw,
+                    )
+                )
                 i = j
             else:
                 i += 1
         return results
 
-    def _parse_meta_lines(
-        self, lines: list[str], start: int, end: int
-    ) -> dict[str, str]:
+    def _parse_meta_lines(self, lines: list[str], start: int, end: int) -> dict[str, str]:
         """Extract key: value metadata from a slice of lines (with keepends)."""
         meta: dict[str, str] = {}
         for k in range(start, end):
-            bl = lines[k].rstrip('\n').rstrip('\r')
-            bm = re.match(r'^\s+- (.+?):\s*(.*)', bl)
+            bl = lines[k].rstrip("\n").rstrip("\r")
+            bm = re.match(r"^\s+- (.+?):\s*(.*)", bl)
             if bm:
                 meta[bm.group(1).strip()] = bm.group(2).strip()
         return meta
@@ -327,28 +324,27 @@ class FileOpportunityProvider(OpportunityProviderBase):
         status: OpportunityStatus,
     ) -> None:
         """Mutate lines in-place: update checkbox and Status: metadata."""
-        checkbox_char = 'x' if status == OpportunityStatus.adopted else ' '
+        checkbox_char = "x" if status == OpportunityStatus.adopted else " "
         line = lines[block_start]
-        end_char = '\n' if line.endswith('\n') else ''
+        end_char = "\n" if line.endswith("\n") else ""
         lines[block_start] = (
-            re.sub(r'\[([ x])\]', f'[{checkbox_char}]', line.rstrip('\n').rstrip('\r'))
-            + end_char
+            re.sub(r"\[([ x])\]", f"[{checkbox_char}]", line.rstrip("\n").rstrip("\r")) + end_char
         )
 
         # Find existing Status: metadata line within block
         status_line_idx: int | None = None
         for k in range(block_start + 1, block_end):
-            bl = lines[k].rstrip('\n').rstrip('\r')
-            if re.match(r'^\s+- Status:\s*', bl, re.IGNORECASE):
+            bl = lines[k].rstrip("\n").rstrip("\r")
+            if re.match(r"^\s+- Status:\s*", bl, re.IGNORECASE):
                 status_line_idx = k
                 break
 
         if status == OpportunityStatus.rejected:
             if status_line_idx is not None:
-                end_char = '\n' if lines[status_line_idx].endswith('\n') else ''
-                lines[status_line_idx] = '  - Status: rejected' + end_char
+                end_char = "\n" if lines[status_line_idx].endswith("\n") else ""
+                lines[status_line_idx] = "  - Status: rejected" + end_char
             else:
-                lines.insert(block_start + 1, '  - Status: rejected\n')
+                lines.insert(block_start + 1, "  - Status: rejected\n")
         else:
             # identified or adopted: remove any Status: line
             if status_line_idx is not None:
@@ -363,24 +359,25 @@ class FileOpportunityProvider(OpportunityProviderBase):
 
     def _to_checklist_block(self, opportunity: Opportunity) -> str:
         """Serialize an Opportunity to canonical checklist markdown block."""
-        checkbox = '[x]' if opportunity.status == OpportunityStatus.adopted else '[ ]'
-        parts = [f'- {checkbox} **{opportunity.title}**']
-        parts.append(f'  - Opportunity ID: {opportunity.opportunity_id}')
+        checkbox = "[x]" if opportunity.status == OpportunityStatus.adopted else "[ ]"
+        parts = [f"- {checkbox} **{opportunity.title}**"]
+        parts.append(f"  - Opportunity ID: {opportunity.opportunity_id}")
         if opportunity.status == OpportunityStatus.rejected:
-            parts.append('  - Status: rejected')
+            parts.append("  - Status: rejected")
         if opportunity.requires_design is not None:
-            val = 'true' if opportunity.requires_design else 'false'
-            parts.append(f'  - Requires Design: {val}')
+            val = "true" if opportunity.requires_design else "false"
+            parts.append(f"  - Requires Design: {val}")
         if opportunity.description:
-            parts.append(f'  - Description: {opportunity.description}')
+            parts.append(f"  - Description: {opportunity.description}")
         if opportunity.design_ref:
-            parts.append(f'  - Design Ref: {opportunity.design_ref}')
-        return '\n'.join(parts)
+            parts.append(f"  - Design Ref: {opportunity.design_ref}")
+        return "\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
 # FileDesignProvider
 # ---------------------------------------------------------------------------
+
 
 class FileDesignProvider(DesignProviderBase):
     """File-backed DesignProvider reading/writing files under a designs/ directory.
@@ -408,7 +405,7 @@ class FileDesignProvider(DesignProviderBase):
         if not self.path.exists():
             return []
         results = []
-        for f in sorted(self.path.glob('*.md')):
+        for f in sorted(self.path.glob("*.md")):
             design = self._parse_file(f)
             if design is not None:
                 results.append(design)
@@ -417,7 +414,7 @@ class FileDesignProvider(DesignProviderBase):
     def get_design(self, design_id: str) -> Design | None:
         if not self.path.exists():
             return None
-        f = self.path / f'{design_id}.md'
+        f = self.path / f"{design_id}.md"
         if not f.exists():
             return None
         return self._parse_file(f)
@@ -425,29 +422,29 @@ class FileDesignProvider(DesignProviderBase):
     def write_design(self, design: Design) -> None:
         design.validate()
         self.path.mkdir(parents=True, exist_ok=True)
-        f = self.path / f'{design.design_id}.md'
+        f = self.path / f"{design.design_id}.md"
         f.write_text(self._to_canonical(design))
 
     def update_design_status(self, design_id: str, status: DesignStatus) -> None:
         """Rewrite the status line in-place; body is untouched."""
-        f = self.path / f'{design_id}.md'
+        f = self.path / f"{design_id}.md"
         if not f.exists():
-            raise FileNotFoundError(f'design file not found: {f}')
+            raise FileNotFoundError(f"design file not found: {f}")
         content = f.read_text()
 
         # Canonical format: - **status**: <value>
-        canonical_pat = re.compile(r'^(- \*\*status\*\*: )(.+)$', re.MULTILINE)
+        canonical_pat = re.compile(r"^(- \*\*status\*\*: )(.+)$", re.MULTILINE)
         if canonical_pat.search(content):
-            f.write_text(canonical_pat.sub(rf'\g<1>{status.value}', content))
+            f.write_text(canonical_pat.sub(rf"\g<1>{status.value}", content))
             return
 
         # Legacy format: Status: <value>
-        legacy_pat = re.compile(r'^(Status: )(.+)$', re.MULTILINE)
+        legacy_pat = re.compile(r"^(Status: )(.+)$", re.MULTILINE)
         if legacy_pat.search(content):
-            f.write_text(legacy_pat.sub(rf'\g<1>{status.value}', content))
+            f.write_text(legacy_pat.sub(rf"\g<1>{status.value}", content))
             return
 
-        raise ValueError(f'no status line found in design file: {f}')
+        raise ValueError(f"no status line found in design file: {f}")
 
     # ------------------------------------------------------------------
     # Parsing helpers
@@ -462,16 +459,16 @@ class FileDesignProvider(DesignProviderBase):
 
     def _parse_canonical(self, stem: str, content: str) -> Design | None:
         """Parse canonical metadata-block format (- **field**: value before ---)."""
-        sep_match = re.search(r'^---\s*$', content, re.MULTILINE)
+        sep_match = re.search(r"^---\s*$", content, re.MULTILINE)
         if not sep_match:
             return None
 
-        header = content[:sep_match.start()]
-        body = content[sep_match.end():].lstrip('\n')
+        header = content[: sep_match.start()]
+        body = content[sep_match.end() :].lstrip("\n")
 
         meta: dict[str, str] = {}
         for line in header.splitlines():
-            m = re.match(r'^- \*\*(\w+)\*\*:\s*(.*)', line)
+            m = re.match(r"^- \*\*(\w+)\*\*:\s*(.*)", line)
             if m:
                 meta[m.group(1).lower()] = m.group(2).strip()
 
@@ -479,15 +476,15 @@ class FileDesignProvider(DesignProviderBase):
         if not meta:
             return None
 
-        design_id = meta.get('design_id', stem)
-        title = meta.get('title', stem)
-        status_str = meta.get('status', 'draft').lower()
+        design_id = meta.get("design_id", stem)
+        title = meta.get("title", stem)
+        status_str = meta.get("status", "draft").lower()
         try:
             status = DesignStatus(status_str)
         except ValueError:
             status = DesignStatus.draft
 
-        opportunity_ref = meta.get('opportunity_ref') or None
+        opportunity_ref = meta.get("opportunity_ref") or None
 
         design = Design(
             design_id=design_id,
@@ -496,8 +493,8 @@ class FileDesignProvider(DesignProviderBase):
             body=body,
             opportunity_ref=opportunity_ref,
         )
-        design.review_summary = meta.get('review_summary') or None
-        design.tasklist_ref = meta.get('tasklist_ref') or None
+        design.review_summary = meta.get("review_summary") or None
+        design.tasklist_ref = meta.get("tasklist_ref") or None
         return design
 
     def _parse_legacy(self, stem: str, content: str) -> Design | None:
@@ -506,11 +503,11 @@ class FileDesignProvider(DesignProviderBase):
         status = DesignStatus.draft
 
         for line in content.splitlines():
-            m = re.match(r'^# Design:\s*(.+)', line)
+            m = re.match(r"^# Design:\s*(.+)", line)
             if m:
                 title = m.group(1).strip()
                 continue
-            m = re.match(r'^Status:\s*(.+)', line, re.IGNORECASE)
+            m = re.match(r"^Status:\s*(.+)", line, re.IGNORECASE)
             if m:
                 status_str = m.group(1).strip().lower()
                 try:
@@ -539,29 +536,30 @@ class FileDesignProvider(DesignProviderBase):
     def _to_canonical(self, design: Design) -> str:
         """Serialize Design to canonical metadata block format."""
         lines = [
-            f'# {design.title}',
-            '',
-            f'- **design_id**: {design.design_id}',
-            f'- **title**: {design.title}',
-            f'- **status**: {design.status.value}',
+            f"# {design.title}",
+            "",
+            f"- **design_id**: {design.design_id}",
+            f"- **title**: {design.title}",
+            f"- **status**: {design.status.value}",
         ]
         if design.opportunity_ref:
-            lines.append(f'- **opportunity_ref**: {design.opportunity_ref}')
+            lines.append(f"- **opportunity_ref**: {design.opportunity_ref}")
         if design.review_summary is not None:
-            lines.append(f'- **review_summary**: {design.review_summary}')
+            lines.append(f"- **review_summary**: {design.review_summary}")
         if design.tasklist_ref is not None:
-            lines.append(f'- **tasklist_ref**: {design.tasklist_ref}')
-        lines.append(f'- **created**: {datetime.date.today().isoformat()}')
-        lines.append('')
-        lines.append('---')
-        lines.append('')
+            lines.append(f"- **tasklist_ref**: {design.tasklist_ref}")
+        lines.append(f"- **created**: {datetime.date.today().isoformat()}")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
         lines.append(design.body)
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
 # FileTasklistProvider
 # ---------------------------------------------------------------------------
+
 
 class FileTasklistProvider(TasklistProviderBase):
     """File-backed TasklistProvider wrapping TasklistManager.
@@ -611,12 +609,12 @@ class FileTasklistProvider(TasklistProviderBase):
         for task in tasks:
             task.validate()
         blocks = [self._to_checklist_block(t) for t in tasks]
-        new_text = '\n\n'.join(blocks) + '\n'
+        new_text = "\n\n".join(blocks) + "\n"
         if self.path.exists():
             existing = self.path.read_text()
-            if existing and not existing.endswith('\n'):
-                existing += '\n'
-            sep = '\n' if existing.strip() else ''
+            if existing and not existing.endswith("\n"):
+                existing += "\n"
+            sep = "\n" if existing.strip() else ""
             self.path.write_text(existing + sep + new_text)
         else:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -679,44 +677,46 @@ class FileTasklistProvider(TasklistProviderBase):
         task_records = self._mgr.extract_all_task_ids()
         results = []
         for rec in task_records:
-            checked: bool = rec['checked']
-            raw_text: str = rec['raw_text']
-            task_id: str = rec['task_id']
+            checked: bool = rec["checked"]
+            raw_text: str = rec["raw_text"]
+            task_id: str = rec["task_id"]
             metadata = self._mgr._parse_task_metadata(raw_text)
-            title = metadata.get('title') or raw_text.split('\n')[0].strip()
+            title = metadata.get("title") or raw_text.split("\n")[0].strip()
             status = TaskStatus.done if checked else TaskStatus.todo
-            results.append(TasklistItem(
-                task_id=task_id,
-                title=title,
-                status=status,
-                design_ref=metadata.get('design_ref'),
-                opportunity_ref=metadata.get('opportunity_ref'),
-                risk=metadata.get('risk'),
-                tests=metadata.get('tests'),
-                context=metadata.get('context'),
-                criteria=metadata.get('criteria'),
-                raw=raw_text,
-            ))
+            results.append(
+                TasklistItem(
+                    task_id=task_id,
+                    title=title,
+                    status=status,
+                    design_ref=metadata.get("design_ref"),
+                    opportunity_ref=metadata.get("opportunity_ref"),
+                    risk=metadata.get("risk"),
+                    tests=metadata.get("tests"),
+                    context=metadata.get("context"),
+                    criteria=metadata.get("criteria"),
+                    raw=raw_text,
+                )
+            )
         return results
 
     def _to_checklist_block(self, item: TasklistItem) -> str:
         """Serialize a TasklistItem to canonical checklist markdown block."""
-        checkbox = '[x]' if item.status == TaskStatus.done else '[ ]'
-        parts = [f'- {checkbox} **{item.title}**']
-        parts.append(f'  - ID: {item.task_id}')
+        checkbox = "[x]" if item.status == TaskStatus.done else "[ ]"
+        parts = [f"- {checkbox} **{item.title}**"]
+        parts.append(f"  - ID: {item.task_id}")
         if item.design_ref:
-            parts.append(f'  - design-ref: {item.design_ref}')
+            parts.append(f"  - design-ref: {item.design_ref}")
         if item.opportunity_ref:
-            parts.append(f'  - opportunity-ref: {item.opportunity_ref}')
+            parts.append(f"  - opportunity-ref: {item.opportunity_ref}")
         if item.risk:
-            parts.append(f'  - Risk: {item.risk}')
+            parts.append(f"  - Risk: {item.risk}")
         if item.tests:
-            parts.append(f'  - Tests: {item.tests}')
+            parts.append(f"  - Tests: {item.tests}")
         if item.context:
-            parts.append(f'  - Context: {item.context}')
+            parts.append(f"  - Context: {item.context}")
         if item.criteria:
-            parts.append(f'  - Acceptance: {item.criteria}')
-        return '\n'.join(parts)
+            parts.append(f"  - Acceptance: {item.criteria}")
+        return "\n".join(parts)
 
 
 register_opportunity_provider_class("file", FileOpportunityProvider)

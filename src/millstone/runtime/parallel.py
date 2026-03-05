@@ -34,11 +34,9 @@ def _resolve_under_repo(repo_dir: Path, p: str | Path) -> Path:
 class WorkerHandle(Protocol):
     pid: int | None
 
-    def poll(self) -> int | None:
-        ...
+    def poll(self) -> int | None: ...
 
-    def kill(self) -> None:
-        ...
+    def kill(self) -> None: ...
 
 
 class SubprocessWorkerHandle:
@@ -203,9 +201,15 @@ class ParallelOrchestrator:
     ):
         self.orch = orchestrator
 
-        self.git_lock = AdvisoryLock(_resolve_under_repo(self.orch.repo_dir, self.orch.parallel_lock_git))
-        self.state_lock = AdvisoryLock(_resolve_under_repo(self.orch.repo_dir, self.orch.parallel_lock_state))
-        self.tasklist_lock = AdvisoryLock(_resolve_under_repo(self.orch.repo_dir, self.orch.parallel_lock_tasklist))
+        self.git_lock = AdvisoryLock(
+            _resolve_under_repo(self.orch.repo_dir, self.orch.parallel_lock_git)
+        )
+        self.state_lock = AdvisoryLock(
+            _resolve_under_repo(self.orch.repo_dir, self.orch.parallel_lock_state)
+        )
+        self.tasklist_lock = AdvisoryLock(
+            _resolve_under_repo(self.orch.repo_dir, self.orch.parallel_lock_tasklist)
+        )
 
         worktree_root = _resolve_under_repo(self.orch.repo_dir, self.orch.parallel_worktree_root)
         self.worktree_mgr = WorktreeManager(
@@ -525,7 +529,9 @@ class ParallelOrchestrator:
                     "task_id": task_id,
                     "title": title,
                     "group": group,
-                    "file_refs": file_refs_by_index.get(index, []) if isinstance(index, int) else [],
+                    "file_refs": file_refs_by_index.get(index, [])
+                    if isinstance(index, int)
+                    else [],
                     "risk": risk,
                     "raw_text": raw_text,
                 }
@@ -810,8 +816,10 @@ class ParallelOrchestrator:
                         task_records=task_records,
                     )
 
-                if not in_flight and scheduler.has_remaining() and not scheduler.next_available(
-                    set(), completed
+                if (
+                    not in_flight
+                    and scheduler.has_remaining()
+                    and not scheduler.next_available(set(), completed)
                 ):
                     failures = True
                     remaining = scheduler.get_remaining_task_ids()

@@ -31,11 +31,7 @@ class TestTaskIds:
     def test_generate_task_id_collision_suffix(self, temp_repo, monkeypatch):
         mgr = TasklistManager(repo_dir=temp_repo)
         tasklist = temp_repo / "docs" / "tasklist.md"
-        tasklist.write_text(
-            "# Tasklist\n\n"
-            "- [ ] **A**: one\n"
-            "- [ ] **B**: two\n"
-        )
+        tasklist.write_text("# Tasklist\n\n- [ ] **A**: one\n- [ ] **B**: two\n")
 
         monkeypatch.setattr(mgr, "generate_task_id", lambda _t: "abc12345")
         tasks = mgr.extract_all_task_ids()

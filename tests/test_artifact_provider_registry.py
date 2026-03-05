@@ -59,7 +59,9 @@ def reset_provider_registries():
 
 class MockOpportunityProvider:
     @classmethod
-    def from_config(cls, options):  # pragma: no cover - class-registry tests use base subclasses below
+    def from_config(
+        cls, options
+    ):  # pragma: no cover - class-registry tests use base subclasses below
         return cls()
 
     def list_opportunities(self) -> list[Opportunity]:
@@ -80,7 +82,9 @@ class MockOpportunityProvider:
 
 class MockDesignProvider:
     @classmethod
-    def from_config(cls, options):  # pragma: no cover - class-registry tests use base subclasses below
+    def from_config(
+        cls, options
+    ):  # pragma: no cover - class-registry tests use base subclasses below
         return cls()
 
     def list_designs(self) -> list[Design]:
@@ -101,7 +105,9 @@ class MockDesignProvider:
 
 class MockTasklistProvider:
     @classmethod
-    def from_config(cls, options):  # pragma: no cover - class-registry tests use base subclasses below
+    def from_config(
+        cls, options
+    ):  # pragma: no cover - class-registry tests use base subclasses below
         return cls()
 
     def list_tasks(self) -> list[TasklistItem]:

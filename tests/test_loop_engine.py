@@ -10,19 +10,17 @@ class MockVerdict:
         self.approved = approved
         self.feedback = feedback
 
+
 def test_loop_success_first_try():
     """Loop succeeds if producer is approved on first try."""
     producer = MagicMock(return_value="artifact v1")
     reviewer = MagicMock(return_value=MockVerdict(True))
+
     def is_approved(v):
         return v.approved
 
     loop = ArtifactReviewLoop(
-        name="TestLoop",
-        producer=producer,
-        reviewer=reviewer,
-        is_approved=is_approved,
-        max_cycles=3
+        name="TestLoop", producer=producer, reviewer=reviewer, is_approved=is_approved, max_cycles=3
     )
 
     result = loop.run(input="start")
@@ -32,6 +30,7 @@ def test_loop_success_first_try():
     assert result.artifact == "artifact v1"
     producer.assert_called_once_with(input="start")
     reviewer.assert_called_once_with("artifact v1")
+
 
 def test_loop_iteration_and_fix():
     """Loop iterates and passes feedback to producer if rejected."""
@@ -44,19 +43,13 @@ def test_loop_iteration_and_fix():
     producer = MagicMock(side_effect=producer_side_effect)
 
     # First review fails, second succeeds
-    reviewer = MagicMock(side_effect=[
-        MockVerdict(False, "needs more detail"),
-        MockVerdict(True)
-    ])
+    reviewer = MagicMock(side_effect=[MockVerdict(False, "needs more detail"), MockVerdict(True)])
+
     def is_approved(v):
         return v.approved
 
     loop = ArtifactReviewLoop(
-        name="TestLoop",
-        producer=producer,
-        reviewer=reviewer,
-        is_approved=is_approved,
-        max_cycles=3
+        name="TestLoop", producer=producer, reviewer=reviewer, is_approved=is_approved, max_cycles=3
     )
 
     result = loop.run(arg1="val1")
@@ -72,19 +65,17 @@ def test_loop_iteration_and_fix():
 
     assert reviewer.call_count == 2
 
+
 def test_loop_reaches_max_cycles():
     """Loop fails if max cycles reached without approval."""
     producer = MagicMock(return_value="artifact")
     reviewer = MagicMock(return_value=MockVerdict(False, "still bad"))
+
     def is_approved(v):
         return v.approved
 
     loop = ArtifactReviewLoop(
-        name="TestLoop",
-        producer=producer,
-        reviewer=reviewer,
-        is_approved=is_approved,
-        max_cycles=2
+        name="TestLoop", producer=producer, reviewer=reviewer, is_approved=is_approved, max_cycles=2
     )
 
     result = loop.run()
@@ -92,6 +83,7 @@ def test_loop_reaches_max_cycles():
     assert result.success is False
     assert result.cycles == 2
     assert "Maximum cycles" in result.error
+
 
 def test_on_success_callback():
     """Loop calls on_success and respects its result."""
@@ -104,12 +96,13 @@ def test_on_success_callback():
         producer=producer,
         reviewer=reviewer,
         is_approved=lambda v: v.approved,
-        on_success=on_success
+        on_success=on_success,
     )
 
     result = loop.run()
     assert result.success is True
     on_success.assert_called_once()
+
 
 def test_on_success_failure_halts():
     """If on_success returns False, the loop reports failure."""
@@ -122,12 +115,13 @@ def test_on_success_failure_halts():
         producer=producer,
         reviewer=reviewer,
         is_approved=lambda v: v.approved,
-        on_success=on_success
+        on_success=on_success,
     )
 
     result = loop.run()
     assert result.success is False
     assert "Completion step failed" in result.error
+
 
 def test_validator_failure_halts():
     """If validator returns False, the loop halts before review."""
@@ -140,7 +134,7 @@ def test_validator_failure_halts():
         producer=producer,
         reviewer=reviewer,
         is_approved=lambda v: True,
-        validator=validator
+        validator=validator,
     )
 
     result = loop.run()
@@ -158,10 +152,12 @@ def test_loop_survives_broken_pipe_after_request_changes():
         return "artifact v1"
 
     producer = MagicMock(side_effect=producer_side_effect)
-    reviewer = MagicMock(side_effect=[
-        MockVerdict(False, "needs more detail"),
-        MockVerdict(True),
-    ])
+    reviewer = MagicMock(
+        side_effect=[
+            MockVerdict(False, "needs more detail"),
+            MockVerdict(True),
+        ]
+    )
 
     loop = ArtifactReviewLoop(
         name="TestLoop",

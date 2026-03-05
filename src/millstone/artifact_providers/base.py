@@ -61,9 +61,7 @@ class OpportunityProviderBase(ABC):
         """Create or persist an opportunity."""
 
     @abstractmethod
-    def update_opportunity_status(
-        self, opportunity_id: str, status: OpportunityStatus
-    ) -> None:
+    def update_opportunity_status(self, opportunity_id: str, status: OpportunityStatus) -> None:
         """Update opportunity status by id."""
 
     def get_prompt_placeholders(self) -> dict[str, str]:

@@ -214,15 +214,15 @@ def filter_reasoning_traces(text: str) -> str:
     # Pattern matches: newline + "thinking" + content + "codex" + newline
     # Using DOTALL so . matches newlines in the content
     # The pattern is non-greedy to handle multiple thinking blocks
-    pattern = r'\nthinking\n.*?\ncodex\n'
+    pattern = r"\nthinking\n.*?\ncodex\n"
 
     # Also handle case where thinking block is at the start of text
-    start_pattern = r'^thinking\n.*?\ncodex\n'
+    start_pattern = r"^thinking\n.*?\ncodex\n"
 
     # First replace blocks at the start
-    result = re.sub(start_pattern, '', text, flags=re.DOTALL)
+    result = re.sub(start_pattern, "", text, flags=re.DOTALL)
     # Then replace blocks in the middle
-    result = re.sub(pattern, '\n', result, flags=re.DOTALL)
+    result = re.sub(pattern, "\n", result, flags=re.DOTALL)
 
     return result
 
@@ -245,7 +245,7 @@ def summarize_diff(diff_text: str, lines_per_file: int = 20) -> str:
     if not diff_text or not diff_text.strip():
         return "(empty diff)"
 
-    lines = diff_text.split('\n')
+    lines = diff_text.split("\n")
 
     # Parse diff to extract file stats
     files: list[dict] = []
@@ -254,29 +254,24 @@ def summarize_diff(diff_text: str, lines_per_file: int = 20) -> str:
     total_removed = 0
 
     for line in lines:
-        if line.startswith('diff --git'):
+        if line.startswith("diff --git"):
             # Start of new file diff
             if current_file:
                 files.append(current_file)
             # Extract filename from "diff --git a/path b/path"
-            parts = line.split(' ')
+            parts = line.split(" ")
             if len(parts) >= 4:
-                filename = parts[3][2:] if parts[3].startswith('b/') else parts[3]
+                filename = parts[3][2:] if parts[3].startswith("b/") else parts[3]
             else:
                 filename = "unknown"
-            current_file = {
-                'name': filename,
-                'added': 0,
-                'removed': 0,
-                'lines': [line]
-            }
+            current_file = {"name": filename, "added": 0, "removed": 0, "lines": [line]}
         elif current_file is not None:
-            current_file['lines'].append(line)
-            if line.startswith('+') and not line.startswith('+++'):
-                current_file['added'] += 1
+            current_file["lines"].append(line)
+            if line.startswith("+") and not line.startswith("+++"):
+                current_file["added"] += 1
                 total_added += 1
-            elif line.startswith('-') and not line.startswith('---'):
-                current_file['removed'] += 1
+            elif line.startswith("-") and not line.startswith("---"):
+                current_file["removed"] += 1
                 total_removed += 1
 
     if current_file:
@@ -288,7 +283,9 @@ def summarize_diff(diff_text: str, lines_per_file: int = 20) -> str:
     # Stats header
     file_count = len(files)
     total_changes = total_added + total_removed
-    summary_parts.append(f"=== Diff Summary: {file_count} file(s), +{total_added}/-{total_removed} ({total_changes} total) ===\n")
+    summary_parts.append(
+        f"=== Diff Summary: {file_count} file(s), +{total_added}/-{total_removed} ({total_changes} total) ===\n"
+    )
 
     # File list with stats
     summary_parts.append("Files changed:")
@@ -302,14 +299,14 @@ def summarize_diff(diff_text: str, lines_per_file: int = 20) -> str:
 
     for f in files:
         # Show first N lines of this file's diff
-        file_lines = f['lines'][:lines_per_file]
+        file_lines = f["lines"][:lines_per_file]
         summary_parts.extend(file_lines)
-        if len(f['lines']) > lines_per_file:
-            omitted = len(f['lines']) - lines_per_file
+        if len(f["lines"]) > lines_per_file:
+            omitted = len(f["lines"]) - lines_per_file
             summary_parts.append(f"  ... [{omitted} more lines in {f['name']}]")
         summary_parts.append("")
 
-    return '\n'.join(summary_parts)
+    return "\n".join(summary_parts)
 
 
 def is_whitespace_or_comment_only_change(before_diff: str, after_diff: str) -> bool:
@@ -336,12 +333,12 @@ def is_whitespace_or_comment_only_change(before_diff: str, after_diff: str) -> b
     def extract_code_changes(diff_text: str) -> set[str]:
         """Extract meaningful code changes from a diff, ignoring whitespace and comments."""
         meaningful_lines = set()
-        for line in diff_text.split('\n'):
+        for line in diff_text.split("\n"):
             # Only look at added/removed lines
-            if not line.startswith(('+', '-')):
+            if not line.startswith(("+", "-")):
                 continue
             # Skip diff headers
-            if line.startswith(('+++', '---')):
+            if line.startswith(("+++", "---")):
                 continue
             # Get the actual content (without +/- prefix)
             content = line[1:].strip()
@@ -349,11 +346,11 @@ def is_whitespace_or_comment_only_change(before_diff: str, after_diff: str) -> b
             if not content:
                 continue
             # Skip comment-only lines (Python, JS, C-style)
-            if content.startswith('#'):
+            if content.startswith("#"):
                 continue
-            if content.startswith('//'):
+            if content.startswith("//"):
                 continue
-            if content.startswith('/*') or content.startswith('*') or content.endswith('*/'):
+            if content.startswith("/*") or content.startswith("*") or content.endswith("*/"):
                 continue
             # Skip docstrings (triple quotes)
             if content.startswith('"""') or content.startswith("'''"):

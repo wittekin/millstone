@@ -245,8 +245,7 @@ class TestParallelOrchestratorAnalyzeTasks:
 
     def test_analyze_tasks_default_metadata(self, temp_repo):
         (temp_repo / "docs" / "tasklist.md").write_text(
-            "# Tasklist\n\n"
-            "- [ ] simple task without metadata\n"
+            "# Tasklist\n\n- [ ] simple task without metadata\n"
         )
 
         orch = Orchestrator(parallel_enabled=True, tasklist="docs/tasklist.md")
@@ -303,11 +302,17 @@ class TestParallelOrchestratorPhase1:
             "  - ID: t2\n"
             "  - Risk: low\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add task ids"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add task ids"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         # Detach so base branch is not checked out (required for git push . landing).
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         orch = Orchestrator(
             base_branch=base_branch,
@@ -330,7 +335,11 @@ class TestParallelOrchestratorPhase1:
                 capture_output=True,
                 check=True,
             )
-            return {"status": "success", "commit_sha": _rev_parse(worktree_path, "HEAD"), "risk": "low"}
+            return {
+                "status": "success",
+                "commit_sha": _rev_parse(worktree_path, "HEAD"),
+                "risk": "low",
+            }
 
         po = ParallelOrchestrator(
             orch,
@@ -368,10 +377,16 @@ class TestParallelOrchestratorPhase1:
             "- [ ] **Task Two**: add shared\n"
             "  - ID: t2\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add tasks"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add tasks"], cwd=temp_repo, capture_output=True, check=True
+        )
 
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         orch = Orchestrator(
             base_branch=base_branch,
@@ -386,8 +401,17 @@ class TestParallelOrchestratorPhase1:
             # Both tasks add the same file, causing add/add conflict on task 2.
             (worktree_path / "shared.txt").write_text(f"{task_id}\n")
             subprocess.run(["git", "add", "."], cwd=worktree_path, capture_output=True, check=True)
-            subprocess.run(["git", "commit", "-m", f"task {task_id}"], cwd=worktree_path, capture_output=True, check=True)
-            return {"status": "success", "commit_sha": _rev_parse(worktree_path, "HEAD"), "risk": "low"}
+            subprocess.run(
+                ["git", "commit", "-m", f"task {task_id}"],
+                cwd=worktree_path,
+                capture_output=True,
+                check=True,
+            )
+            return {
+                "status": "success",
+                "commit_sha": _rev_parse(worktree_path, "HEAD"),
+                "risk": "low",
+            }
 
         po = ParallelOrchestrator(
             orch,
@@ -403,7 +427,9 @@ class TestParallelOrchestratorPhase1:
 
     def test_injectable_worker_runner(self, temp_repo):
         base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
         orch = Orchestrator(base_branch=base_branch, parallel_enabled=True, dry_run=True)
         called = {"n": 0}
 
@@ -423,7 +449,9 @@ class TestParallelOrchestratorPhase1:
         assert rc == 1
 
     def test_detached_head_without_base_branch_fails(self, temp_repo):
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
         orch = Orchestrator(parallel_enabled=True)
         po = ParallelOrchestrator(orch, eval_manager_factory=_eval_factory(True))
         rc = po.run()
@@ -500,13 +528,14 @@ class TestParallelOrchestratorPhase1:
         base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
 
         (temp_repo / "docs" / "tasklist.md").write_text(
-            "# Tasklist\n\n"
-            "- [ ] **Task One**: add file\n"
-            "  - ID: t1\n"
-            "  - Risk: low\n"
+            "# Tasklist\n\n- [ ] **Task One**: add file\n  - ID: t1\n  - Risk: low\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "single task"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "single task"], cwd=temp_repo, capture_output=True, check=True
+        )
         base_ref_sha = _rev_parse(temp_repo, "HEAD")
 
         orch = Orchestrator(
@@ -534,13 +563,24 @@ class TestParallelOrchestratorPhase1:
         hb_path.write_text("1.0\n")
 
         # Detach so landing via git push . is allowed.
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         def worker_runner(task_id: str, _task_text: str, worktree_path: Path) -> dict:
             (worktree_path / "recovered.txt").write_text(f"{task_id}\n")
             subprocess.run(["git", "add", "."], cwd=worktree_path, capture_output=True, check=True)
-            subprocess.run(["git", "commit", "-m", f"task {task_id}"], cwd=worktree_path, capture_output=True, check=True)
-            return {"status": "success", "commit_sha": _rev_parse(worktree_path, "HEAD"), "risk": "low"}
+            subprocess.run(
+                ["git", "commit", "-m", f"task {task_id}"],
+                cwd=worktree_path,
+                capture_output=True,
+                check=True,
+            )
+            return {
+                "status": "success",
+                "commit_sha": _rev_parse(worktree_path, "HEAD"),
+                "risk": "low",
+            }
 
         po.worker_runner = worker_runner
         rc = po.run()
@@ -554,16 +594,19 @@ class TestParallelOrchestratorPhase1:
         base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
 
         (temp_repo / "docs" / "tasklist.md").write_text(
-            "# Tasklist\n\n"
-            "- [ ] **Task One**: try forbidden edit\n"
-            "  - ID: t1\n"
-            "  - Risk: low\n"
+            "# Tasklist\n\n- [ ] **Task One**: try forbidden edit\n  - ID: t1\n  - Risk: low\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "single task"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "single task"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         # Detach so landing path is available (run should still fail due worker failure).
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         orch = Orchestrator(
             base_branch=base_branch,
@@ -589,7 +632,12 @@ class TestParallelOrchestratorPhase1:
                 if role == "author":
                     tasklist = worktree_path / "docs" / "tasklist.md"
                     tasklist.write_text(tasklist.read_text() + "\n- [ ] sneaky\n")
-                    subprocess.run(["git", "add", "docs/tasklist.md"], cwd=worktree_path, capture_output=True, check=True)
+                    subprocess.run(
+                        ["git", "add", "docs/tasklist.md"],
+                        cwd=worktree_path,
+                        capture_output=True,
+                        check=True,
+                    )
                     subprocess.run(
                         ["git", "commit", "-m", "sneaky tasklist edit"],
                         cwd=worktree_path,
@@ -607,7 +655,12 @@ class TestParallelOrchestratorPhase1:
                 worker.cleanup()
 
             # Return an invalid commit to ensure the control plane marks this task failed.
-            return {"status": "failed", "commit_sha": "deadbeef", "risk": "low", "error": "worker_failed"}
+            return {
+                "status": "failed",
+                "commit_sha": "deadbeef",
+                "risk": "low",
+                "error": "worker_failed",
+            }
 
         po.worker_runner = worker_runner
         rc = po.run()
@@ -618,14 +671,17 @@ class TestParallelOrchestratorPhase1:
         base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
 
         (temp_repo / "docs" / "tasklist.md").write_text(
-            "# Tasklist\n\n"
-            "- [ ] **Task One**: add file\n"
-            "  - ID: t1\n"
-            "  - Risk: low\n"
+            "# Tasklist\n\n- [ ] **Task One**: add file\n  - ID: t1\n  - Risk: low\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "single task"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "single task"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         orch = Orchestrator(
             base_branch=base_branch,
@@ -640,8 +696,14 @@ class TestParallelOrchestratorPhase1:
         def worker_runner(task_id: str, _task_text: str, worktree_path: Path) -> dict:
             (worktree_path / "ok.txt").write_text(f"{task_id}\n")
             subprocess.run(["git", "add", "."], cwd=worktree_path, capture_output=True, check=True)
-            subprocess.run(["git", "commit", "-m", "ok"], cwd=worktree_path, capture_output=True, check=True)
-            return {"status": "success", "commit_sha": _rev_parse(worktree_path, "HEAD"), "risk": "low"}
+            subprocess.run(
+                ["git", "commit", "-m", "ok"], cwd=worktree_path, capture_output=True, check=True
+            )
+            return {
+                "status": "success",
+                "commit_sha": _rev_parse(worktree_path, "HEAD"),
+                "risk": "low",
+            }
 
         po.worker_runner = worker_runner
         assert po.run() == 0
@@ -718,9 +780,15 @@ class TestParallelOrchestratorPhase2:
             "  - ID: t2\n"
             "  - Risk: low\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add tasks"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add tasks"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         orch = Orchestrator(
             base_branch=base_branch,
@@ -781,9 +849,18 @@ class TestParallelOrchestratorPhase2:
             "  - ID: t3\n"
             "  - Risk: low\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add three tasks"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add three tasks"],
+            cwd=temp_repo,
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         dispatched: list[str] = []
         po_ref: dict[str, ParallelOrchestrator] = {}
@@ -854,9 +931,18 @@ class TestParallelOrchestratorPhase2:
             "  - ID: t2\n"
             "  - Risk: low\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add grouped tasks"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add grouped tasks"],
+            cwd=temp_repo,
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         orch = Orchestrator(
             base_branch=base_branch,
@@ -902,13 +988,20 @@ class TestParallelOrchestratorPhase2:
     def test_concurrent_worker_timeout_kills_tree(self, temp_repo):
         base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
         (temp_repo / "docs" / "tasklist.md").write_text(
-            "# Tasklist\n\n"
-            "- [ ] **Task One**: timeout\n"
-            "  - ID: t1\n"
+            "# Tasklist\n\n- [ ] **Task One**: timeout\n  - ID: t1\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add timeout task"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add timeout task"],
+            cwd=temp_repo,
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         handle = _NeverFinishingHandle()
 
@@ -942,13 +1035,20 @@ class TestParallelOrchestratorPhase2:
     def test_concurrent_missing_result_json(self, temp_repo, monkeypatch):
         base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
         (temp_repo / "docs" / "tasklist.md").write_text(
-            "# Tasklist\n\n"
-            "- [ ] **Task One**: missing result\n"
-            "  - ID: t1\n"
+            "# Tasklist\n\n- [ ] **Task One**: missing result\n  - ID: t1\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add missing-result task"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add missing-result task"],
+            cwd=temp_repo,
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         merge_calls = {"n": 0}
 
@@ -993,9 +1093,18 @@ class TestParallelOrchestratorPhase2:
             "- [ ] **Task Two**: merge t2\n"
             "  - ID: t2\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add merge tasks"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add merge tasks"],
+            cwd=temp_repo,
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         merge_active = 0
         merge_max_active = 0
@@ -1060,9 +1169,18 @@ class TestParallelOrchestratorPhase2:
             "- [ ] **Task Two**: dep target\n"
             "  - ID: t2\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add deadlock tasks"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add deadlock tasks"],
+            cwd=temp_repo,
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         orch = Orchestrator(
             base_branch=base_branch,
@@ -1130,9 +1248,18 @@ class TestParallelOrchestratorPhase2:
             "- [ ] **Task Two**: cycle two\n"
             "  - ID: t2\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add cycle tasks"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add cycle tasks"],
+            cwd=temp_repo,
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         orch = Orchestrator(
             base_branch=base_branch,
@@ -1190,9 +1317,18 @@ class TestParallelOrchestratorPhase2:
             "  - ID: t2\n"
             "  - Risk: low\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add sequential tasks"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add sequential tasks"],
+            cwd=temp_repo,
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         orch = Orchestrator(
             base_branch=base_branch,
@@ -1251,20 +1387,26 @@ class TestParallelOrchestratorPhase2:
             "  - ID: t1\n"
             "  - Risk: low\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
         subprocess.run(
             ["git", "commit", "-m", "add sequential parity task"],
             cwd=temp_repo,
             capture_output=True,
             check=True,
         )
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         merge_calls: list[dict] = []
 
         def fake_integrate(_self, **kwargs):
             merge_calls.append(kwargs)
-            return IntegrationResult(success=False, status="land_fail", error="synthetic merge failure")
+            return IntegrationResult(
+                success=False, status="land_fail", error="synthetic merge failure"
+            )
 
         monkeypatch.setattr(
             "millstone.runtime.parallel.MergePipeline.integrate_eval_and_land",

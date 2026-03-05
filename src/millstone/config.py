@@ -45,7 +45,14 @@ DEFAULT_POLICY = {
         "require_approval": True,
     },
     "dangerous": {
-        "patterns": ["rm -rf", "DROP TABLE", "force push", "git push --force", "DELETE FROM.*WHERE 1", "truncate table"],
+        "patterns": [
+            "rm -rf",
+            "DROP TABLE",
+            "force push",
+            "git push --force",
+            "DELETE FROM.*WHERE 1",
+            "truncate table",
+        ],
         "block": True,
     },
     "tasklist": {
@@ -53,7 +60,7 @@ DEFAULT_POLICY = {
     },
     "eval": {
         "min_composite_score": 0.0,  # Minimum acceptable composite score (0.0 = disabled)
-        "max_regression": 0.05,      # Maximum acceptable regression in composite score
+        "max_regression": 0.05,  # Maximum acceptable regression in composite score
     },
 }
 
@@ -102,16 +109,16 @@ DEFAULT_CONFIG = {
     # Use `label = "sprint-1"` instead of `labels = ["sprint-1"]` for quick scoping.
     # If both the shortcut and its list form are set, the list form takes precedence.
     "tasklist_filter": {
-        "labels": [],      # Restrict to tasks tagged with ALL of these labels
-        "assignees": [],   # Restrict to tasks assigned to ANY of these users
-        "statuses": [],    # Restrict to tasks in ANY of these status names
+        "labels": [],  # Restrict to tasks tagged with ALL of these labels
+        "assignees": [],  # Restrict to tasks assigned to ANY of these users
+        "statuses": [],  # Restrict to tasks in ANY of these status names
         # Shortcuts for single-value narrowing (expand to the list forms above):
-        "label": "",       # Single-label shortcut  →  labels = ["<value>"]
-        "assignee": "",    # Single-assignee shortcut  →  assignees = ["<value>"]
-        "status": "",      # Single-status shortcut  →  statuses = ["<value>"]
+        "label": "",  # Single-label shortcut  →  labels = ["<value>"]
+        "assignee": "",  # Single-assignee shortcut  →  assignees = ["<value>"]
+        "status": "",  # Single-status shortcut  →  statuses = ["<value>"]
     },
     "commit_tasklist": False,  # If True, tasklist defaults to docs/tasklist.md (tracked path)
-    "commit_designs": False,   # If True, designs default to designs/ (tracked path)
+    "commit_designs": False,  # If True, designs default to designs/ (tracked path)
     "commit_opportunities": False,  # If True, opportunities default to opportunities.md (tracked path)
     "prompts_dir": None,  # None means use built-in prompts
     "compact_threshold": 20,  # Trigger compaction when completed tasks >= this
@@ -131,7 +138,7 @@ DEFAULT_CONFIG = {
     "parallel_lock_state": ".millstone/locks/state.lock",
     "parallel_lock_tasklist": ".millstone/locks/tasklist.lock",
     "parallel_heartbeat_interval": 30,  # seconds between worker heartbeats
-    "parallel_heartbeat_ttl": 300,      # seconds before stale heartbeat triggers cleanup
+    "parallel_heartbeat_ttl": 300,  # seconds before stale heartbeat triggers cleanup
     # Eval on task: run eval suite after each approved task
     # Options: "none" (disabled), "smoke" (quick tests only), "full" (all tests + coverage),
     # or a path to a custom test suite/script (e.g., "tests/smoke/", "scripts/eval.sh")
@@ -151,10 +158,10 @@ DEFAULT_CONFIG = {
     "profile": "dev_implementation",  # Active profile for role alias resolution
     "cli_builder": None,  # CLI for builder role (None = use default)
     "cli_reviewer": None,  # CLI for reviewer role (None = use default)
-    "cli_sanity": None,    # CLI for sanity check role
+    "cli_sanity": None,  # CLI for sanity check role
     "cli_analyzer": None,  # CLI for complexity analysis role
-    "cli_release_eng": None, # CLI for release engineering role
-    "cli_sre": None,       # CLI for site reliability engineering role
+    "cli_release_eng": None,  # CLI for release engineering role
+    "cli_sre": None,  # CLI for site reliability engineering role
     # Session mode: how sessions persist across tasks
     # "new_each_task" - Fresh session for each task (default, safest)
     # "continue_within_run" - Preserve session for all tasks in single invocation
@@ -171,10 +178,10 @@ DEFAULT_CONFIG = {
     },
     # Thresholds for category scoring (errors beyond threshold = score 0.0)
     "category_thresholds": {
-        "typing": 50,     # mypy errors
-        "lint": 100,      # ruff errors
-        "security": 10,   # bandit issues
-        "complexity": 20, # high complexity functions
+        "typing": 50,  # mypy errors
+        "lint": 100,  # ruff errors
+        "security": 10,  # bandit issues
+        "complexity": 20,  # high complexity functions
     },
     # Task atomizer constraints for run_plan()
     "task_constraints": {
@@ -188,17 +195,17 @@ DEFAULT_CONFIG = {
     # Risk level settings
     "risk_settings": {
         "low": {
-            "max_cycles": 2,      # Lower max cycles for low-risk tasks
+            "max_cycles": 2,  # Lower max cycles for low-risk tasks
             "require_full_eval": False,  # Unit tests are sufficient
         },
         "medium": {
-            "max_cycles": 3,      # Default max cycles
+            "max_cycles": 3,  # Default max cycles
             "require_full_eval": False,  # Unit + integration tests
         },
         "high": {
-            "max_cycles": 5,      # More cycles allowed for complex high-risk tasks
-            "require_full_eval": True,   # Full eval suite required
-            "require_approval": True,    # Always pause for human approval
+            "max_cycles": 5,  # More cycles allowed for complex high-risk tasks
+            "require_full_eval": True,  # Full eval suite required
+            "require_approval": True,  # Always pause for human approval
         },
     },
     # Model selection: map task characteristics to models

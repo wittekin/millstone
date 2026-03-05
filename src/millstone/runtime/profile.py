@@ -22,9 +22,7 @@ class Profile:
     def __post_init__(self) -> None:
         # Freeze mapping fields deeply enough for safe shared use by copying
         # caller-provided mappings and exposing them as read-only views.
-        object.__setattr__(
-            self, "role_aliases", MappingProxyType(dict(self.role_aliases))
-        )
+        object.__setattr__(self, "role_aliases", MappingProxyType(dict(self.role_aliases)))
         object.__setattr__(
             self,
             "default_providers",

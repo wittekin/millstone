@@ -42,7 +42,7 @@ class TaskStatus(str, Enum):
 
 @dataclass
 class Opportunity:
-    opportunity_id: str           # canonical identity (explicit ID field, else title slug)
+    opportunity_id: str  # canonical identity (explicit ID field, else title slug)
     title: str
     status: OpportunityStatus
     description: str
@@ -51,7 +51,7 @@ class Opportunity:
     source_ref: str | None = None
     priority: str | None = None
     roi_score: float | None = None
-    raw: str | None = None     # preserved raw markdown block for round-trip fidelity
+    raw: str | None = None  # preserved raw markdown block for round-trip fidelity
 
     def validate(self) -> None:
         violations = []
@@ -59,7 +59,9 @@ class Opportunity:
         if not isinstance(self.opportunity_id, str) or not self.opportunity_id.strip():
             violations.append("opportunity_id is required and must not be empty")
         elif not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?", self.opportunity_id):
-            violations.append("opportunity_id must match slug pattern [a-z0-9]([a-z0-9-]*[a-z0-9])?")
+            violations.append(
+                "opportunity_id must match slug pattern [a-z0-9]([a-z0-9-]*[a-z0-9])?"
+            )
 
         if not isinstance(self.title, str) or not self.title.strip():
             violations.append("title is required and must not be empty")
@@ -76,12 +78,12 @@ class Opportunity:
 
 @dataclass
 class Design:
-    design_id: str                # canonical identity (slug-like)
+    design_id: str  # canonical identity (slug-like)
     title: str
     status: DesignStatus
-    body: str                     # full document body (markdown, excluding metadata header)
+    body: str  # full document body (markdown, excluding metadata header)
     opportunity_ref: str | None = None  # None only for legacy records parsed from disk;
-                                           # write paths enforce presence via validate().
+    # write paths enforce presence via validate().
     tasklist_ref: str | None = None
     review_summary: str | None = None
 
@@ -111,7 +113,7 @@ class Design:
 
 @dataclass
 class TasklistItem:
-    task_id: str                  # stable item id
+    task_id: str  # stable item id
     title: str
     status: TaskStatus
     design_ref: str | None = None
@@ -120,7 +122,7 @@ class TasklistItem:
     tests: str | None = None
     criteria: str | None = None
     context: str | None = None
-    raw: str | None = None     # preserved raw markdown block
+    raw: str | None = None  # preserved raw markdown block
 
     def validate(self) -> None:
         violations = []
@@ -150,12 +152,13 @@ class EvidenceKind(str, Enum):
     merge:         Outcome of the merge/integration pipeline gate.
     effect:        Outcome of applying or observing a remote effect (EffectRecord link).
     """
-    review        = "review"
-    eval          = "eval"
+
+    review = "review"
+    eval = "eval"
     design_review = "design_review"
-    sanity_check  = "sanity_check"
-    merge         = "merge"
-    effect        = "effect"
+    sanity_check = "sanity_check"
+    merge = "merge"
+    effect = "effect"
 
 
 @dataclass
@@ -182,11 +185,12 @@ class EvidenceRecord:
         capability_tier: The active profile's capability tier at emission time.
         detail:          Kind-specific payload dictionary.
     """
-    evidence_id:     str
-    kind:            EvidenceKind
-    timestamp:       str
-    outcome:         str
-    work_item_id:    str | None = None
-    work_item_kind:  str | None = None
+
+    evidence_id: str
+    kind: EvidenceKind
+    timestamp: str
+    outcome: str
+    work_item_id: str | None = None
+    work_item_kind: str | None = None
     capability_tier: str | None = None
-    detail:          dict          = field(default_factory=dict)
+    detail: dict = field(default_factory=dict)

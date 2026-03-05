@@ -61,9 +61,8 @@ class InnerLoopManager:
     def git(self, *args) -> str:
         """Run git command and return output."""
         import subprocess
-        result = subprocess.run(
-            ["git", *args], capture_output=True, text=True, cwd=self.repo_dir
-        )
+
+        result = subprocess.run(["git", *args], capture_output=True, text=True, cwd=self.repo_dir)
         return result.stdout
 
     # =========================================================================
@@ -291,7 +290,9 @@ class InnerLoopManager:
         effective_loc_threshold = min(int(policy_loc_limit), int(self.loc_threshold))
         if total_loc > effective_loc_threshold:
             rule = f"limits.max_loc_per_task ({effective_loc_threshold})"
-            self._log_policy_violation("loc_threshold_exceeded", f"{total_loc} LoC exceeds {rule}", log_callback)
+            self._log_policy_violation(
+                "loc_threshold_exceeded", f"{total_loc} LoC exceeds {rule}", log_callback
+            )
             print(f"Halted: {total_loc} lines changed (policy rule: {rule}).")
             print()
             print("Options:")
@@ -307,7 +308,9 @@ class InnerLoopManager:
             # Check for sensitive files using policy patterns
             # Prefer policy.sensitive.paths, fall back to project_config.sensitive_paths
             policy_sensitive = self.policy.get("sensitive", {}).get("paths", [])
-            config_patterns = policy_sensitive or self.project_config.get("sensitive_paths", {}).get("patterns", [])
+            config_patterns = policy_sensitive or self.project_config.get(
+                "sensitive_paths", {}
+            ).get("patterns", [])
             sensitive_patterns = []
             for pattern in config_patterns:
                 # Escape regex special chars except *
@@ -319,26 +322,36 @@ class InnerLoopManager:
                     default_patterns = self.loop_sensitive_patterns
                 else:
                     default_patterns = [".env", "credentials", "secret", ".pem", ".key"]
-                sensitive_patterns = [(p, re.escape(p).replace(r"\*", ".*")) for p in default_patterns]
+                sensitive_patterns = [
+                    (p, re.escape(p).replace(r"\*", ".*")) for p in default_patterns
+                ]
 
             require_approval = self.policy.get("sensitive", {}).get("require_approval", True)
             for original_pattern, regex in sensitive_patterns:
                 if re.search(regex, changed_files, re.IGNORECASE):
                     rule = f"sensitive.paths (matched '{original_pattern}')"
-                    self._log_policy_violation("sensitive_file", f"File matched {rule}", log_callback)
+                    self._log_policy_violation(
+                        "sensitive_file", f"File matched {rule}", log_callback
+                    )
                     if require_approval:
-                        print(f"WARN: Sensitive files modified. Halting for human review (policy rule: {rule}).")
+                        print(
+                            f"WARN: Sensitive files modified. Halting for human review (policy rule: {rule})."
+                        )
                         print(changed_files)
                         print()
                         print("Options:")
                         print("  (1) Review changes, then commit manually")
-                        print("  (2) Re-run with --continue to skip this check (after manual review)")
+                        print(
+                            "  (2) Re-run with --continue to skip this check (after manual review)"
+                        )
                         if save_state_callback:
                             save_state_callback(f"policy:sensitive_files:{original_pattern}")
                         return False, skip_consumed
                     else:
                         # Log but don't block if require_approval is False
-                        print(f"WARN: Sensitive file matched '{original_pattern}' (approval not required by policy)")
+                        print(
+                            f"WARN: Sensitive file matched '{original_pattern}' (approval not required by policy)"
+                        )
 
         # Check for dangerous patterns in diff content
         dangerous_patterns = self.policy.get("dangerous", {}).get("patterns", [])
@@ -349,18 +362,26 @@ class InnerLoopManager:
             for pattern in dangerous_patterns:
                 if re.search(pattern, diff_content, re.IGNORECASE):
                     rule = f"dangerous.patterns (matched '{pattern}')"
-                    self._log_policy_violation("dangerous_pattern", f"Diff content matched {rule}", log_callback)
+                    self._log_policy_violation(
+                        "dangerous_pattern", f"Diff content matched {rule}", log_callback
+                    )
                     if should_block:
-                        print(f"BLOCKED: Dangerous pattern detected in changes (policy rule: {rule}).")
+                        print(
+                            f"BLOCKED: Dangerous pattern detected in changes (policy rule: {rule})."
+                        )
                         print()
                         print("This pattern is blocked by policy. The change cannot proceed.")
-                        print("Review the diff and remove the dangerous content, or update the policy.")
+                        print(
+                            "Review the diff and remove the dangerous content, or update the policy."
+                        )
                         if save_state_callback:
                             save_state_callback(f"policy:dangerous_pattern:{pattern}")
                         return False, skip_consumed
                     else:
                         # Log but don't block if block is False
-                        print(f"WARN: Dangerous pattern '{pattern}' detected (blocking disabled by policy)")
+                        print(
+                            f"WARN: Dangerous pattern '{pattern}' detected (blocking disabled by policy)"
+                        )
 
         enforce_single_task = self.policy.get("tasklist", {}).get("enforce_single_task", False)
         if enforce_single_task and tasklist_path and tasklist_baseline is not None:
@@ -513,7 +534,12 @@ class InnerLoopManager:
                     capture_output=True,
                 )
                 subprocess.run(
-                    ["git", "commit", "-m", "Mark task complete in tasklist\n\nGenerated with millstone orchestrator"],
+                    [
+                        "git",
+                        "commit",
+                        "-m",
+                        "Mark task complete in tasklist\n\nGenerated with millstone orchestrator",
+                    ],
                     cwd=self.repo_dir,
                     capture_output=True,
                 )

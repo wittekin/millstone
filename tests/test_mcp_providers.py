@@ -100,12 +100,14 @@ def test_list_tasks_without_callback_raises_runtime_error():
 
 def test_list_tasks_uses_agent_callback_with_json_response():
     provider = MCPTasklistProvider("linear")
-    response = json.dumps([
-        {"id": "t-1", "title": "Task One", "status": "todo", "description": ""},
-        {"id": "t-2", "title": "Task Two", "status": "done", "description": "body"},
-        {"id": "t-3", "title": "Task Three", "status": "in_progress", "description": ""},
-        {"id": "t-4", "title": "Task Four", "status": "blocked", "description": ""},
-    ])
+    response = json.dumps(
+        [
+            {"id": "t-1", "title": "Task One", "status": "todo", "description": ""},
+            {"id": "t-2", "title": "Task Two", "status": "done", "description": "body"},
+            {"id": "t-3", "title": "Task Three", "status": "in_progress", "description": ""},
+            {"id": "t-4", "title": "Task Four", "status": "blocked", "description": ""},
+        ]
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -149,9 +151,9 @@ def test_list_tasks_uses_cache_on_second_call():
 def test_list_tasks_maps_raw_description_to_raw_field():
     provider = MCPTasklistProvider("linear")
     description = "- Risk: low\n  - Tests: pytest\n  - Criteria: done"
-    response = json.dumps([
-        {"id": "t-1", "title": "My Task", "status": "todo", "description": description}
-    ])
+    response = json.dumps(
+        [{"id": "t-1", "title": "My Task", "status": "todo", "description": description}]
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -175,14 +177,16 @@ def test_get_snapshot_returns_full_block_markdown_with_metadata():
         "  - Criteria: all tests pass\n"
         "  - Context: see RFC-42"
     )
-    response = json.dumps([
-        {
-            "id": "t-1",
-            "title": "Add authentication",
-            "status": "todo",
-            "description": description,
-        }
-    ])
+    response = json.dumps(
+        [
+            {
+                "id": "t-1",
+                "title": "Add authentication",
+                "status": "todo",
+                "description": description,
+            }
+        ]
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -195,9 +199,9 @@ def test_get_snapshot_returns_full_block_markdown_with_metadata():
 
 def test_get_snapshot_uses_done_checkbox_for_done_status():
     provider = MCPTasklistProvider("linear")
-    response = json.dumps([
-        {"id": "t-1", "title": "Done Task", "status": "done", "description": "body"}
-    ])
+    response = json.dumps(
+        [{"id": "t-1", "title": "Done Task", "status": "done", "description": "body"}]
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -208,10 +212,12 @@ def test_get_snapshot_uses_done_checkbox_for_done_status():
 
 def test_get_snapshot_uses_unchecked_for_non_done_statuses():
     provider = MCPTasklistProvider("linear")
-    response = json.dumps([
-        {"id": "t-1", "title": "Blocked Task", "status": "blocked", "description": "body"},
-        {"id": "t-2", "title": "In Progress", "status": "in_progress", "description": "body"},
-    ])
+    response = json.dumps(
+        [
+            {"id": "t-1", "title": "Blocked Task", "status": "blocked", "description": "body"},
+            {"id": "t-2", "title": "In Progress", "status": "in_progress", "description": "body"},
+        ]
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -224,14 +230,16 @@ def test_get_snapshot_uses_unchecked_for_non_done_statuses():
 def test_get_snapshot_reconstructs_from_fields_when_raw_empty():
     """When raw is empty, snapshot uses individual fields for metadata."""
     provider = MCPTasklistProvider("linear")
-    response = json.dumps([
-        {
-            "id": "t-1",
-            "title": "My Task",
-            "status": "todo",
-            "description": "",
-        }
-    ])
+    response = json.dumps(
+        [
+            {
+                "id": "t-1",
+                "title": "My Task",
+                "status": "todo",
+                "description": "",
+            }
+        ]
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -246,9 +254,9 @@ def test_get_snapshot_updates_checkbox_when_raw_is_full_block():
     provider = MCPTasklistProvider("linear")
     # Raw contains done checkbox but actual status is todo
     raw = "- [x] **Old Task**: some description\n  - Risk: low"
-    response = json.dumps([
-        {"id": "t-1", "title": "Old Task", "status": "todo", "description": raw}
-    ])
+    response = json.dumps(
+        [{"id": "t-1", "title": "Old Task", "status": "todo", "description": raw}]
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -261,10 +269,12 @@ def test_get_snapshot_updates_checkbox_when_raw_is_full_block():
 
 def test_get_snapshot_stores_snapshot_task_ids():
     provider = MCPTasklistProvider("linear")
-    response = json.dumps([
-        {"id": "t-1", "title": "T1", "status": "todo", "description": ""},
-        {"id": "t-2", "title": "T2", "status": "done", "description": ""},
-    ])
+    response = json.dumps(
+        [
+            {"id": "t-1", "title": "T1", "status": "todo", "description": ""},
+            {"id": "t-2", "title": "T2", "status": "done", "description": ""},
+        ]
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -279,14 +289,16 @@ def test_get_snapshot_full_metadata_fields_reconstructed():
     provider = MCPTasklistProvider("linear")
     # We'll use a task that has no raw but has metadata via description body
     description = ""  # empty raw
-    response = json.dumps([
-        {
-            "id": "t-1",
-            "title": "My Feature",
-            "status": "todo",
-            "description": description,
-        }
-    ])
+    response = json.dumps(
+        [
+            {
+                "id": "t-1",
+                "title": "My Feature",
+                "status": "todo",
+                "description": description,
+            }
+        ]
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -314,14 +326,16 @@ def test_get_snapshot_output_passes_validate_generated_tasks_without_metadata_vi
         "  - Criteria: all tests pass\n"
         "  - Context: see design doc"
     )
-    response = json.dumps([
-        {
-            "id": "t-1",
-            "title": "Add new feature",
-            "status": "todo",
-            "description": description,
-        }
-    ])
+    response = json.dumps(
+        [
+            {
+                "id": "t-1",
+                "title": "Add new feature",
+                "status": "todo",
+                "description": description,
+            }
+        ]
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -333,6 +347,7 @@ def test_get_snapshot_output_passes_validate_generated_tasks_without_metadata_vi
     # _extract_new_tasks returns task text after "- [ ] ", so strip the prefix
     # the same way the real code does before calling _parse_task_metadata.
     import re as _re
+
     new_task_texts = _re.findall(r"^- \[ \] (.+(?:\n(?:  .+))*)", snapshot, _re.MULTILINE)
     assert new_task_texts, "get_snapshot() produced no parseable task blocks"
 
@@ -346,13 +361,15 @@ def test_reset_snapshot_baseline_allows_new_baseline_on_next_get_snapshot():
     """reset_snapshot_baseline() clears the stored baseline so the next
     get_snapshot() captures a fresh one, preventing stale rollback targets."""
     provider = MCPTasklistProvider("linear")
-    first_response = json.dumps([
-        {"id": "t-1", "title": "Original", "status": "todo", "description": ""}
-    ])
-    second_response = json.dumps([
-        {"id": "t-1", "title": "Original", "status": "todo", "description": ""},
-        {"id": "t-2", "title": "Added", "status": "todo", "description": ""},
-    ])
+    first_response = json.dumps(
+        [{"id": "t-1", "title": "Original", "status": "todo", "description": ""}]
+    )
+    second_response = json.dumps(
+        [
+            {"id": "t-1", "title": "Original", "status": "todo", "description": ""},
+            {"id": "t-2", "title": "Added", "status": "todo", "description": ""},
+        ]
+    )
     mock_cb = MagicMock(side_effect=[first_response, second_response])
     provider.set_agent_callback(mock_cb)
 
@@ -382,14 +399,16 @@ def test_restore_snapshot_deletes_extra_tasks_via_callback():
     provider = MCPTasklistProvider("linear")
 
     # First call: snapshot state (t-1 exists)
-    snapshot_response = json.dumps([
-        {"id": "t-1", "title": "Original", "status": "todo", "description": ""}
-    ])
+    snapshot_response = json.dumps(
+        [{"id": "t-1", "title": "Original", "status": "todo", "description": ""}]
+    )
     # Second call (after restore): current state has t-1 and t-2 (new)
-    current_response = json.dumps([
-        {"id": "t-1", "title": "Original", "status": "todo", "description": ""},
-        {"id": "t-2", "title": "New Task", "status": "todo", "description": ""},
-    ])
+    current_response = json.dumps(
+        [
+            {"id": "t-1", "title": "Original", "status": "todo", "description": ""},
+            {"id": "t-2", "title": "New Task", "status": "todo", "description": ""},
+        ]
+    )
     # Third call: after first invalidation (fresh fetch for rollback)
     mock_cb = MagicMock(side_effect=[snapshot_response, current_response, "ok"])
     provider.set_agent_callback(mock_cb)
@@ -412,15 +431,19 @@ def test_restore_snapshot_does_not_modify_preexisting_tasks():
     provider = MCPTasklistProvider("linear")
 
     # Snapshot: t-1 and t-2 exist
-    snapshot_response = json.dumps([
-        {"id": "t-1", "title": "T1", "status": "todo", "description": ""},
-        {"id": "t-2", "title": "T2", "status": "todo", "description": ""},
-    ])
+    snapshot_response = json.dumps(
+        [
+            {"id": "t-1", "title": "T1", "status": "todo", "description": ""},
+            {"id": "t-2", "title": "T2", "status": "todo", "description": ""},
+        ]
+    )
     # After planning: t-1 and t-2 still present (no new tasks), but t-2 status changed
-    current_response = json.dumps([
-        {"id": "t-1", "title": "T1", "status": "todo", "description": ""},
-        {"id": "t-2", "title": "T2", "status": "done", "description": ""},
-    ])
+    current_response = json.dumps(
+        [
+            {"id": "t-1", "title": "T1", "status": "todo", "description": ""},
+            {"id": "t-2", "title": "T2", "status": "done", "description": ""},
+        ]
+    )
     mock_cb = MagicMock(side_effect=[snapshot_response, current_response])
     provider.set_agent_callback(mock_cb)
 
@@ -451,9 +474,7 @@ def test_restore_snapshot_no_extra_tasks_no_callback():
     """restore_snapshot with no new tasks does not call the agent."""
     provider = MCPTasklistProvider("linear")
 
-    response = json.dumps([
-        {"id": "t-1", "title": "T1", "status": "todo", "description": ""}
-    ])
+    response = json.dumps([{"id": "t-1", "title": "T1", "status": "todo", "description": ""}])
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -635,9 +656,7 @@ def test_tasklist_from_config_reads_labels_list_option():
 
 
 def test_tasklist_from_config_reads_projects_option():
-    provider = MCPTasklistProvider.from_config(
-        {"mcp_server": "linear", "projects": ["my-project"]}
-    )
+    provider = MCPTasklistProvider.from_config({"mcp_server": "linear", "projects": ["my-project"]})
     assert provider._projects == ["my-project"]
 
 
@@ -869,15 +888,17 @@ def test_update_design_status_without_callback_raises_runtime_error():
 
 def test_list_designs_uses_agent_callback():
     provider = MCPDesignProvider("notion")
-    response = json.dumps([
-        {
-            "id": "d-1",
-            "title": "Auth Design",
-            "status": "draft",
-            "opportunity_ref": "opp-1",
-            "body": "body text",
-        }
-    ])
+    response = json.dumps(
+        [
+            {
+                "id": "d-1",
+                "title": "Auth Design",
+                "status": "draft",
+                "opportunity_ref": "opp-1",
+                "body": "body text",
+            }
+        ]
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -892,13 +913,15 @@ def test_list_designs_uses_agent_callback():
 
 def test_get_design_uses_agent_callback():
     provider = MCPDesignProvider("notion")
-    response = json.dumps({
-        "id": "d-1",
-        "title": "Auth Design",
-        "status": "approved",
-        "opportunity_ref": "opp-1",
-        "body": "body text",
-    })
+    response = json.dumps(
+        {
+            "id": "d-1",
+            "title": "Auth Design",
+            "status": "approved",
+            "opportunity_ref": "opp-1",
+            "body": "body text",
+        }
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -1074,9 +1097,7 @@ def test_design_from_config_emits_deprecation_warning_for_read_backend(tmp_path)
 
 
 def test_design_from_config_reads_project_option():
-    provider = MCPDesignProvider.from_config(
-        {"mcp_server": "notion", "project": "design-space"}
-    )
+    provider = MCPDesignProvider.from_config({"mcp_server": "notion", "project": "design-space"})
     assert provider._projects == ["design-space"]
 
 
@@ -1092,14 +1113,16 @@ def test_design_from_config_backward_compatible_no_project():
 
 def test_opportunity_list_uses_agent_callback():
     provider = MCPOpportunityProvider("jira")
-    response = json.dumps([
-        {
-            "id": "opp-1",
-            "title": "Speed up CI",
-            "status": "identified",
-            "description": "CI is slow",
-        }
-    ])
+    response = json.dumps(
+        [
+            {
+                "id": "opp-1",
+                "title": "Speed up CI",
+                "status": "identified",
+                "description": "CI is slow",
+            }
+        ]
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -1114,12 +1137,14 @@ def test_opportunity_list_uses_agent_callback():
 
 def test_opportunity_get_uses_agent_callback():
     provider = MCPOpportunityProvider("jira")
-    response = json.dumps({
-        "id": "opp-1",
-        "title": "Speed up CI",
-        "status": "adopted",
-        "description": "CI is slow",
-    })
+    response = json.dumps(
+        {
+            "id": "opp-1",
+            "title": "Speed up CI",
+            "status": "adopted",
+            "description": "CI is slow",
+        }
+    )
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -1354,16 +1379,12 @@ def test_restore_snapshot_removes_only_interleaved_task():
     )
 
     # Step 2: Provider 2 appends t-3 concurrently (mutates shared store).
-    store.append(
-        {"id": "t-3", "title": "Interleaved Task C", "status": "todo", "description": ""}
-    )
+    store.append({"id": "t-3", "title": "Interleaved Task C", "status": "todo", "description": ""})
     # Invalidate provider 2's cache to reflect the new state.
     provider2.invalidate_cache()
     # Confirm provider 2 now sees all three tasks.
     all_tasks = provider2.list_tasks()
-    assert len(all_tasks) == 3, (
-        f"Expected 3 tasks after concurrent append, got {len(all_tasks)}"
-    )
+    assert len(all_tasks) == 3, f"Expected 3 tasks after concurrent append, got {len(all_tasks)}"
 
     # Step 3: Provider 1 restores — should delete only t-3.
     provider1.restore_snapshot("")
@@ -1375,9 +1396,7 @@ def test_restore_snapshot_removes_only_interleaved_task():
     delete_prompt = delete_calls[0]
 
     # (b) The delete prompt references the interleaved task.
-    assert "t-3" in delete_prompt, (
-        f"Expected 't-3' in delete prompt.\nPrompt: {delete_prompt!r}"
-    )
+    assert "t-3" in delete_prompt, f"Expected 't-3' in delete prompt.\nPrompt: {delete_prompt!r}"
     assert "Interleaved Task C" in delete_prompt, (
         f"Expected 'Interleaved Task C' in delete prompt.\nPrompt: {delete_prompt!r}"
     )

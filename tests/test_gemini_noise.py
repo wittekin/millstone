@@ -16,18 +16,11 @@ class TestGeminiNoiseHandling:
 
         # CLI noise + JSON
         noise = "YOLO mode enabled.\nCached credentials loaded.\n"
-        json_content = json.dumps({
-            "response": "Clean response",
-            "stats": {}
-        })
+        json_content = json.dumps({"response": "Clean response", "stats": {}})
         full_output = noise + json_content
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout=full_output,
-                stderr="",
-                returncode=0
-            )
+            mock_run.return_value = MagicMock(stdout=full_output, stderr="", returncode=0)
             result = provider.run("test")
 
             assert result.stdout == "Clean response"
@@ -38,19 +31,12 @@ class TestGeminiNoiseHandling:
         provider = GeminiProvider()
 
         # JSON + CLI noise
-        json_content = json.dumps({
-            "response": "Clean response",
-            "stats": {}
-        })
+        json_content = json.dumps({"response": "Clean response", "stats": {}})
         noise = "\nSome trailing log message."
         full_output = json_content + noise
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout=full_output,
-                stderr="",
-                returncode=0
-            )
+            mock_run.return_value = MagicMock(stdout=full_output, stderr="", returncode=0)
             result = provider.run("test")
 
             assert result.stdout == "Clean response"
@@ -59,18 +45,11 @@ class TestGeminiNoiseHandling:
         """run() finds JSON block surrounded by noise."""
         provider = GeminiProvider()
 
-        json_content = json.dumps({
-            "response": "Clean response",
-            "stats": {}
-        })
+        json_content = json.dumps({"response": "Clean response", "stats": {}})
         full_output = f"Prefix noise\n{json_content}\nSuffix noise"
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout=full_output,
-                stderr="",
-                returncode=0
-            )
+            mock_run.return_value = MagicMock(stdout=full_output, stderr="", returncode=0)
             result = provider.run("test")
 
             assert result.stdout == "Clean response"
@@ -96,7 +75,7 @@ class TestOrchestratorGeminiRetry:
                 # Call 1: Empty response (wrapped in JSON)
                 MagicMock(returncode=0, stdout=empty_json, stderr=""),
                 # Call 2 (Retry): Valid response (wrapped in JSON + Noise)
-                MagicMock(returncode=0, stdout=noisy_valid_json, stderr="")
+                MagicMock(returncode=0, stdout=noisy_valid_json, stderr=""),
             ]
 
             output = orch.run_agent("test prompt", role="builder")

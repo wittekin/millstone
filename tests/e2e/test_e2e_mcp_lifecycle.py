@@ -56,10 +56,7 @@ class TestMCPTasklistPromptContent:
         # Configure MCP provider via config.toml
         config_toml = temp_repo / ".millstone" / "config.toml"
         config_toml.write_text(
-            'tasklist_provider = "mcp"\n'
-            "\n"
-            "[tasklist_provider_options]\n"
-            'mcp_server = "github"\n'
+            'tasklist_provider = "mcp"\n\n[tasklist_provider_options]\nmcp_server = "github"\n'
         )
 
         # Set up stubs for the full inner-loop pipeline
@@ -93,8 +90,7 @@ class TestMCPTasklistPromptContent:
 
         # (a) The configured server identifier "github" appears in the rendered prompt.
         assert "github" in prompt, (
-            f"Expected server name 'github' in rendered prompt.\n"
-            f"Prompt snippet: {prompt[:600]!r}"
+            f"Expected server name 'github' in rendered prompt.\nPrompt snippet: {prompt[:600]!r}"
         )
 
         # (b) Completion guidance is non-empty and semantically present.
@@ -162,8 +158,7 @@ class TestMCPTasklistFilterLabel:
         assert author_calls, "No author-role call was recorded"
         prompt = author_calls[0].prompt
         assert "sprint-9" in prompt, (
-            f"Expected 'sprint-9' in rendered builder prompt.\n"
-            f"Prompt snippet: {prompt[:600]!r}"
+            f"Expected 'sprint-9' in rendered builder prompt.\nPrompt snippet: {prompt[:600]!r}"
         )
 
 
@@ -215,8 +210,7 @@ class TestMCPTasklistFilterProject:
         assert author_calls, "No author-role call was recorded"
         prompt = author_calls[0].prompt
         assert "eng-platform" in prompt, (
-            f"Expected 'eng-platform' in rendered builder prompt.\n"
-            f"Prompt snippet: {prompt[:600]!r}"
+            f"Expected 'eng-platform' in rendered builder prompt.\nPrompt snippet: {prompt[:600]!r}"
         )
 
 

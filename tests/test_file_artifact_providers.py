@@ -9,6 +9,7 @@ import pytest
 # Checklist format parsing
 # ---------------------------------------------------------------------------
 
+
 class TestFileOpportunityProviderChecklistFormat:
     """list_opportunities() parses checklist format correctly."""
 
@@ -83,11 +84,7 @@ class TestFileOpportunityProviderChecklistFormat:
         from millstone.artifact_providers.file import FileOpportunityProvider
 
         f = tmp_path / "opportunities.md"
-        f.write_text(
-            "- [ ] **Short ID Form**\n"
-            "  - ID: short-id-form\n"
-            "  - Description: desc\n"
-        )
+        f.write_text("- [ ] **Short ID Form**\n  - ID: short-id-form\n  - Description: desc\n")
         provider = FileOpportunityProvider(f)
         opps = provider.list_opportunities()
         assert opps[0].opportunity_id == "short-id-form"
@@ -97,10 +94,7 @@ class TestFileOpportunityProviderChecklistFormat:
         from millstone.artifact_providers.file import FileOpportunityProvider
 
         f = tmp_path / "opportunities.md"
-        f.write_text(
-            "- [ ] **Improve Performance Now**\n"
-            "  - Description: Make it faster.\n"
-        )
+        f.write_text("- [ ] **Improve Performance Now**\n  - Description: Make it faster.\n")
         provider = FileOpportunityProvider(f)
         opps = provider.list_opportunities()
         assert opps[0].opportunity_id == "improve-performance-now"
@@ -164,6 +158,7 @@ class TestFileOpportunityProviderChecklistFormat:
 # ---------------------------------------------------------------------------
 # design_ref key normalization
 # ---------------------------------------------------------------------------
+
 
 class TestDesignRefKeyNormalization:
     """design_ref is populated from accepted key variants."""
@@ -233,6 +228,7 @@ class TestDesignRefKeyNormalization:
 # ROI score parsing
 # ---------------------------------------------------------------------------
 
+
 class TestOpportunityRoiScoreParsing:
     """ROI score metadata parses for checklist and legacy formats."""
 
@@ -300,6 +296,7 @@ class TestOpportunityRoiScoreParsing:
 # Legacy ### heading format
 # ---------------------------------------------------------------------------
 
+
 class TestLegacyHeadingFormat:
     """list_opportunities() falls back to legacy ### heading format."""
 
@@ -310,10 +307,7 @@ class TestLegacyHeadingFormat:
 
         f = tmp_path / "opportunities.md"
         f.write_text(
-            "### Improve Performance\n"
-            "\n"
-            "ROI Score: 2.5\n"
-            "Description: Make the system faster.\n"
+            "### Improve Performance\n\nROI Score: 2.5\nDescription: Make the system faster.\n"
         )
         provider = FileOpportunityProvider(f)
         opps = provider.list_opportunities()
@@ -329,10 +323,7 @@ class TestLegacyHeadingFormat:
 
         f = tmp_path / "opportunities.md"
         f.write_text(
-            "### Improve Performance\n"
-            "\n"
-            "**ROI Score**: 1.67\n"
-            "Description: Make the system faster.\n"
+            "### Improve Performance\n\n**ROI Score**: 1.67\nDescription: Make the system faster.\n"
         )
         provider = FileOpportunityProvider(f)
         opps = provider.list_opportunities()
@@ -343,11 +334,7 @@ class TestLegacyHeadingFormat:
         from millstone.artifact_providers.file import FileOpportunityProvider
 
         f = tmp_path / "opportunities.md"
-        f.write_text(
-            "### Fix The Bug In The Auth Module\n"
-            "\n"
-            "Description: Critical fix needed.\n"
-        )
+        f.write_text("### Fix The Bug In The Auth Module\n\nDescription: Critical fix needed.\n")
         provider = FileOpportunityProvider(f)
         opps = provider.list_opportunities()
         assert opps[0].opportunity_id == "fix-the-bug-in-the-auth-module"
@@ -377,6 +364,7 @@ class TestLegacyHeadingFormat:
 # get_opportunity
 # ---------------------------------------------------------------------------
 
+
 class TestGetOpportunity:
     """get_opportunity(id) resolves by opportunity_id."""
 
@@ -405,11 +393,7 @@ class TestGetOpportunity:
         from millstone.artifact_providers.file import FileOpportunityProvider
 
         f = tmp_path / "opportunities.md"
-        f.write_text(
-            "- [ ] **An Opp**\n"
-            "  - Opportunity ID: an-opp\n"
-            "  - Description: desc\n"
-        )
+        f.write_text("- [ ] **An Opp**\n  - Opportunity ID: an-opp\n  - Description: desc\n")
         provider = FileOpportunityProvider(f)
         result = provider.get_opportunity("not-exist")
         assert result is None
@@ -427,6 +411,7 @@ class TestGetOpportunity:
 # ---------------------------------------------------------------------------
 # write_opportunity
 # ---------------------------------------------------------------------------
+
 
 class TestWriteOpportunity:
     """write_opportunity emits canonical checklist format."""
@@ -458,9 +443,7 @@ class TestWriteOpportunity:
 
         f = tmp_path / "opportunities.md"
         f.write_text(
-            "- [ ] **Existing**\n"
-            "  - Opportunity ID: existing\n"
-            "  - Description: Already here.\n"
+            "- [ ] **Existing**\n  - Opportunity ID: existing\n  - Description: Already here.\n"
         )
         provider = FileOpportunityProvider(f)
         opp = Opportunity(
@@ -544,6 +527,7 @@ class TestWriteOpportunity:
 # Checklist contract: status encoding invariants
 # ---------------------------------------------------------------------------
 
+
 class TestChecklistContractStatusEncoding:
     """_to_checklist_block() encodes status via checkbox only; Status: line only for rejected."""
 
@@ -554,12 +538,14 @@ class TestChecklistContractStatusEncoding:
 
         f = tmp_path / "opportunities.md"
         provider = FileOpportunityProvider(f)
-        provider.write_opportunity(Opportunity(
-            opportunity_id="ident-opp",
-            title="Identified Opp",
-            status=OpportunityStatus.identified,
-            description="desc",
-        ))
+        provider.write_opportunity(
+            Opportunity(
+                opportunity_id="ident-opp",
+                title="Identified Opp",
+                status=OpportunityStatus.identified,
+                description="desc",
+            )
+        )
         content = f.read_text()
         assert "- [ ] **Identified Opp**" in content
         assert "Status:" not in content
@@ -571,12 +557,14 @@ class TestChecklistContractStatusEncoding:
 
         f = tmp_path / "opportunities.md"
         provider = FileOpportunityProvider(f)
-        provider.write_opportunity(Opportunity(
-            opportunity_id="adopted-opp",
-            title="Adopted Opp",
-            status=OpportunityStatus.adopted,
-            description="desc",
-        ))
+        provider.write_opportunity(
+            Opportunity(
+                opportunity_id="adopted-opp",
+                title="Adopted Opp",
+                status=OpportunityStatus.adopted,
+                description="desc",
+            )
+        )
         content = f.read_text()
         assert "- [x] **Adopted Opp**" in content
         assert "Status:" not in content
@@ -588,12 +576,14 @@ class TestChecklistContractStatusEncoding:
 
         f = tmp_path / "opportunities.md"
         provider = FileOpportunityProvider(f)
-        provider.write_opportunity(Opportunity(
-            opportunity_id="rejected-opp",
-            title="Rejected Opp",
-            status=OpportunityStatus.rejected,
-            description="desc",
-        ))
+        provider.write_opportunity(
+            Opportunity(
+                opportunity_id="rejected-opp",
+                title="Rejected Opp",
+                status=OpportunityStatus.rejected,
+                description="desc",
+            )
+        )
         content = f.read_text()
         assert "- [ ] **Rejected Opp**" in content
         assert "Status: rejected" in content
@@ -605,12 +595,14 @@ class TestChecklistContractStatusEncoding:
 
         f = tmp_path / "opportunities.md"
         provider = FileOpportunityProvider(f)
-        provider.write_opportunity(Opportunity(
-            opportunity_id="rt-opp",
-            title="Round Trip",
-            status=OpportunityStatus.identified,
-            description="desc",
-        ))
+        provider.write_opportunity(
+            Opportunity(
+                opportunity_id="rt-opp",
+                title="Round Trip",
+                status=OpportunityStatus.identified,
+                description="desc",
+            )
+        )
         assert "Status:" not in f.read_text()
         result = provider.list_opportunities()[0]
         assert result.status == OpportunityStatus.identified
@@ -619,6 +611,7 @@ class TestChecklistContractStatusEncoding:
 # ---------------------------------------------------------------------------
 # update_opportunity_status
 # ---------------------------------------------------------------------------
+
 
 class TestUpdateOpportunityStatus:
     """update_opportunity_status mutates checkbox and Status: metadata correctly."""
@@ -647,11 +640,7 @@ class TestUpdateOpportunityStatus:
         from millstone.artifacts.models import OpportunityStatus
 
         f = tmp_path / "opportunities.md"
-        f.write_text(
-            "- [x] **An Opp**\n"
-            "  - Opportunity ID: an-opp\n"
-            "  - Description: desc\n"
-        )
+        f.write_text("- [x] **An Opp**\n  - Opportunity ID: an-opp\n  - Description: desc\n")
         provider = FileOpportunityProvider(f)
         provider.update_opportunity_status("an-opp", OpportunityStatus.identified)
         content = f.read_text()
@@ -663,11 +652,7 @@ class TestUpdateOpportunityStatus:
         from millstone.artifacts.models import OpportunityStatus
 
         f = tmp_path / "opportunities.md"
-        f.write_text(
-            "- [ ] **An Opp**\n"
-            "  - Opportunity ID: an-opp\n"
-            "  - Description: desc\n"
-        )
+        f.write_text("- [ ] **An Opp**\n  - Opportunity ID: an-opp\n  - Description: desc\n")
         provider = FileOpportunityProvider(f)
         provider.update_opportunity_status("an-opp", OpportunityStatus.rejected)
         content = f.read_text()
@@ -715,6 +700,7 @@ class TestUpdateOpportunityStatus:
 # Edge cases: empty/missing file
 # ---------------------------------------------------------------------------
 
+
 class TestEmptyAndMissingFile:
     """Edge cases: missing file, empty file."""
 
@@ -740,6 +726,7 @@ class TestEmptyAndMissingFile:
 # Protocol conformance
 # ---------------------------------------------------------------------------
 
+
 class TestOpportunityProviderProtocolConformance:
     """FileOpportunityProvider satisfies the OpportunityProvider Protocol."""
 
@@ -756,6 +743,7 @@ class TestOpportunityProviderProtocolConformance:
 # ---------------------------------------------------------------------------
 # FileDesignProvider – canonical metadata-block format
 # ---------------------------------------------------------------------------
+
 
 class TestFileDesignProviderCanonicalFormat:
     """list_designs() parses canonical metadata-block format."""
@@ -836,6 +824,7 @@ class TestFileDesignProviderCanonicalFormat:
 # FileDesignProvider – legacy format
 # ---------------------------------------------------------------------------
 
+
 class TestFileDesignProviderLegacyFormat:
     """list_designs() falls back to legacy # Design: Title + Status: Value format."""
 
@@ -866,11 +855,7 @@ class TestFileDesignProviderLegacyFormat:
 
         d = tmp_path / "designs"
         d.mkdir()
-        (d / "legacy.md").write_text(
-            "# Design: Legacy\n\n"
-            "Status: Draft\n\n"
-            "## Body\n\nContent.\n"
-        )
+        (d / "legacy.md").write_text("# Design: Legacy\n\nStatus: Draft\n\n## Body\n\nContent.\n")
         provider = FileDesignProvider(d)
         designs = provider.list_designs()
         assert designs[0].opportunity_ref is None
@@ -882,11 +867,7 @@ class TestFileDesignProviderLegacyFormat:
 
         d = tmp_path / "designs"
         d.mkdir()
-        (d / "reviewed.md").write_text(
-            "# Design: Reviewed\n\n"
-            "Status: Reviewed\n\n"
-            "## Body\n"
-        )
+        (d / "reviewed.md").write_text("# Design: Reviewed\n\nStatus: Reviewed\n\n## Body\n")
         provider = FileDesignProvider(d)
         designs = provider.list_designs()
         assert designs[0].status == DesignStatus.reviewed
@@ -895,6 +876,7 @@ class TestFileDesignProviderLegacyFormat:
 # ---------------------------------------------------------------------------
 # FileDesignProvider – get_design
 # ---------------------------------------------------------------------------
+
 
 class TestFileDesignProviderGetDesign:
     """get_design(id) resolves by filename stem."""
@@ -943,6 +925,7 @@ class TestFileDesignProviderGetDesign:
 # ---------------------------------------------------------------------------
 # FileDesignProvider – write_design
 # ---------------------------------------------------------------------------
+
 
 class TestWriteDesign:
     """write_design always writes canonical metadata block format."""
@@ -1111,6 +1094,7 @@ class TestWriteDesign:
 # FileDesignProvider – update_design_status
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateDesignStatus:
     """update_design_status rewrites only the status line, preserving body."""
 
@@ -1169,7 +1153,9 @@ class TestUpdateDesignStatus:
 
         d = tmp_path / "designs"
         d.mkdir()
-        original_body = "## Complex Body\n\nWith **markdown** content.\n\nAnd multiple paragraphs.\n"
+        original_body = (
+            "## Complex Body\n\nWith **markdown** content.\n\nAnd multiple paragraphs.\n"
+        )
         f = d / "design.md"
         f.write_text(
             "# Design\n\n"
@@ -1190,6 +1176,7 @@ class TestUpdateDesignStatus:
 # FileDesignProvider – protocol conformance
 # ---------------------------------------------------------------------------
 
+
 class TestFileDesignProviderProtocolConformance:
     """FileDesignProvider satisfies the DesignProvider Protocol."""
 
@@ -1207,6 +1194,7 @@ class TestFileDesignProviderProtocolConformance:
 # ---------------------------------------------------------------------------
 # FileDesignProvider – edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestFileDesignProviderEdgeCases:
     """Edge cases: missing dir, empty dir."""
@@ -1233,6 +1221,7 @@ class TestFileDesignProviderEdgeCases:
 # FileTasklistProvider – list_tasks
 # ---------------------------------------------------------------------------
 
+
 class TestFileTasklistProviderListTasks:
     """list_tasks() returns TasklistItem records with correct status mapping."""
 
@@ -1242,11 +1231,7 @@ class TestFileTasklistProviderListTasks:
         from millstone.artifacts.models import TaskStatus
 
         f = tmp_path / "tasklist.md"
-        f.write_text(
-            "- [ ] **Implement feature**\n"
-            "  - ID: implement-feature\n"
-            "  - Risk: low\n"
-        )
+        f.write_text("- [ ] **Implement feature**\n  - ID: implement-feature\n  - Risk: low\n")
         provider = FileTasklistProvider(f)
         tasks = provider.list_tasks()
         assert len(tasks) == 1
@@ -1259,10 +1244,7 @@ class TestFileTasklistProviderListTasks:
         from millstone.artifacts.models import TaskStatus
 
         f = tmp_path / "tasklist.md"
-        f.write_text(
-            "- [x] **Finished task**\n"
-            "  - ID: finished-task\n"
-        )
+        f.write_text("- [x] **Finished task**\n  - ID: finished-task\n")
         provider = FileTasklistProvider(f)
         tasks = provider.list_tasks()
         assert len(tasks) == 1
@@ -1275,11 +1257,7 @@ class TestFileTasklistProviderListTasks:
 
         f = tmp_path / "tasklist.md"
         f.write_text(
-            "- [x] **Done task**\n"
-            "  - ID: done-task\n"
-            "\n"
-            "- [ ] **Todo task**\n"
-            "  - ID: todo-task\n"
+            "- [x] **Done task**\n  - ID: done-task\n\n- [ ] **Todo task**\n  - ID: todo-task\n"
         )
         provider = FileTasklistProvider(f)
         tasks = provider.list_tasks()
@@ -1294,10 +1272,7 @@ class TestFileTasklistProviderListTasks:
         from millstone.artifact_providers.file import FileTasklistProvider
 
         f = tmp_path / "tasklist.md"
-        f.write_text(
-            "- [ ] **My Task**\n"
-            "  - ID: my-explicit-task-id\n"
-        )
+        f.write_text("- [ ] **My Task**\n  - ID: my-explicit-task-id\n")
         provider = FileTasklistProvider(f)
         tasks = provider.list_tasks()
         assert tasks[0].task_id == "my-explicit-task-id"
@@ -1307,11 +1282,7 @@ class TestFileTasklistProviderListTasks:
         from millstone.artifact_providers.file import FileTasklistProvider
 
         f = tmp_path / "tasklist.md"
-        f.write_text(
-            "- [ ] **Risky task**\n"
-            "  - ID: risky-task\n"
-            "  - Risk: high\n"
-        )
+        f.write_text("- [ ] **Risky task**\n  - ID: risky-task\n  - Risk: high\n")
         provider = FileTasklistProvider(f)
         tasks = provider.list_tasks()
         assert tasks[0].risk == "high"
@@ -1351,6 +1322,7 @@ class TestFileTasklistProviderListTasks:
 # ---------------------------------------------------------------------------
 # FileTasklistProvider – canonical metadata field parity
 # ---------------------------------------------------------------------------
+
 
 class TestTasklistParserCanonicalFields:
     """Tasklist parser/provider round-trips canonical metadata fields."""
@@ -1486,6 +1458,7 @@ class TestTasklistParserCanonicalFields:
 # FileTasklistProvider – get_task
 # ---------------------------------------------------------------------------
 
+
 class TestFileTasklistProviderGetTask:
     """get_task(id) finds task by task_id."""
 
@@ -1512,10 +1485,7 @@ class TestFileTasklistProviderGetTask:
         from millstone.artifact_providers.file import FileTasklistProvider
 
         f = tmp_path / "tasklist.md"
-        f.write_text(
-            "- [ ] **Some task**\n"
-            "  - ID: some-task\n"
-        )
+        f.write_text("- [ ] **Some task**\n  - ID: some-task\n")
         provider = FileTasklistProvider(f)
         result = provider.get_task("not-exist")
         assert result is None
@@ -1533,6 +1503,7 @@ class TestFileTasklistProviderGetTask:
 # ---------------------------------------------------------------------------
 # FileTasklistProvider – append_tasks
 # ---------------------------------------------------------------------------
+
 
 class TestFileTasklistProviderAppendTasks:
     """append_tasks() serializes items to checklist markdown and appends to file."""
@@ -1561,10 +1532,7 @@ class TestFileTasklistProviderAppendTasks:
         from millstone.artifacts.models import TasklistItem, TaskStatus
 
         f = tmp_path / "tasklist.md"
-        f.write_text(
-            "- [ ] **Existing task**\n"
-            "  - ID: existing-task\n"
-        )
+        f.write_text("- [ ] **Existing task**\n  - ID: existing-task\n")
         provider = FileTasklistProvider(f)
         item = TasklistItem(
             task_id="new-task",
@@ -1674,6 +1642,7 @@ class TestFileTasklistProviderAppendTasks:
 # FileTasklistProvider – update_task_status
 # ---------------------------------------------------------------------------
 
+
 class TestFileTasklistProviderUpdateTaskStatus:
     """update_task_status delegates todo→done and raises for unsupported statuses."""
 
@@ -1683,10 +1652,7 @@ class TestFileTasklistProviderUpdateTaskStatus:
         from millstone.artifacts.models import TaskStatus
 
         f = tmp_path / "tasklist.md"
-        f.write_text(
-            "- [ ] **My Task**\n"
-            "  - ID: my-task\n"
-        )
+        f.write_text("- [ ] **My Task**\n  - ID: my-task\n")
         provider = FileTasklistProvider(f)
         provider.update_task_status("my-task", TaskStatus.done)
         content = f.read_text()
@@ -1699,10 +1665,7 @@ class TestFileTasklistProviderUpdateTaskStatus:
         from millstone.artifacts.models import TaskStatus
 
         f = tmp_path / "tasklist.md"
-        f.write_text(
-            "- [ ] **My Task**\n"
-            "  - ID: my-task\n"
-        )
+        f.write_text("- [ ] **My Task**\n  - ID: my-task\n")
         provider = FileTasklistProvider(f)
         with pytest.raises(NotImplementedError, match="in_progress"):
             provider.update_task_status("my-task", TaskStatus.in_progress)
@@ -1713,10 +1676,7 @@ class TestFileTasklistProviderUpdateTaskStatus:
         from millstone.artifacts.models import TaskStatus
 
         f = tmp_path / "tasklist.md"
-        f.write_text(
-            "- [ ] **My Task**\n"
-            "  - ID: my-task\n"
-        )
+        f.write_text("- [ ] **My Task**\n  - ID: my-task\n")
         provider = FileTasklistProvider(f)
         with pytest.raises(NotImplementedError, match="blocked"):
             provider.update_task_status("my-task", TaskStatus.blocked)
@@ -1727,10 +1687,7 @@ class TestFileTasklistProviderUpdateTaskStatus:
         from millstone.artifacts.models import TaskStatus
 
         f = tmp_path / "tasklist.md"
-        f.write_text(
-            "- [x] **Completed Task**\n"
-            "  - ID: completed-task\n"
-        )
+        f.write_text("- [x] **Completed Task**\n  - ID: completed-task\n")
         provider = FileTasklistProvider(f)
         # Should not raise
         provider.update_task_status("completed-task", TaskStatus.done)
@@ -1766,6 +1723,7 @@ class TestFileTasklistProviderUpdateTaskStatus:
 # FileTasklistProvider – protocol conformance
 # ---------------------------------------------------------------------------
 
+
 class TestFileTasklistProviderProtocolConformance:
     """FileTasklistProvider satisfies the TasklistProvider Protocol."""
 
@@ -1782,6 +1740,7 @@ class TestFileTasklistProviderProtocolConformance:
 # ---------------------------------------------------------------------------
 # File providers - from_config and registry registration
 # ---------------------------------------------------------------------------
+
 
 class TestFileProvidersFromConfigAndRegistration:
     """from_config and default "file" backend registration behavior."""
@@ -1846,9 +1805,11 @@ class TestFileProvidersFromConfigAndRegistration:
 
         assert "file" in list_tasklist_backends()
 
+
 # ---------------------------------------------------------------------------
 # get_prompt_placeholders() tests
 # ---------------------------------------------------------------------------
+
 
 class TestFileProviderGetPromptPlaceholders:
     """File providers return correct placeholder keys with embedded file paths."""

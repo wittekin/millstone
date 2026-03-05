@@ -28,9 +28,7 @@ class WorktreeManager:
         import re
 
         if not re.fullmatch(r"[a-z0-9_-]{1,40}", task_id):
-            raise ValueError(
-                f"Invalid task_id '{task_id}'. Must match [a-z0-9_-]{{1,40}}."
-            )
+            raise ValueError(f"Invalid task_id '{task_id}'. Must match [a-z0-9_-]{{1,40}}.")
         return task_id
 
     def _task_branch(self, task_id: str) -> str:

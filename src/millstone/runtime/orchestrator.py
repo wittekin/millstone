@@ -74,6 +74,7 @@ from millstone.utils import (
 @dataclass
 class BuilderArtifact:
     """Artifact produced by the builder agent."""
+
     output: str
     git_status: str
     git_diff: str
@@ -82,6 +83,7 @@ class BuilderArtifact:
 @dataclass
 class BuilderVerdict:
     """Verdict produced by the reviewer agent."""
+
     approved: bool
     decision: ReviewDecision | None
     raw_output: str
@@ -90,6 +92,7 @@ class BuilderVerdict:
 
 class PreflightError(Exception):
     """Raised when pre-flight checks fail."""
+
     pass
 
 
@@ -298,7 +301,13 @@ class Orchestrator:
         # - "continue" / "continue_across_runs": Resume session from state file
         # - "continue_within_run": Preserve session for all tasks in single invocation
         # - Or a specific session ID string to resume
-        valid_modes = ("new", "new_each_task", "continue", "continue_across_runs", "continue_within_run")
+        valid_modes = (
+            "new",
+            "new_each_task",
+            "continue",
+            "continue_across_runs",
+            "continue_within_run",
+        )
         if session_mode not in valid_modes and not session_mode:
             raise ValueError(
                 f"Invalid session_mode '{session_mode}'. Must be one of {valid_modes} or a session ID."
@@ -315,22 +324,16 @@ class Orchestrator:
         # eval_on_task: "none", "smoke", "full", or path to custom suite
         self.eval_on_task = eval_on_task
         self.skip_eval = skip_eval  # Override to skip eval gate for specific runs
-        self.baseline_eval: dict | None = None  # Baseline eval for eval_on_commit/eval_on_task comparison
+        self.baseline_eval: dict | None = (
+            None  # Baseline eval for eval_on_commit/eval_on_task comparison
+        )
         self.last_rollback_context: dict | None = None  # Context from last rollback for next cycle
         self.review_designs = review_designs  # Whether to review designs before implementation
         # Category scoring configuration
-        default_category_weights = cast(
-            dict[str, float], DEFAULT_CONFIG["category_weights"]
-        )
-        default_category_thresholds = cast(
-            dict[str, int], DEFAULT_CONFIG["category_thresholds"]
-        )
-        default_task_constraints = cast(
-            dict[str, Any], DEFAULT_CONFIG["task_constraints"]
-        )
-        default_risk_settings = cast(
-            dict[str, dict[str, Any]], DEFAULT_CONFIG["risk_settings"]
-        )
+        default_category_weights = cast(dict[str, float], DEFAULT_CONFIG["category_weights"])
+        default_category_thresholds = cast(dict[str, int], DEFAULT_CONFIG["category_thresholds"])
+        default_task_constraints = cast(dict[str, Any], DEFAULT_CONFIG["task_constraints"])
+        default_risk_settings = cast(dict[str, dict[str, Any]], DEFAULT_CONFIG["risk_settings"])
         self.category_weights = category_weights or default_category_weights.copy()
         self.category_thresholds = category_thresholds or default_category_thresholds.copy()
         # Task atomizer constraints for run_plan()
@@ -373,21 +376,31 @@ class Orchestrator:
         self._task_review_duration_ms: int = 0  # Total time spent in review calls
         self._task_findings_count: int = 0  # Total findings across all reviews
         self._task_findings_by_severity: dict[str, int] = {
-            "critical": 0, "high": 0, "medium": 0, "low": 0, "nit": 0
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "low": 0,
+            "nit": 0,
         }  # Aggregated severity counts
         self._current_task_text: str = ""  # Current task text for review metrics
-        self._task_previous_diff: str | None = None  # Diff before REQUEST_CHANGES for false positive detection
+        self._task_previous_diff: str | None = (
+            None  # Diff before REQUEST_CHANGES for false positive detection
+        )
         # Quiet mode suppresses startup banner (for utility commands like --eval)
         self.quiet = quiet
         # Minimum response length to trigger retry logic
         self.min_response_length = min_response_length
         # Log verbosity: "minimal" (events only), "normal" (events + summaries), "verbose" (full output)
         if log_verbosity not in ("minimal", "normal", "verbose"):
-            raise ValueError(f"Invalid log_verbosity '{log_verbosity}'. Must be 'minimal', 'normal', or 'verbose'.")
+            raise ValueError(
+                f"Invalid log_verbosity '{log_verbosity}'. Must be 'minimal', 'normal', or 'verbose'."
+            )
         self.log_verbosity = log_verbosity
         # Diff logging mode: "full" (complete diffs), "summary" (stats + truncated), "none" (suppress diffs)
         if log_diff_mode not in ("full", "summary", "none"):
-            raise ValueError(f"Invalid log_diff_mode '{log_diff_mode}'. Must be 'full', 'summary', or 'none'.")
+            raise ValueError(
+                f"Invalid log_diff_mode '{log_diff_mode}'. Must be 'full', 'summary', or 'none'."
+            )
         self.log_diff_mode = log_diff_mode
         self.profile = ProfileRegistry().get(profile)
         self._capability_gate = CapabilityPolicyGate(self.profile.capability_tier)
@@ -572,7 +585,14 @@ class Orchestrator:
             if self.session_mode != "new_each_task":
                 print(f"Session mode: {self.session_mode}")
             # Show CLI configuration
-            if self._cli_builder == self._cli_reviewer == self._cli_sanity == self._cli_analyzer == self._cli_release_eng == self._cli_sre:
+            if (
+                self._cli_builder
+                == self._cli_reviewer
+                == self._cli_sanity
+                == self._cli_analyzer
+                == self._cli_release_eng
+                == self._cli_sre
+            ):
                 print(f"CLI: {self._cli_default}")
             else:
                 print(f"CLI (default): {self._cli_default}")
@@ -644,9 +664,7 @@ class Orchestrator:
 
         # Inject agent callback on first use.
         if provider._agent_callback is None:
-            provider.set_agent_callback(
-                lambda p, **k: self.run_agent(p, role="author", **k)
-            )
+            provider.set_agent_callback(lambda p, **k: self.run_agent(p, role="author", **k))
         # Always fetch fresh data so tasks completed during the previous cycle
         # (by the agent via MCP tools in the remote backend) are reflected here.
         provider.invalidate_cache()
@@ -746,9 +764,9 @@ class Orchestrator:
 
         # File created on first write (append mode creates if not exists)
         with self.log_file.open("a") as f:
-            f.write(f"\n{'='*60}\n")
+            f.write(f"\n{'=' * 60}\n")
             f.write(f"[{timestamp}] {event}\n")
-            f.write(f"{'='*60}\n")
+            f.write(f"{'=' * 60}\n")
             for key, value in data.items():
                 f.write(f"\n--- {key} ---\n")
                 f.write(f"{value}\n")
@@ -1078,13 +1096,13 @@ class Orchestrator:
         )
         if result.returncode != 0 or result.stdout.strip() != "true":
             raise PreflightError(
-                f"Not a git repository: {self.repo_dir}\n"
-                "Initialize with: git init"
+                f"Not a git repository: {self.repo_dir}\nInitialize with: git init"
             )
 
         # Check 3: Tasklist file exists (if not using --task and not using MCP provider)
         if not self.task:
             from millstone.artifact_providers.mcp import MCPTasklistProvider
+
             tl_provider = self._outer_loop_manager.tasklist_provider
             if not isinstance(tl_provider, MCPTasklistProvider):
                 tasklist_path = self.repo_dir / self.tasklist
@@ -1119,7 +1137,9 @@ class Orchestrator:
         print("⚠️  WARNING: Working directory has uncommitted changes")
         print(f"   {file_count} file(s) modified")
         print("   These will be included in the first task's diff and may trigger LoC threshold.")
-        print(f"   Consider committing first or running with --loc-threshold={self.loc_threshold * 2}")
+        print(
+            f"   Consider committing first or running with --loc-threshold={self.loc_threshold * 2}"
+        )
         print()
 
     def check_uncommitted_tasklist(self) -> None:
@@ -1146,7 +1166,7 @@ class Orchestrator:
         if result.returncode != 0:
             return  # Git command failed, skip warning
 
-        status_output = result.stdout.rstrip('\n')  # Preserve leading spaces
+        status_output = result.stdout.rstrip("\n")  # Preserve leading spaces
         if not status_output:
             return  # Tasklist is clean
 
@@ -1172,13 +1192,21 @@ class Orchestrator:
     def cleanup(self):
         """Remove work directory contents (but keep the directory, runs/, evals/, and tasks/)."""
         import shutil
+
         persistent = {
             # Runtime history
-            "runs", "evals", "tasks", "cycles", "parallel", "locks", "worktrees",
+            "runs",
+            "evals",
+            "tasks",
+            "cycles",
+            "parallel",
+            "locks",
+            "worktrees",
             # User-written config — never delete
             "config.toml",
             # Artifact files/dirs that are local-only by default
-            "opportunities.md", "designs",
+            "opportunities.md",
+            "designs",
             # Pause/resume state
             "state.json",
             # Always preserve the default tasklist regardless of which tasklist this
@@ -1249,7 +1277,10 @@ class Orchestrator:
         if hasattr(self.run_claude, "mock_calls") or hasattr(self.run_claude, "side_effect"):
             return True
         # Check if function code is different (class-level patch)
-        return bool(hasattr(self.run_claude, "__func__") and self.run_claude.__func__ is not Orchestrator.run_claude)
+        return bool(
+            hasattr(self.run_claude, "__func__")
+            and self.run_claude.__func__ is not Orchestrator.run_claude
+        )
 
     def _stage_untracked_files(self) -> None:
         """Ensure untracked files are included in diffs (intent-to-add).
@@ -1265,7 +1296,7 @@ class Orchestrator:
                         subprocess.run(
                             ["git", "add", "-N", "--", file_path.strip()],
                             cwd=self.repo_dir,
-                            capture_output=True
+                            capture_output=True,
                         )
         except Exception as e:
             self.log("git_add_intent_failed", error=str(e))
@@ -1308,7 +1339,7 @@ class Orchestrator:
                     model=model,
                     output_schema=output_schema,
                     schema_work_dir=str(self.work_dir) if output_schema else None,
-                    **kwargs
+                    **kwargs,
                 )
             else:
                 return provider.run(
@@ -1317,7 +1348,7 @@ class Orchestrator:
                     cwd=str(self.repo_dir),
                     output_schema=output_schema,
                     schema_work_dir=str(self.work_dir) if output_schema else None,
-                    **kwargs
+                    **kwargs,
                 )
 
         result = execute_run(prompt, resume)
@@ -1333,7 +1364,11 @@ class Orchestrator:
 
         # Check for CLI errors
         if result.returncode != 0 and not result.output.strip():
-            error_msg = result.stderr.strip() if result.stderr else f"CLI exited with code {result.returncode}"
+            error_msg = (
+                result.stderr.strip()
+                if result.stderr
+                else f"CLI exited with code {result.returncode}"
+            )
             self.log("cli_error", cli=cli_name, returncode=str(result.returncode), error=error_msg)
             result = CLIResult(
                 output=f"CLI ERROR (exit {result.returncode}): {error_msg}",
@@ -1353,7 +1388,9 @@ class Orchestrator:
         # Check if response is empty and retry once if so
         should_retry = False
         if self.retry_on_empty_response:
-            should_retry = is_empty_response(final_output, expected_schema=output_schema, min_length=self.min_response_length)
+            should_retry = is_empty_response(
+                final_output, expected_schema=output_schema, min_length=self.min_response_length
+            )
 
         if (
             should_retry
@@ -1378,7 +1415,9 @@ class Orchestrator:
             if cli_name != "claude":
                 self._task_tokens_out += len(final_output) // 4
 
-            if is_empty_response(final_output, expected_schema=output_schema, min_length=self.min_response_length):
+            if is_empty_response(
+                final_output, expected_schema=output_schema, min_length=self.min_response_length
+            ):
                 self.log("empty_response_fallback", role=role, output_schema=output_schema)
                 if output_schema == "sanity_check":
                     return '{"status": "HALT", "reason": "Agent returned empty response"}'
@@ -1393,7 +1432,7 @@ class Orchestrator:
         resume: str | None = None,
         model: str | None = None,
         output_schema: str | None = None,
-        schema_work_dir: str | None = None
+        schema_work_dir: str | None = None,
     ) -> CLIResult:
         """Run Claude CLI agent and return full result object.
 
@@ -1407,6 +1446,7 @@ class Orchestrator:
         if not is_patched:
             # Production path: Use provider directly to get real return codes and errors
             from millstone.agent_providers import get_provider
+
             provider = get_provider("claude")
             result = provider.run(
                 prompt,
@@ -1454,7 +1494,7 @@ class Orchestrator:
         resume: str | None = None,
         model: str | None = None,
         output_schema: str | None = None,
-        schema_work_dir: str | None = None
+        schema_work_dir: str | None = None,
     ) -> str:
         """Run Claude CLI agent and return output string.
 
@@ -1463,6 +1503,7 @@ class Orchestrator:
         """
         # Instantiate/get the Claude provider directly to avoid recursion
         from millstone.agent_providers import get_provider
+
         provider = get_provider("claude")
 
         result = provider.run(
@@ -1541,9 +1582,7 @@ class Orchestrator:
             token = f"{{{{{key}}}}}"
             if token in prompt:
                 if not value:
-                    raise ValueError(
-                        f"Provider placeholder {token} resolved to empty string"
-                    )
+                    raise ValueError(f"Provider placeholder {token} resolved to empty string")
                 prompt = prompt.replace(token, value)
         return prompt
 
@@ -1671,7 +1710,9 @@ class Orchestrator:
         # Delegates to TasklistManager (syncs completed_task_count before and after)
         self._tasklist_manager.completed_task_count = self.completed_task_count
         result = self._tasklist_manager.run_compaction(
-            run_agent_callback=lambda p, schema_work_dir=None, **k: self.run_agent(p, role="author", **k),
+            run_agent_callback=lambda p, schema_work_dir=None, **k: self.run_agent(
+                p, role="author", **k
+            ),
             get_prompt_callback=self.get_compact_prompt,
             log_callback=self.log,
         )
@@ -1732,13 +1773,9 @@ class Orchestrator:
             previous_eval, current_eval, delta, log_callback=self.log
         )
 
-    def _update_eval_summary(
-        self, evals_dir: Path, timestamp_str: str, eval_result: dict
-    ) -> None:
+    def _update_eval_summary(self, evals_dir: Path, timestamp_str: str, eval_result: dict) -> None:
         # Delegates to EvalManager
-        return self._eval_manager._update_eval_summary(
-            evals_dir, timestamp_str, eval_result
-        )
+        return self._eval_manager._update_eval_summary(evals_dir, timestamp_str, eval_result)
 
     def save_task_metrics(
         self,
@@ -1831,15 +1868,15 @@ class Orchestrator:
         ref_loc: int | None = None,
     ) -> str:
         # Delegates to TasklistManager
-        return self._tasklist_manager._estimate_complexity(
-            file_refs, keywords, est_loc, ref_loc
-        )
+        return self._tasklist_manager._estimate_complexity(file_refs, keywords, est_loc, ref_loc)
 
     def split_task(self, task_number: int) -> dict:
         # Delegates to TasklistManager
         return self._tasklist_manager.split_task(
             task_number=task_number,
-            run_agent_callback=lambda p, schema_work_dir=None, **k: self.run_agent(p, role="author", **k),
+            run_agent_callback=lambda p, schema_work_dir=None, **k: self.run_agent(
+                p, role="author", **k
+            ),
             load_prompt_callback=self.load_prompt,
             log_callback=self.log,
         )
@@ -1847,7 +1884,7 @@ class Orchestrator:
     def _run_eval_on_commit(self, task_text: str = "") -> bool:
         # Delegates to EvalManager (syncs baseline_eval first)
         self._eval_manager.baseline_eval = self.baseline_eval
-        cycle_log_callback = self._cycle_log if getattr(self, 'cycle_log_file', None) else None
+        cycle_log_callback = self._cycle_log if getattr(self, "cycle_log_file", None) else None
         return self._eval_manager._run_eval_on_commit(
             task_text=task_text,
             task_prefix=self._task_prefix(),
@@ -1860,7 +1897,7 @@ class Orchestrator:
     def _run_eval_on_task(self, task_text: str = "") -> bool:
         # Delegates to EvalManager (syncs baseline_eval first)
         self._eval_manager.baseline_eval = self.baseline_eval
-        cycle_log_callback = self._cycle_log if getattr(self, 'cycle_log_file', None) else None
+        cycle_log_callback = self._cycle_log if getattr(self, "cycle_log_file", None) else None
         return self._eval_manager._run_eval_on_task(
             eval_on_task=self.eval_on_task,
             task_text=task_text,
@@ -1897,7 +1934,7 @@ class Orchestrator:
     ) -> bool:
         # Delegates to EvalManager
         cycle_log_callback = None
-        if getattr(self, 'cycle_log_file', None):
+        if getattr(self, "cycle_log_file", None):
             cycle_log_callback = self._cycle_log
         return self._eval_manager._handle_eval_regression(
             current_eval=current_eval,
@@ -1945,8 +1982,12 @@ class Orchestrator:
         return self._outer_loop_manager.run_analyze(
             issues_file=issues_file,
             load_prompt_callback=self.load_prompt,
-            run_agent_callback=lambda p, schema_work_dir=None, **k: self.run_agent(p, role="analyzer", **k),
-            reviewer_callback=lambda p, schema_work_dir=None, **k: self.run_agent(p, role="reviewer", **k),
+            run_agent_callback=lambda p, schema_work_dir=None, **k: self.run_agent(
+                p, role="analyzer", **k
+            ),
+            reviewer_callback=lambda p, schema_work_dir=None, **k: self.run_agent(
+                p, role="reviewer", **k
+            ),
             load_rollback_context_callback=self._load_rollback_context,
             log_callback=self.log,
         )
@@ -1958,8 +1999,12 @@ class Orchestrator:
             opportunity=opportunity,
             opportunity_id=opportunity_id,
             load_prompt_callback=self.load_prompt,
-            run_agent_callback=lambda p, schema_work_dir=None, **k: self.run_agent(p, role="author", **k),
-            reviewer_callback=lambda p, schema_work_dir=None, **k: self.run_agent(p, role="reviewer", **k),
+            run_agent_callback=lambda p, schema_work_dir=None, **k: self.run_agent(
+                p, role="author", **k
+            ),
+            reviewer_callback=lambda p, schema_work_dir=None, **k: self.run_agent(
+                p, role="reviewer", **k
+            ),
             log_callback=self.log,
         )
 
@@ -2056,8 +2101,6 @@ class Orchestrator:
         output = self.run_agent(prompt, role="sre")
         return {"mitigation_plan": output}
 
-
-
     def _validate_task(self, task_metadata: dict) -> dict:
         # Delegates to OuterLoopManager (syncs constraints first)
         self._outer_loop_manager.task_constraints = self.task_constraints
@@ -2074,7 +2117,9 @@ class Orchestrator:
         return self._outer_loop_manager.run_plan(
             design_path=design_path,
             load_prompt_callback=self.load_prompt,
-            run_agent_callback=lambda p, schema_work_dir=None, **k: self.run_agent(p, role="author", **k),
+            run_agent_callback=lambda p, schema_work_dir=None, **k: self.run_agent(
+                p, role="author", **k
+            ),
             log_callback=self.log,
             task_constraints=self.task_constraints,
         )
@@ -2165,9 +2210,7 @@ class Orchestrator:
         Research mode is for exploration tasks that don't produce code changes.
         """
         task_description = self.task if self.task else self.extract_current_task_title()
-        return self.load_prompt("research_prompt.md").replace(
-            "{{TASK}}", task_description
-        )
+        return self.load_prompt("research_prompt.md").replace("{{TASK}}", task_description)
 
     def sanity_check_impl(self, agent_output: str, git_status: str, git_diff: str) -> bool:
         # Delegates to InnerLoopManager
@@ -2239,23 +2282,20 @@ class Orchestrator:
 
         files_str = "\n\n".join(files_info) if files_info else "No specific files referenced."
 
-        prompt = self.load_prompt("complexity_prompt.md").replace(
-            "{{TASK}}", task_text
-        ).replace(
-            "{{FILES}}", files_str
+        prompt = (
+            self.load_prompt("complexity_prompt.md")
+            .replace("{{TASK}}", task_text)
+            .replace("{{FILES}}", files_str)
         )
 
         # Run analyzer
-        response = self.run_agent(
-            prompt,
-            role="analyzer",
-            output_schema="complexity_analysis"
-        )
+        response = self.run_agent(prompt, role="analyzer", output_schema="complexity_analysis")
 
         # Parse JSON
         result = {"complexity": "medium", "reasoning": "Failed to parse response"}
         try:
             import re
+
             # Use non-greedy match to find the first valid JSON object
             json_match = re.search(r"\{[\s\S]*?\}", response)
             if json_match:
@@ -2266,7 +2306,9 @@ class Orchestrator:
             self.log("complexity_analysis_failed", error=str(e), response=response)
 
         self.log("task_complexity_analysis", **result)
-        progress(f"{self._task_prefix()} Task Complexity: {result.get('complexity', 'unknown').upper()}")
+        progress(
+            f"{self._task_prefix()} Task Complexity: {result.get('complexity', 'unknown').upper()}"
+        )
         return result
 
     def run_single_task(self) -> bool:
@@ -2290,7 +2332,13 @@ class Orchestrator:
         self._task_review_cycles = 0
         self._task_review_duration_ms = 0
         self._task_findings_count = 0
-        self._task_findings_by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0, "nit": 0}
+        self._task_findings_by_severity = {
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "low": 0,
+            "nit": 0,
+        }
         self._task_previous_diff = None
 
         # Determine task text and metadata
@@ -2317,9 +2365,8 @@ class Orchestrator:
             _task_meta = self._tasklist_manager._parse_task_metadata(task_text)
         else:
             _task_meta = self._tasklist_manager.extract_current_task_metadata()
-        self._current_task_id = (
-            _task_meta.get("task_id")
-            or (re.sub(r"[^a-z0-9]+", "-", task_text.lower()).strip("-")[:30] or None)
+        self._current_task_id = _task_meta.get("task_id") or (
+            re.sub(r"[^a-z0-9]+", "-", task_text.lower()).strip("-")[:30] or None
         )
 
         # Worker mode: when --shared-state-dir is set, emit result.json + heartbeats
@@ -2366,7 +2413,9 @@ class Orchestrator:
 
             threading.Thread(target=_hb_loop, daemon=True).start()
 
-        def _worker_finish(status: str, review_summary: str | None = None, error: str | None = None) -> None:
+        def _worker_finish(
+            status: str, review_summary: str | None = None, error: str | None = None
+        ) -> None:
             if worker_hb_stop is not None:
                 worker_hb_stop.set()
             if worker_state is None or worker_task_id is None:
@@ -2412,7 +2461,10 @@ class Orchestrator:
             info_parts.append(f"risk: {self.current_task_risk}")
         if self.current_task_group:
             info_parts.append(f"group: {self.current_task_group}")
-        progress(f'{self._task_prefix()} Starting: "{self.current_task_title}"' + (f" [{', '.join(info_parts)}]" if info_parts else ""))
+        progress(
+            f'{self._task_prefix()} Starting: "{self.current_task_title}"'
+            + (f" [{', '.join(info_parts)}]" if info_parts else "")
+        )
 
         # High-risk gate
         if self.requires_high_risk_approval():
@@ -2444,7 +2496,9 @@ class Orchestrator:
         # Define Loop components
         def builder_producer(feedback: str | None = None) -> BuilderArtifact:
             if feedback:
-                progress(f"{self._task_prefix()} Cycle {self.cycle + 1}/{self.max_cycles}: Applying fixes...")
+                progress(
+                    f"{self._task_prefix()} Cycle {self.cycle + 1}/{self.max_cycles}: Applying fixes..."
+                )
                 msg = f"Address this review feedback:\n\n{feedback}"
                 output = self.run_agent(msg, resume=self.builder_session_id, role="author")
             else:
@@ -2469,7 +2523,12 @@ class Orchestrator:
             if not self.mechanical_checks():
                 return False, "Mechanical checks failed"
 
-            self.log("git_state", cycle=str(self.cycle + 1), status=artifact.git_status, diff=artifact.git_diff)
+            self.log(
+                "git_state",
+                cycle=str(self.cycle + 1),
+                status=artifact.git_status,
+                diff=artifact.git_diff,
+            )
 
             # Retry once on empty diff before sanity check fails
             # This catches cases where the builder didn't make changes but should have
@@ -2481,7 +2540,9 @@ class Orchestrator:
                     "please make the necessary changes now. If the task is truly read-only (verification, "
                     "research, or analysis), confirm that no changes are needed."
                 )
-                retry_output = self.run_agent(nudge_msg, resume=self.builder_session_id, role="author")
+                retry_output = self.run_agent(
+                    nudge_msg, resume=self.builder_session_id, role="author"
+                )
 
                 # Update artifact with new state
                 artifact.output = retry_output
@@ -2490,7 +2551,13 @@ class Orchestrator:
                 artifact.git_diff = self.git("diff", "HEAD")
 
                 # Re-log git state after retry
-                self.log("git_state", cycle=str(self.cycle + 1), status=artifact.git_status, diff=artifact.git_diff, note="after_empty_diff_retry")
+                self.log(
+                    "git_state",
+                    cycle=str(self.cycle + 1),
+                    status=artifact.git_status,
+                    diff=artifact.git_diff,
+                    note="after_empty_diff_retry",
+                )
 
             if not self.sanity_check_impl(artifact.output, artifact.git_status, artifact.git_diff):
                 return False, "Sanity check failed"
@@ -2499,7 +2566,9 @@ class Orchestrator:
 
         def builder_reviewer(artifact: BuilderArtifact) -> BuilderVerdict:
             review_start = time.time()
-            reviewer_resume = self.reviewer_session_id if self.session_mode != "new_each_task" else None
+            reviewer_resume = (
+                self.reviewer_session_id if self.session_mode != "new_each_task" else None
+            )
 
             review_output = self.run_agent(
                 self.get_review_prompt(artifact.output, artifact.git_diff),
@@ -2520,7 +2589,10 @@ class Orchestrator:
             # Only sanity check if we couldn't parse a valid verdict
             # This allows reviewers like Codex that output just JSON without markdown
             if decision is None:
-                is_empty_fallback = "Reviewer returned empty response" in review_output and "REQUEST_CHANGES" in review_output
+                is_empty_fallback = (
+                    "Reviewer returned empty response" in review_output
+                    and "REQUEST_CHANGES" in review_output
+                )
                 if not is_empty_fallback and not self.sanity_check_review(review_output):
                     raise Exception("Review sanity check failed")
 
@@ -2544,13 +2616,17 @@ class Orchestrator:
             # Detect false positive
             is_false_positive = False
             if self._task_previous_diff is not None:
-                is_false_positive = is_whitespace_or_comment_only_change(self._task_previous_diff, artifact.git_diff)
+                is_false_positive = is_whitespace_or_comment_only_change(
+                    self._task_previous_diff, artifact.git_diff
+                )
 
             self.append_review_metric(
                 task_text=self._current_task_text,
                 verdict=verdict.decision.status.value if verdict.decision else "APPROVED",
                 findings=verdict.decision.findings if verdict.decision else [],
-                findings_by_severity=verdict.decision.findings_by_severity if verdict.decision else {},
+                findings_by_severity=verdict.decision.findings_by_severity
+                if verdict.decision
+                else {},
                 duration_ms=self._task_review_duration_ms,
                 false_positive_indicator=is_false_positive,
             )
@@ -2580,16 +2656,24 @@ class Orchestrator:
             reviewer=builder_reviewer,
             is_approved=lambda v: v.approved,
             max_cycles=self.max_cycles,
-            on_cycle_start=lambda c: setattr(self, 'cycle', c-1), # Keep self.cycle aligned with cycle body
-            on_success=builder_on_success
+            on_cycle_start=lambda c: setattr(
+                self, "cycle", c - 1
+            ),  # Keep self.cycle aligned with cycle body
+            on_success=builder_on_success,
         )
 
         result = loop.run()
-        self.cycle = result.cycles # Final cycle count
+        self.cycle = result.cycles  # Final cycle count
 
         # Logging final state
         if result.success:
-            self.save_task_metrics(task_text, "approved", self.cycle, eval_before, self._get_latest_eval() if eval_enabled else None)
+            self.save_task_metrics(
+                task_text,
+                "approved",
+                self.cycle,
+                eval_before,
+                self._get_latest_eval() if eval_enabled else None,
+            )
             progress(f"{self._task_prefix()} Completed and committed after {self.cycle} cycle(s)")
             review_summary = result.verdict.feedback if result.verdict else None
             _worker_finish("success", review_summary=review_summary)
@@ -2711,18 +2795,25 @@ class Orchestrator:
             print("Auto-cleared stale session IDs (older than 24 hours).")
 
         # Handle --session mode (unless already set by --continue)
-        if self.session_mode not in ("new_each_task", "continue_within_run") and not self.builder_session_id:
+        if (
+            self.session_mode not in ("new_each_task", "continue_within_run")
+            and not self.builder_session_id
+        ):
             if self.session_mode == "continue_across_runs":
                 # Load session IDs from saved state
                 state = self.load_state()
                 if state and (state.get("builder_session_id") or state.get("session_id")):
-                    self.builder_session_id = state.get("builder_session_id") or state.get("session_id")
+                    self.builder_session_id = state.get("builder_session_id") or state.get(
+                        "session_id"
+                    )
                     self.reviewer_session_id = state.get("reviewer_session_id")
                     print(f"Resuming builder session: {self.builder_session_id}")
                     if self.reviewer_session_id:
                         print(f"Resuming reviewer session: {self.reviewer_session_id}")
                 else:
-                    print("Warning: --session continue_across_runs specified but no saved session found.")
+                    print(
+                        "Warning: --session continue_across_runs specified but no saved session found."
+                    )
                     print("Starting fresh session...")
             else:
                 # Treat session_mode as an explicit session ID (for builder only)
@@ -2804,7 +2895,9 @@ class Orchestrator:
             for task_num in range(1, self.max_tasks + 1):
                 # Check if there are remaining tasks before starting
                 if not self.has_remaining_tasks():
-                    progress(f"=== NO MORE TASKS === All tasklist tasks complete ({tasks_completed} this run)")
+                    progress(
+                        f"=== NO MORE TASKS === All tasklist tasks complete ({tasks_completed} this run)"
+                    )
                     self.log(
                         "run_completed",
                         result="SUCCESS",
@@ -2832,7 +2925,9 @@ class Orchestrator:
                     )
                     return 1
 
-            progress(f"=== MAX TASKS REACHED === Completed {tasks_completed} task(s), returning control.")
+            progress(
+                f"=== MAX TASKS REACHED === Completed {tasks_completed} task(s), returning control."
+            )
             self.log(
                 "run_completed",
                 result="SUCCESS",
@@ -2850,7 +2945,10 @@ def main():
     config = load_config()
     # commit_tasklist=True provides the legacy tracked path as the default,
     # but only when the user has not explicitly configured a tasklist path.
-    if config.get("commit_tasklist", False) and config.get("tasklist") == DEFAULT_CONFIG["tasklist"]:
+    if (
+        config.get("commit_tasklist", False)
+        and config.get("tasklist") == DEFAULT_CONFIG["tasklist"]
+    ):
         config["tasklist"] = "docs/tasklist.md"
 
     parser = argparse.ArgumentParser(
@@ -3681,7 +3779,10 @@ Remote backlog scoping (Jira / Linear / GitHub):
             print(f"Error: Tasklist file not found: {tasklist_path}", file=sys.stderr)
             print(file=sys.stderr)
             print("To get started, either:", file=sys.stderr)
-            print(f"  1. Create {args.tasklist} with tasks in markdown checkbox format:", file=sys.stderr)
+            print(
+                f"  1. Create {args.tasklist} with tasks in markdown checkbox format:",
+                file=sys.stderr,
+            )
             print("       - [ ] First task to complete", file=sys.stderr)
             print("       - [ ] Second task to complete", file=sys.stderr)
             print(file=sys.stderr)

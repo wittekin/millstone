@@ -54,9 +54,7 @@ def test_effect_policy_gate_c2_rejects_non_allowlisted_effect() -> None:
     )
 
     with pytest.raises(EffectNotAllowedError):
-        gate.apply(
-            EffectIntent(effect_class=EffectClass.transactional, description="txn")
-        )
+        gate.apply(EffectIntent(effect_class=EffectClass.transactional, description="txn"))
 
 
 def test_effect_policy_gate_c2_rejects_missing_idempotency_and_rollback() -> None:
@@ -67,9 +65,7 @@ def test_effect_policy_gate_c2_rejects_missing_idempotency_and_rollback() -> Non
     )
 
     with pytest.raises(EffectContractError):
-        gate.apply(
-            EffectIntent(effect_class=EffectClass.transactional, description="txn")
-        )
+        gate.apply(EffectIntent(effect_class=EffectClass.transactional, description="txn"))
 
 
 def test_effect_policy_gate_c2_accepts_idempotency_key() -> None:

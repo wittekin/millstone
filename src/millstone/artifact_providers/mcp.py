@@ -116,9 +116,7 @@ class MCPTasklistProvider(TasklistProviderBase):
         """Inject the agent callback used for MCP operations."""
         self._agent_callback = cb
 
-    def set_effect_applier(
-        self, apply_effect: Callable[[EffectIntent], EffectRecord]
-    ) -> None:
+    def set_effect_applier(self, apply_effect: Callable[[EffectIntent], EffectRecord]) -> None:
         """Attach an outer-loop effect applier for remote write operations."""
         self._effect_applier = apply_effect
 
@@ -146,9 +144,7 @@ class MCPTasklistProvider(TasklistProviderBase):
             )
         return self._agent_callback
 
-    def _apply_write_effect(
-        self, *, operation: str, artifact_id: str, description: str
-    ) -> None:
+    def _apply_write_effect(self, *, operation: str, artifact_id: str, description: str) -> None:
         if self._effect_applier is None:
             return
         intent = EffectIntent(
@@ -168,8 +164,7 @@ class MCPTasklistProvider(TasklistProviderBase):
         record = self._effect_applier(intent)
         if record.status in {EffectStatus.denied, EffectStatus.failed}:
             raise RuntimeError(
-                f"MCP write blocked for task:{artifact_id} "
-                f"(status={record.status.value})"
+                f"MCP write blocked for task:{artifact_id} (status={record.status.value})"
             )
 
     # ------------------------------------------------------------------
@@ -344,8 +339,7 @@ class MCPTasklistProvider(TasklistProviderBase):
                 f"status to match the compacted content provided above."
             ),
             "TASKLIST_APPEND_INSTRUCTIONS": (
-                f"Use the {self._mcp_server} MCP to create new tasks"
-                f"{label_clause}{project_clause}."
+                f"Use the {self._mcp_server} MCP to create new tasks{label_clause}{project_clause}."
             ),
             "TASKLIST_UPDATE_INSTRUCTIONS": (
                 f"Use the {self._mcp_server} MCP to find and edit the existing tasks "
@@ -362,9 +356,7 @@ class MCPTasklistProvider(TasklistProviderBase):
             self._apply_write_effect(
                 operation="create",
                 artifact_id=task.task_id,
-                description=(
-                    f"Create task '{task.title}' via {self._mcp_server} MCP tools."
-                ),
+                description=(f"Create task '{task.title}' via {self._mcp_server} MCP tools."),
             )
             prompt = (
                 f"Use the {self._mcp_server} MCP tools to create a new task"
@@ -410,9 +402,7 @@ class MCPTasklistProvider(TasklistProviderBase):
     def from_config(cls, options: dict[str, Any]) -> MCPTasklistProvider:
         mcp_server = options.get("mcp_server")
         if not mcp_server:
-            raise ValueError(
-                "MCPTasklistProvider.from_config requires 'mcp_server' in options"
-            )
+            raise ValueError("MCPTasklistProvider.from_config requires 'mcp_server' in options")
         if "read_backend" in options:
             warnings.warn(
                 "MCPTasklistProvider: 'read_backend' is deprecated and ignored. "
@@ -476,9 +466,7 @@ class MCPDesignProvider(DesignProviderBase):
         """Inject the agent callback used for MCP operations."""
         self._agent_callback = cb
 
-    def set_effect_applier(
-        self, apply_effect: Callable[[EffectIntent], EffectRecord]
-    ) -> None:
+    def set_effect_applier(self, apply_effect: Callable[[EffectIntent], EffectRecord]) -> None:
         """Attach an outer-loop effect applier for remote write operations."""
         self._effect_applier = apply_effect
 
@@ -493,18 +481,14 @@ class MCPDesignProvider(DesignProviderBase):
             )
         return self._agent_callback
 
-    def _apply_write_effect(
-        self, *, operation: str, artifact_id: str, description: str
-    ) -> None:
+    def _apply_write_effect(self, *, operation: str, artifact_id: str, description: str) -> None:
         if self._effect_applier is None:
             return
         intent = EffectIntent(
             effect_class=EffectClass.transactional,
             description=description,
             idempotency_key=artifact_id,
-            rollback_plan=(
-                f"Delete or archive the design via the {self._mcp_server} MCP tools."
-            ),
+            rollback_plan=(f"Delete or archive the design via the {self._mcp_server} MCP tools."),
             metadata={
                 "backend": "mcp",
                 "mcp_server": self._mcp_server,
@@ -515,8 +499,7 @@ class MCPDesignProvider(DesignProviderBase):
         record = self._effect_applier(intent)
         if record.status in {EffectStatus.denied, EffectStatus.failed}:
             raise RuntimeError(
-                f"MCP write blocked for design:{artifact_id} "
-                f"(status={record.status.value})"
+                f"MCP write blocked for design:{artifact_id} (status={record.status.value})"
             )
 
     # ------------------------------------------------------------------
@@ -603,9 +586,7 @@ class MCPDesignProvider(DesignProviderBase):
         self._apply_write_effect(
             operation="write",
             artifact_id=design.design_id,
-            description=(
-                f"Write design '{design.design_id}' via {self._mcp_server} MCP tools."
-            ),
+            description=(f"Write design '{design.design_id}' via {self._mcp_server} MCP tools."),
         )
         prompt = (
             f"Use the {self._mcp_server} MCP tools to create or update a design "
@@ -641,9 +622,7 @@ class MCPDesignProvider(DesignProviderBase):
     def from_config(cls, options: dict[str, Any]) -> MCPDesignProvider:
         mcp_server = options.get("mcp_server")
         if not mcp_server:
-            raise ValueError(
-                "MCPDesignProvider.from_config requires 'mcp_server' in options"
-            )
+            raise ValueError("MCPDesignProvider.from_config requires 'mcp_server' in options")
         if "read_backend" in options:
             warnings.warn(
                 "MCPDesignProvider: 'read_backend' is deprecated and ignored. "
@@ -686,9 +665,7 @@ class MCPOpportunityProvider(OpportunityProviderBase):
         """Inject the agent callback used for MCP operations."""
         self._agent_callback = cb
 
-    def set_effect_applier(
-        self, apply_effect: Callable[[EffectIntent], EffectRecord]
-    ) -> None:
+    def set_effect_applier(self, apply_effect: Callable[[EffectIntent], EffectRecord]) -> None:
         """Attach an outer-loop effect applier for remote write operations."""
         self._effect_applier = apply_effect
 
@@ -703,9 +680,7 @@ class MCPOpportunityProvider(OpportunityProviderBase):
             )
         return self._agent_callback
 
-    def _apply_write_effect(
-        self, *, operation: str, artifact_id: str, description: str
-    ) -> None:
+    def _apply_write_effect(self, *, operation: str, artifact_id: str, description: str) -> None:
         if self._effect_applier is None:
             return
         intent = EffectIntent(
@@ -725,8 +700,7 @@ class MCPOpportunityProvider(OpportunityProviderBase):
         record = self._effect_applier(intent)
         if record.status in {EffectStatus.denied, EffectStatus.failed}:
             raise RuntimeError(
-                f"MCP write blocked for opportunity:{artifact_id} "
-                f"(status={record.status.value})"
+                f"MCP write blocked for opportunity:{artifact_id} (status={record.status.value})"
             )
 
     # ------------------------------------------------------------------
@@ -833,9 +807,7 @@ class MCPOpportunityProvider(OpportunityProviderBase):
             prompt += f"- ROI Score: {opportunity.roi_score}\n"
         cb(prompt)
 
-    def update_opportunity_status(
-        self, opportunity_id: str, status: OpportunityStatus
-    ) -> None:
+    def update_opportunity_status(self, opportunity_id: str, status: OpportunityStatus) -> None:
         """Update opportunity status via the configured MCP server."""
         cb = self._require_callback()
         self._apply_write_effect(
@@ -856,9 +828,7 @@ class MCPOpportunityProvider(OpportunityProviderBase):
     def from_config(cls, options: dict[str, Any]) -> MCPOpportunityProvider:
         mcp_server = options.get("mcp_server")
         if not mcp_server:
-            raise ValueError(
-                "MCPOpportunityProvider.from_config requires 'mcp_server' in options"
-            )
+            raise ValueError("MCPOpportunityProvider.from_config requires 'mcp_server' in options")
         projects: list[str] = options.get("projects") or (
             [options["project"]] if options.get("project") else []
         )

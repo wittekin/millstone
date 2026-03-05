@@ -45,7 +45,10 @@ class ResponseBuilder:
         self._sanity_check_response = (response, None)
         return self
 
-    def on_reviewer(self, response='{"status": "APPROVED", "review": "Looks good", "summary": "No blockers", "findings": [], "findings_by_severity": {"critical": [], "high": [], "medium": [], "low": [], "nit": []}}'):
+    def on_reviewer(
+        self,
+        response='{"status": "APPROVED", "review": "Looks good", "summary": "No blockers", "findings": [], "findings_by_severity": {"critical": [], "high": [], "medium": [], "low": [], "nit": []}}',
+    ):
         self._reviewer_response = (response, None)
         return self
 
@@ -62,6 +65,7 @@ class ResponseBuilder:
                 return ("Nothing to commit.", None)
             else:
                 return ('{"status": "OK"}', None)
+
         return responses
 
 
@@ -98,10 +102,12 @@ class TestNoCodeFlow:
         }
         """
 
-        responses = (ResponseBuilder()
-                     .on_builder(output=builder_output)
-                     .on_reviewer(response=reviewer_response)
-                     .build())
+        responses = (
+            ResponseBuilder()
+            .on_builder(output=builder_output)
+            .on_reviewer(response=reviewer_response)
+            .build()
+        )
 
         # Use --task mode to avoid tasklist interactions for this specific test
         orch = Orchestrator(task="Verify requests library is installed")

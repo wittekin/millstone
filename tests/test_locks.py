@@ -63,4 +63,3 @@ class TestAdvisoryLock:
             assert lock_path.parent.exists()
         finally:
             lock.release()
-

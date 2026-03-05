@@ -46,9 +46,7 @@ class ReferenceIntegrityChecker:
     def check_design(self, design: Design) -> None:
         """Validate that design.opportunity_ref is present and resolves."""
         if self._opportunity_provider is None:
-            raise ValueError(
-                "opportunity_provider required to check design.opportunity_ref"
-            )
+            raise ValueError("opportunity_provider required to check design.opportunity_ref")
 
         violations: list[str] = []
         opportunity_ref = (design.opportunity_ref or "").strip()
@@ -69,18 +67,11 @@ class ReferenceIntegrityChecker:
             return
 
         if self._design_provider is None:
-            raise ValueError(
-                "design_provider required to check opportunity.design_ref"
-            )
+            raise ValueError("design_provider required to check opportunity.design_ref")
 
         if self._design_provider.get_design(design_ref) is None:
             raise ReferenceIntegrityError(
-                [
-                    (
-                        f"opportunity.design_ref={design_ref!r} does not resolve "
-                        "to a known design"
-                    )
-                ]
+                [(f"opportunity.design_ref={design_ref!r} does not resolve to a known design")]
             )
 
     def check_task(self, task: TasklistItem) -> None:
@@ -93,24 +84,18 @@ class ReferenceIntegrityChecker:
                 raise ValueError("design_provider required to check task.design_ref")
             if self._design_provider.get_design(design_ref) is None:
                 violations.append(
-
-                        f"task.design_ref={design_ref!r} does not resolve to a known "
-                        f"design (task_id={task.task_id!r})"
-
+                    f"task.design_ref={design_ref!r} does not resolve to a known "
+                    f"design (task_id={task.task_id!r})"
                 )
 
         opportunity_ref = (task.opportunity_ref or "").strip()
         if opportunity_ref:
             if self._opportunity_provider is None:
-                raise ValueError(
-                    "opportunity_provider required to check task.opportunity_ref"
-                )
+                raise ValueError("opportunity_provider required to check task.opportunity_ref")
             if self._opportunity_provider.get_opportunity(opportunity_ref) is None:
                 violations.append(
-
-                        f"task.opportunity_ref={opportunity_ref!r} does not resolve "
-                        f"to a known opportunity (task_id={task.task_id!r})"
-
+                    f"task.opportunity_ref={opportunity_ref!r} does not resolve "
+                    f"to a known opportunity (task_id={task.task_id!r})"
                 )
 
         if violations:

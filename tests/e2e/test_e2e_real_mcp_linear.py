@@ -147,8 +147,7 @@ def _list_issues_with_label(team_id: str, label_name: str) -> list[dict]:
         {"teamId": team_id, "labelName": label_name},
     )
     return [
-        {"id": node["id"], "state_type": node["state"]["type"]}
-        for node in data["issues"]["nodes"]
+        {"id": node["id"], "state_type": node["state"]["type"]} for node in data["issues"]["nodes"]
     ]
 
 
@@ -292,9 +291,7 @@ def test_real_linear_mcp_task_creates_commit(tmp_path: Path) -> None:
             "No new commit was created after millstone run "
             f"(git diff HEAD~1 HEAD failed):\n{head_diff.stderr}"
         )
-        assert "hello.py" in head_diff.stdout, (
-            "HEAD commit does not include changes to hello.py"
-        )
+        assert "hello.py" in head_diff.stdout, "HEAD commit does not include changes to hello.py"
 
         # (c) issue state is completed
         state_type = _get_issue_state_type(issue_id)
@@ -361,8 +358,7 @@ def test_real_linear_label_filter_narrows_scope(tmp_path: Path) -> None:
         # Assert: labelled issue is completed (was selected and processed)
         labelled_state = _get_issue_state_type(labelled_id)
         assert labelled_state in ("completed", "done"), (
-            f"Labelled issue should be completed after millstone run; "
-            f"state_type={labelled_state}"
+            f"Labelled issue should be completed after millstone run; state_type={labelled_state}"
         )
 
         # Assert: unlabelled issue remains open (was not selected by filter)

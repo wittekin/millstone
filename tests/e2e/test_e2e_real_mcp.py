@@ -75,9 +75,7 @@ def test_real_mcp_github_issues_full_lifecycle(tmp_path: Path) -> None:
         )
         hello_py = repo_dir / "hello.py"
         hello_py.write_text("# hello module\n")
-        subprocess.run(
-            ["git", "add", "hello.py"], cwd=repo_dir, check=True, capture_output=True
-        )
+        subprocess.run(["git", "add", "hello.py"], cwd=repo_dir, check=True, capture_output=True)
         subprocess.run(
             ["git", "commit", "-m", "initial commit"],
             cwd=repo_dir,
@@ -134,9 +132,7 @@ def test_real_mcp_github_issues_full_lifecycle(tmp_path: Path) -> None:
             "No new commit was created after millstone run "
             f"(git diff HEAD~1 HEAD failed):\n{head_diff.stderr}"
         )
-        assert "hello.py" in head_diff.stdout, (
-            "HEAD commit does not include changes to hello.py"
-        )
+        assert "hello.py" in head_diff.stdout, "HEAD commit does not include changes to hello.py"
 
         # (c) issue closed/done
         issue_view = _gh("issue", "view", issue_number, "--repo", test_repo, "--json", "state")
@@ -243,9 +239,7 @@ def test_real_mcp_label_filter_narrows_scope(tmp_path: Path) -> None:
         )
         greet_py = repo_dir / "greet.py"
         greet_py.write_text("# greet module\n")
-        subprocess.run(
-            ["git", "add", "greet.py"], cwd=repo_dir, check=True, capture_output=True
-        )
+        subprocess.run(["git", "add", "greet.py"], cwd=repo_dir, check=True, capture_output=True)
         subprocess.run(
             ["git", "commit", "-m", "initial commit"],
             cwd=repo_dir,

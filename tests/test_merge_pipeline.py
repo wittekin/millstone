@@ -56,7 +56,9 @@ class TestSafetyGates:
         base = _rev_parse(temp_repo, "HEAD")
         _commit_file(temp_repo, "a.txt", "1\n2\n3\n4\n5\n", "add lines")
         policy = {"limits": {"max_loc_per_task": 1}}
-        ok, reason = run_safety_gates(temp_repo, base_ref=base, head_ref="HEAD", policy=policy, loc_threshold=1)
+        ok, reason = run_safety_gates(
+            temp_repo, base_ref=base, head_ref="HEAD", policy=policy, loc_threshold=1
+        )
         assert ok is False
         assert "loc_threshold_exceeded" in reason
 
@@ -67,7 +69,9 @@ class TestSafetyGates:
             "limits": {"max_loc_per_task": 1000},
             "sensitive": {"enabled": True, "paths": [".env"], "require_approval": True},
         }
-        ok, reason = run_safety_gates(temp_repo, base_ref=base, head_ref="HEAD", policy=policy, loc_threshold=1000)
+        ok, reason = run_safety_gates(
+            temp_repo, base_ref=base, head_ref="HEAD", policy=policy, loc_threshold=1000
+        )
         assert ok is False
         assert reason.startswith("sensitive_path:")
 
@@ -78,7 +82,9 @@ class TestSafetyGates:
             "limits": {"max_loc_per_task": 1000},
             "dangerous": {"patterns": ["rm -rf"], "block": True},
         }
-        ok, reason = run_safety_gates(temp_repo, base_ref=base, head_ref="HEAD", policy=policy, loc_threshold=1000)
+        ok, reason = run_safety_gates(
+            temp_repo, base_ref=base, head_ref="HEAD", policy=policy, loc_threshold=1000
+        )
         assert ok is False
         assert reason.startswith("dangerous_pattern:")
 
@@ -86,7 +92,9 @@ class TestSafetyGates:
         base = _rev_parse(temp_repo, "HEAD")
         _commit_file(temp_repo, "ok.txt", "hi\n", "ok")
         policy = {"limits": {"max_loc_per_task": 1000}}
-        ok, reason = run_safety_gates(temp_repo, base_ref=base, head_ref="HEAD", policy=policy, loc_threshold=1000)
+        ok, reason = run_safety_gates(
+            temp_repo, base_ref=base, head_ref="HEAD", policy=policy, loc_threshold=1000
+        )
         assert ok is True
         assert reason == ""
 
@@ -107,17 +115,25 @@ class TestMergePipeline:
         (temp_repo / "docs" / "tasklist.md").write_text(
             "# Tasklist\n\n- [ ] **Do thing**: test\n  - ID: t1\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add task id"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add task id"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         # Detach HEAD so base_branch is not checked out when pushing.
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
 
         integration_branch = "millstone/integration"
         integration_wt = mgr.create_integration_worktree(integration_branch, base_ref_sha)
 
         policy = {"limits": {"max_loc_per_task": 1000}}
-        tasklist_lock = AdvisoryLock(temp_repo / ".millstone" / "locks" / "tasklist.lock", timeout=5.0)
+        tasklist_lock = AdvisoryLock(
+            temp_repo / ".millstone" / "locks" / "tasklist.lock", timeout=5.0
+        )
         pipeline = MergePipeline(
             repo_dir=temp_repo,
             integration_worktree=integration_wt,
@@ -158,8 +174,12 @@ class TestMergePipeline:
         (temp_repo / "docs" / "tasklist.md").write_text(
             "# Tasklist\n\n- [ ] **Do thing**: test\n  - ID: t1\n"
         )
-        subprocess.run(["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add task id"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add task id"], cwd=temp_repo, capture_output=True, check=True
+        )
         base_ref_sha = _rev_parse(temp_repo, "HEAD")
 
         git_lock = AdvisoryLock(temp_repo / ".millstone" / "locks" / "git.lock", timeout=5.0)
@@ -174,7 +194,9 @@ class TestMergePipeline:
         )
         commit_sha = _rev_parse(task_wt, "HEAD")
 
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
         integration_branch = "millstone/integration"
         integration_wt = mgr.create_integration_worktree(integration_branch, base_ref_sha)
 
@@ -185,7 +207,9 @@ class TestMergePipeline:
             integration_branch=integration_branch,
             merge_strategy="cherry-pick",
             git_lock=git_lock,
-            tasklist_lock=AdvisoryLock(temp_repo / ".millstone" / "locks" / "tasklist.lock", timeout=5.0),
+            tasklist_lock=AdvisoryLock(
+                temp_repo / ".millstone" / "locks" / "tasklist.lock", timeout=5.0
+            ),
             policy={"limits": {"max_loc_per_task": 1000}},
             loc_threshold=1000,
             max_retries=1,
@@ -238,7 +262,9 @@ class TestMergePipeline:
 
         # Advance base with conflicting change.
         _commit_file(temp_repo, "conflict.txt", "base\n", "base change")
-        subprocess.run(["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
         integration_branch = "millstone/integration"
         integration_wt = mgr.create_integration_worktree(integration_branch, base_ref_sha)
 
@@ -249,7 +275,9 @@ class TestMergePipeline:
             integration_branch=integration_branch,
             merge_strategy="cherry-pick",
             git_lock=git_lock,
-            tasklist_lock=AdvisoryLock(temp_repo / ".millstone" / "locks" / "tasklist.lock", timeout=5.0),
+            tasklist_lock=AdvisoryLock(
+                temp_repo / ".millstone" / "locks" / "tasklist.lock", timeout=5.0
+            ),
             policy={"limits": {"max_loc_per_task": 1000}},
             loc_threshold=1000,
             max_retries=0,
@@ -317,7 +345,9 @@ class TestMergePipeline:
             if isinstance(cmd, list) and cmd[:2] == ["git", "push"]:
                 calls["push"] += 1
                 if calls["push"] == 1:
-                    return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="rejected non-fast-forward")
+                    return subprocess.CompletedProcess(
+                        cmd, 1, stdout="", stderr="rejected non-fast-forward"
+                    )
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             return real_run(cmd, *args, **kwargs)
 

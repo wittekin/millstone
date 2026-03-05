@@ -234,11 +234,11 @@ class MergePipeline:
                 # Mark task complete in the integration checkout.
                 with self.tasklist_lock:
                     task_already_complete = False
-                    ok = self.tasklist_manager.mark_task_complete_by_id(
-                        task_id, taskmap
-                    )
+                    ok = self.tasklist_manager.mark_task_complete_by_id(task_id, taskmap)
                     if not ok:
-                        completion_state = self.tasklist_manager.task_completion_by_id(task_id, taskmap)
+                        completion_state = self.tasklist_manager.task_completion_by_id(
+                            task_id, taskmap
+                        )
                         if completion_state is True:
                             task_already_complete = True
                         else:
@@ -249,7 +249,9 @@ class MergePipeline:
                                 error="task_id_not_found_or_already_complete",
                             )
                     self._git("add", self.tasklist_manager.tasklist)
-                    has_staged_changes = self._git("diff", "--cached", "--quiet", check=False).returncode != 0
+                    has_staged_changes = (
+                        self._git("diff", "--cached", "--quiet", check=False).returncode != 0
+                    )
                     if has_staged_changes:
                         msg = f"millstone: mark task {task_id} complete"
                         if task_already_complete:

@@ -61,35 +61,25 @@ class TestGeminiProvider:
     def test_build_command_with_output_schema(self):
         """Command with output_schema injects schema into prompt."""
         provider = GeminiProvider()
-        cmd = provider.build_command(
-            "review changes",
-            output_schema="review_decision"
-        )
+        cmd = provider.build_command("review changes", output_schema="review_decision")
 
         # Check prompt for injected schema
         prompt = cmd[-1]
         assert "IMPORTANT: You MUST return a valid JSON object" in prompt
-        assert "status" in prompt # field from review_decision schema
-        assert "review" in prompt # field from review_decision schema
-        assert "summary" in prompt # field from review_decision schema
-        assert "APPROVED" in prompt # enum value from schema
+        assert "status" in prompt  # field from review_decision schema
+        assert "review" in prompt  # field from review_decision schema
+        assert "summary" in prompt  # field from review_decision schema
+        assert "APPROVED" in prompt  # enum value from schema
 
     def test_run_unwraps_json_response(self):
         """run() unwraps the 'response' field from Gemini's JSON output."""
         provider = GeminiProvider()
 
         # Mock Gemini CLI output: { "response": "Actual content", "stats": ... }
-        mock_output = json.dumps({
-            "response": "Here is the code",
-            "stats": {"tokens": 100}
-        })
+        mock_output = json.dumps({"response": "Here is the code", "stats": {"tokens": 100}})
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout=mock_output,
-                stderr="",
-                returncode=0
-            )
+            mock_run.return_value = MagicMock(stdout=mock_output, stderr="", returncode=0)
             result = provider.run("test prompt")
 
             # stdout should be unwrapped
@@ -104,11 +94,7 @@ class TestGeminiProvider:
         raw_output = "Not JSON output"
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout=raw_output,
-                stderr="",
-                returncode=0
-            )
+            mock_run.return_value = MagicMock(stdout=raw_output, stderr="", returncode=0)
             result = provider.run("test prompt")
 
             assert result.stdout == raw_output
@@ -121,11 +107,7 @@ class TestGeminiProvider:
         raw_output = json.dumps({"error": "something went wrong"})
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                stdout=raw_output,
-                stderr="",
-                returncode=0
-            )
+            mock_run.return_value = MagicMock(stdout=raw_output, stderr="", returncode=0)
             result = provider.run("test prompt")
 
             assert result.stdout == raw_output

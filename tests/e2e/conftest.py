@@ -181,9 +181,7 @@ class StubCli:
     def assert_roles_consumed(self, expected_roles: list[str]) -> None:
         """Assert that run_agent was called with exactly these roles in order."""
         actual = [c.role for c in self.calls]
-        assert actual == expected_roles, (
-            f"Expected role sequence {expected_roles}, got {actual}"
-        )
+        assert actual == expected_roles, f"Expected role sequence {expected_roles}, got {actual}"
 
     # ------------------------------------------------------------------
     # Internal dispatch (replaces orch.run_agent)

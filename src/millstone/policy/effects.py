@@ -161,6 +161,4 @@ class EffectPolicyGate:
             and not intent.idempotency_key
             and not intent.rollback_plan
         ):
-            raise EffectContractError(
-                "Effect intent must include idempotency_key or rollback_plan"
-            )
+            raise EffectContractError("Effect intent must include idempotency_key or rollback_plan")
