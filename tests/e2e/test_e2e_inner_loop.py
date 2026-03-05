@@ -7,8 +7,6 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from millstone.runtime.orchestrator import Orchestrator
 from tests.e2e.conftest import StubCli
 

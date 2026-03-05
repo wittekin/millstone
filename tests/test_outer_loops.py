@@ -1663,8 +1663,6 @@ def test_run_analyze_fix_prompt_contains_opportunity_write_instructions(temp_rep
         return '{"verdict": "APPROVED", "score": 9, "strengths": [], "issues": [], "feedback": ""}'
 
     # Track fix_prompt by supplying a load_prompt_callback that differentiates by name.
-    captured_by_name: dict[str, list[str]] = {}
-
     def load_prompt(name: str) -> str:
         return f"prompt_name: {name}\n{{{{OPPORTUNITY_WRITE_INSTRUCTIONS}}}}"
 

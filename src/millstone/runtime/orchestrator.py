@@ -1085,8 +1085,8 @@ class Orchestrator:
         # Check 3: Tasklist file exists (if not using --task and not using MCP provider)
         if not self.task:
             from millstone.artifact_providers.mcp import MCPTasklistProvider
-            provider = self._outer_loop_manager.tasklist_provider
-            if not isinstance(provider, MCPTasklistProvider):
+            tl_provider = self._outer_loop_manager.tasklist_provider
+            if not isinstance(tl_provider, MCPTasklistProvider):
                 tasklist_path = self.repo_dir / self.tasklist
                 if not tasklist_path.exists():
                     raise PreflightError(

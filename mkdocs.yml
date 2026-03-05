@@ -20,8 +20,6 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Worktrees: worktrees.md
-  - Tasklist Spec: tasklist.md
-  - Opportunities Spec: opportunities.md
   - Architecture:
       - Ontology: architecture/ontology.md
       - Scope: architecture/scope.md
