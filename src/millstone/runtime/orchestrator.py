@@ -3543,7 +3543,31 @@ Remote backlog scoping (Jira / Linear / GitHub):
         "sets approve_opportunities, approve_designs, and approve_plans to False, allowing "
         "the cycle to run without human intervention. Use with caution in trusted/low-risk scenarios.",
     )
+    parser.add_argument(
+        "--init",
+        action="store_true",
+        help="Scaffold a new millstone project. Detects project type (Python/Node/Go/Rust), "
+        "prompts for test command and CLI tool, then writes .millstone/config.toml and "
+        ".millstone/tasklist.md. Refuses to overwrite an existing config unless --force is set.",
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Non-interactive mode for --init. Accepts all detected defaults without prompting.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force overwrite of existing .millstone/config.toml when using --init.",
+    )
     args = parser.parse_args()
+
+    # Handle --init: scaffold project and exit (before any tasklist checks)
+    if args.init:
+        from millstone.commands.init import run_init
+
+        repo_dir = Path(args.repo_dir) if args.repo_dir else None
+        sys.exit(run_init(yes=args.yes, force=args.force, repo_dir=repo_dir))
 
     # Validate --compact is not used with --task
     if args.compact and args.task:
