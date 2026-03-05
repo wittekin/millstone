@@ -14,6 +14,9 @@ _APPROVED_JSON = (
     ' {"critical": [], "high": [], "medium": [], "low": [], "nit": []}}'
 )
 _SANITY_OK_JSON = '{"status": "OK", "reason": ""}'
+# Stub response for MCPTasklistProvider.list_tasks() — has_remaining_tasks() calls this
+# before the inner loop runs when tasklist_provider="mcp" is configured.
+_LIST_TASKS_JSON = '[{"id": "1", "title": "Stub task", "status": "todo", "description": ""}]'
 
 
 def _do_commit(repo: Path) -> None:
@@ -59,7 +62,9 @@ class TestMCPTasklistPromptContent:
             'tasklist_provider = "mcp"\n\n[tasklist_provider_options]\nmcp_server = "github"\n'
         )
 
-        # Set up stubs for the full inner-loop pipeline
+        # Set up stubs for the full inner-loop pipeline.
+        # has_remaining_tasks() calls list_tasks() first (author role, expects JSON).
+        stub_cli.add(role="author", output=_LIST_TASKS_JSON)
         stub_cli.add(
             role="author",
             output="Task implemented.",
@@ -83,10 +88,12 @@ class TestMCPTasklistPromptContent:
         # (d) exit 0
         assert exit_code == 0, f"Expected exit 0, got {exit_code}"
 
-        # Locate the first author-role call
+        # author_calls[0] = list_tasks (has_remaining_tasks); [1] = builder prompt
         author_calls = [c for c in stub_cli.calls if c.role == "author"]
-        assert author_calls, "No author-role call was recorded"
-        prompt = author_calls[0].prompt
+        assert len(author_calls) >= 2, (
+            "Expected at least 2 author-role calls (list_tasks + builder)"
+        )
+        prompt = author_calls[1].prompt
 
         # (a) The configured server identifier "github" appears in the rendered prompt.
         assert "github" in prompt, (
@@ -132,6 +139,7 @@ class TestMCPTasklistFilterLabel:
         )
 
         # Set up stubs for the full inner-loop pipeline.
+        stub_cli.add(role="author", output=_LIST_TASKS_JSON)
         stub_cli.add(
             role="author",
             output="Task implemented.",
@@ -155,8 +163,10 @@ class TestMCPTasklistFilterLabel:
         assert exit_code == 0, f"Expected exit 0, got {exit_code}"
 
         author_calls = [c for c in stub_cli.calls if c.role == "author"]
-        assert author_calls, "No author-role call was recorded"
-        prompt = author_calls[0].prompt
+        assert len(author_calls) >= 2, (
+            "Expected at least 2 author-role calls (list_tasks + builder)"
+        )
+        prompt = author_calls[1].prompt
         assert "sprint-9" in prompt, (
             f"Expected 'sprint-9' in rendered builder prompt.\nPrompt snippet: {prompt[:600]!r}"
         )
@@ -184,6 +194,7 @@ class TestMCPTasklistFilterProject:
         )
 
         # Set up stubs for the full inner-loop pipeline.
+        stub_cli.add(role="author", output=_LIST_TASKS_JSON)
         stub_cli.add(
             role="author",
             output="Task implemented.",
@@ -207,8 +218,10 @@ class TestMCPTasklistFilterProject:
         assert exit_code == 0, f"Expected exit 0, got {exit_code}"
 
         author_calls = [c for c in stub_cli.calls if c.role == "author"]
-        assert author_calls, "No author-role call was recorded"
-        prompt = author_calls[0].prompt
+        assert len(author_calls) >= 2, (
+            "Expected at least 2 author-role calls (list_tasks + builder)"
+        )
+        prompt = author_calls[1].prompt
         assert "eng-platform" in prompt, (
             f"Expected 'eng-platform' in rendered builder prompt.\nPrompt snippet: {prompt[:600]!r}"
         )
@@ -239,6 +252,7 @@ class TestMCPExplicitEmptyLabelsOverridesFilter:
         )
 
         # Set up stubs for the full inner-loop pipeline.
+        stub_cli.add(role="author", output=_LIST_TASKS_JSON)
         stub_cli.add(
             role="author",
             output="Task implemented.",
@@ -261,10 +275,12 @@ class TestMCPExplicitEmptyLabelsOverridesFilter:
 
         assert exit_code == 0, f"Expected exit 0, got {exit_code}"
 
-        # Assert "sprint-9" is absent from the rendered builder prompt.
+        # author_calls[0] = list_tasks; [1] = builder prompt (assert "sprint-9" absent).
         author_calls = [c for c in stub_cli.calls if c.role == "author"]
-        assert author_calls, "No author-role call was recorded"
-        prompt = author_calls[0].prompt
+        assert len(author_calls) >= 2, (
+            "Expected at least 2 author-role calls (list_tasks + builder)"
+        )
+        prompt = author_calls[1].prompt
         assert "sprint-9" not in prompt, (
             f"Expected 'sprint-9' absent from rendered builder prompt "
             f"(explicit empty labels suppresses filter label clause).\n"

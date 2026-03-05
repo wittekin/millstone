@@ -632,44 +632,28 @@ class Orchestrator:
     def has_remaining_tasks(self) -> bool:
         """Check whether there are pending tasks to process.
 
-        For file-backed tasklists (or any case where the local tasklist file
-        exists), reads the local file and looks for ``- [ ]`` checkboxes.
+        When the configured provider is MCP (e.g. GitHub Issues, Linear), the
+        local tasklist file is ignored entirely — the provider is always queried
+        via the agent callback so that a stale or leftover local file does not
+        shadow the remote backend.
 
-        For MCP-backed tasklists where no local file exists (e.g. running
-        against a Linear or GitHub Issues backend without a local tasklist.md),
-        the provider is queried directly via the agent callback.  The callback
-        is injected on first use; the cache is always invalidated before each
-        check so that tasks marked done by the agent in a previous cycle are
-        reflected correctly.
+        For file-backed tasklists the local file is read directly.
         """
         from millstone.artifact_providers.mcp import MCPTasklistProvider
         from millstone.artifacts.models import TaskStatus
 
-        # Fast path: if the local file exists and has tasks, trust it.
-        # This also covers stub-test patterns where an MCP provider is configured
-        # in config.toml but a local tasklist file is present for harness purposes.
-        if self._tasklist_manager.has_remaining_tasks():
-            return True
-
-        # If the local file exists but has NO remaining tasks, the run is done
-        # (regardless of provider type).
-        local_path = self._tasklist_manager._tasklist_path()
-        if local_path.exists():
-            return False
-
-        # No local file — fall back to querying the MCP provider (if configured).
         provider = self._outer_loop_manager.tasklist_provider
-        if not isinstance(provider, MCPTasklistProvider):
-            return False
 
-        # Inject agent callback on first use.
-        if provider._agent_callback is None:
-            provider.set_agent_callback(lambda p, **k: self.run_agent(p, role="author", **k))
-        # Always fetch fresh data so tasks completed during the previous cycle
-        # (by the agent via MCP tools in the remote backend) are reflected here.
-        provider.invalidate_cache()
-        tasks = provider.list_tasks()
-        return any(t.status in (TaskStatus.todo, TaskStatus.in_progress) for t in tasks)
+        if isinstance(provider, MCPTasklistProvider):
+            # MCP provider: always query remote, ignore any local file.
+            if provider._agent_callback is None:
+                provider.set_agent_callback(lambda p, **k: self.run_agent(p, role="author", **k))
+            provider.invalidate_cache()
+            tasks = provider.list_tasks()
+            return any(t.status in (TaskStatus.todo, TaskStatus.in_progress) for t in tasks)
+
+        # File provider: use the local tasklist file.
+        return self._tasklist_manager.has_remaining_tasks()
 
     def _setup_work_dir(self):
         """Create work directory and ensure it's gitignored."""
@@ -2684,7 +2668,64 @@ class Orchestrator:
             self.log("run_completed", result=reason.upper(), cycles=str(self.cycle))
             review_summary = result.verdict.feedback if result.verdict else None
             _worker_finish("failed", review_summary=review_summary, error=reason)
+            self._print_failure_summary(
+                self.current_task_title,
+                result.artifact.output if result.artifact else None,
+                result.verdict,
+                error=result.error,
+            )
             return False
+
+    def _print_failure_summary(
+        self,
+        task_title: str,
+        last_builder_output: str | None,
+        last_verdict: "BuilderVerdict | None",
+        *,
+        error: str | None = None,
+    ) -> None:
+        """Print a structured failure summary to stdout when a task is abandoned."""
+        if self.quiet:
+            return
+
+        sep = "━" * 42
+        print(f"\n{sep}")
+        print(f'━━━ Task Failed: "{task_title}" ━━━')
+        print()
+
+        if last_builder_output is not None:
+            lines = last_builder_output.splitlines()
+            truncated = lines[:20]
+            print("Last builder output (truncated to 20 lines):")
+            for line in truncated:
+                print(f"  {line}")
+            if len(lines) > 20:
+                print(f"  ... ({len(lines) - 20} more lines)")
+        else:
+            print("Last builder output: (none)")
+        print()
+
+        if last_verdict is None:
+            print("Reviewer verdict: N/A")
+        else:
+            verdict_label = "REJECTED" if not last_verdict.approved else "APPROVED"
+            print(f"Reviewer verdict: {verdict_label}")
+            print("Reviewer feedback:")
+            feedback = last_verdict.feedback.strip() if last_verdict.feedback else ""
+            if feedback:
+                for line in feedback.splitlines():
+                    print(f"  {line}")
+            else:
+                print("  (none)")
+        print()
+
+        print(
+            "Suggestion: Revise the task description to clarify requirements,\n"
+            'or add acceptance criteria so the builder knows what "done" looks like.'
+        )
+        print()
+        print(f"Log: {self.log_file}")
+        print(sep)
 
     def run_dry_run(self) -> int:
         """Show what would be executed without invoking claude. Returns exit code 0."""

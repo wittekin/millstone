@@ -2011,9 +2011,9 @@ class TestTasklistFlag:
         finally:
             orch.cleanup()
 
-    def test_get_tasklist_prompt_replaces_placeholder(self):
+    def test_get_tasklist_prompt_replaces_placeholder(self, tmp_path):
         """get_tasklist_prompt() resolves provider placeholders to concrete instructions."""
-        orch = Orchestrator(tasklist="my/custom/tasklist.md")
+        orch = Orchestrator(tasklist="my/custom/tasklist.md", repo_dir=tmp_path)
         try:
             prompt = orch.get_tasklist_prompt()
             assert "{{TASKLIST_PATH}}" not in prompt
@@ -2166,9 +2166,9 @@ class TestTasklistFlag:
         finally:
             orch.cleanup()
 
-    def test_get_task_prompt_resolves_update_instructions(self):
+    def test_get_task_prompt_resolves_update_instructions(self, tmp_path):
         """get_task_prompt() resolves {{TASKLIST_UPDATE_INSTRUCTIONS}} via provider placeholders."""
-        orch = Orchestrator(task="fix the bug", tasklist="my/tasks.md")
+        orch = Orchestrator(task="fix the bug", tasklist="my/tasks.md", repo_dir=tmp_path)
         try:
             prompt = orch.get_task_prompt()
             assert "{{TASKLIST_UPDATE_INSTRUCTIONS}}" not in prompt
@@ -3086,9 +3086,9 @@ class TestCompactThreshold:
         finally:
             orch.cleanup()
 
-    def test_get_compact_prompt_replaces_placeholder(self):
+    def test_get_compact_prompt_replaces_placeholder(self, tmp_path):
         """get_compact_prompt resolves {{TASKLIST_REWRITE_INSTRUCTIONS}} via provider."""
-        orch = Orchestrator(tasklist="my/tasks.md")
+        orch = Orchestrator(tasklist="my/tasks.md", repo_dir=tmp_path)
         try:
             prompt = orch.get_compact_prompt()
             assert "{{TASKLIST_REWRITE_INSTRUCTIONS}}" not in prompt
