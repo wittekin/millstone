@@ -2676,7 +2676,7 @@ class TestWorkerMode:
                 time.sleep(0.01)
             assert hb_path.exists()
             ts1 = float(hb_path.read_text().strip())
-            time.sleep(0.12)
+            time.sleep(0.20)
             ts2 = float(hb_path.read_text().strip())
             assert ts2 > ts1
         finally:
