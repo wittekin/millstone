@@ -169,9 +169,12 @@ class StubCli:
 
     @contextlib.contextmanager
     def patch(self, orch: Any):
-        """Patch ``orch.run_agent`` with this stub for the duration of the block."""
+        """Patch ``orch.run_agent`` and ``preflight_checks`` with this stub."""
         self._repo_dir = getattr(orch, "repo_dir", None)
-        with patch.object(orch, "run_agent", self._dispatch):
+        with (
+            patch.object(orch, "run_agent", self._dispatch),
+            patch.object(orch, "preflight_checks", lambda: None),
+        ):
             yield self
 
     # ------------------------------------------------------------------

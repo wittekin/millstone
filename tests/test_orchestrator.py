@@ -6564,10 +6564,11 @@ class TestEvalOnCommit:
                 return mock_eval_result
 
             # Mock dependencies to prevent actual task execution
-            with patch.object(orch, "run_eval", side_effect=tracking_run_eval):
-                with patch.object(orch, "has_remaining_tasks", return_value=False):
-                    # Run orchestrator - it should capture baseline then see no tasks
-                    result = orch.run()
+            with patch.object(orch, "preflight_checks", lambda: None):
+                with patch.object(orch, "run_eval", side_effect=tracking_run_eval):
+                    with patch.object(orch, "has_remaining_tasks", return_value=False):
+                        # Run orchestrator - it should capture baseline then see no tasks
+                        result = orch.run()
 
             # Verify baseline was captured
             assert orch.baseline_eval is not None
@@ -6599,10 +6600,11 @@ class TestEvalOnCommit:
                 return {"_passed": True}
 
             # Mock dependencies to prevent actual task execution
-            with patch.object(orch, "run_eval", side_effect=tracking_run_eval):
-                with patch.object(orch, "has_remaining_tasks", return_value=False):
-                    # Run orchestrator - it should not capture baseline
-                    orch.run()
+            with patch.object(orch, "preflight_checks", lambda: None):
+                with patch.object(orch, "run_eval", side_effect=tracking_run_eval):
+                    with patch.object(orch, "has_remaining_tasks", return_value=False):
+                        # Run orchestrator - it should not capture baseline
+                        orch.run()
 
             # Verify baseline was NOT captured
             assert orch.baseline_eval is None
@@ -6631,11 +6633,12 @@ class TestEvalOnCommit:
                 return {"_passed": True}
 
             # Mock dependencies to prevent actual task execution
-            with patch.object(orch, "run_eval", side_effect=tracking_run_eval):
-                with patch.object(orch, "has_remaining_tasks", return_value=False):
-                    with patch.object(orch, "load_state", return_value=False):
-                        # Run orchestrator - it should not capture baseline on continue
-                        orch.run()
+            with patch.object(orch, "preflight_checks", lambda: None):
+                with patch.object(orch, "run_eval", side_effect=tracking_run_eval):
+                    with patch.object(orch, "has_remaining_tasks", return_value=False):
+                        with patch.object(orch, "load_state", return_value=False):
+                            # Run orchestrator - it should not capture baseline on continue
+                            orch.run()
 
             # Verify baseline was NOT captured (skipped due to continue_run)
             assert orch.baseline_eval is None
