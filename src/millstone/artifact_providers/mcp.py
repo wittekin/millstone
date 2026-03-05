@@ -60,6 +60,15 @@ from millstone.policy.effects import EffectClass, EffectIntent, EffectRecord, Ef
 
 logger = logging.getLogger(__name__)
 
+_CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*\n(.*?)\n```\s*$", re.DOTALL)
+
+
+def _strip_json_fences(text: str) -> str:
+    """Strip markdown code fences from agent responses before JSON parsing."""
+    m = _CODE_FENCE_RE.match(text.strip())
+    return m.group(1) if m else text
+
+
 _TASK_STATUS_MAP: dict[str, TaskStatus] = {
     "todo": TaskStatus.todo,
     "in_progress": TaskStatus.in_progress,
@@ -192,7 +201,7 @@ class MCPTasklistProvider(TasklistProviderBase):
         )
         response = cb(prompt)
         try:
-            items = json.loads(response)
+            items = json.loads(_strip_json_fences(response))
         except json.JSONDecodeError as exc:
             raise ValueError(
                 f"MCPTasklistProvider.list_tasks: agent returned invalid JSON: {exc}\n"
@@ -221,7 +230,7 @@ class MCPTasklistProvider(TasklistProviderBase):
         )
         response = cb(prompt)
         try:
-            item = json.loads(response)
+            item = json.loads(_strip_json_fences(response))
         except json.JSONDecodeError:
             return None
         if not item:
@@ -519,7 +528,7 @@ class MCPDesignProvider(DesignProviderBase):
         )
         response = cb(prompt)
         try:
-            items = json.loads(response)
+            items = json.loads(_strip_json_fences(response))
         except json.JSONDecodeError:
             return []
         results = []
@@ -548,7 +557,7 @@ class MCPDesignProvider(DesignProviderBase):
         )
         response = cb(prompt)
         try:
-            item = json.loads(response)
+            item = json.loads(_strip_json_fences(response))
         except json.JSONDecodeError:
             return None
         if not item:
@@ -720,7 +729,7 @@ class MCPOpportunityProvider(OpportunityProviderBase):
         )
         response = cb(prompt)
         try:
-            items = json.loads(response)
+            items = json.loads(_strip_json_fences(response))
         except json.JSONDecodeError:
             return []
         results = []
@@ -748,7 +757,7 @@ class MCPOpportunityProvider(OpportunityProviderBase):
         )
         response = cb(prompt)
         try:
-            item = json.loads(response)
+            item = json.loads(_strip_json_fences(response))
         except json.JSONDecodeError:
             return None
         if not item:

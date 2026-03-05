@@ -121,6 +121,7 @@ class TasklistItem:
     risk: str | None = None
     tests: str | None = None
     criteria: str | None = None
+    acceptance_criteria: list[str] = field(default_factory=list)
     context: str | None = None
     raw: str | None = None  # preserved raw markdown block
 

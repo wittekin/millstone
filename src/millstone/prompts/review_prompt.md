@@ -49,7 +49,7 @@ Use the provided Git Diff above.
 
 <step_3_review_logic>
 Evaluate ONLY what can block merge or meaningfully increase risk:
-A) Task completeness (hard gate)
+{{ACCEPTANCE_CRITERIA}}A) Task completeness (hard gate)
 - Verify every explicit requirement is satisfied by the diff (or the current state + Builder Output if no changes were made).
 - If anything is missing/partial, status MUST be REQUEST_CHANGES.
 

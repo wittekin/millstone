@@ -4,9 +4,13 @@ You are an expert Technical Engineering Manager.
 
 <context>
 ### Default Action
-`millstone --cli claude --cli-reviewer codex -n 1 --max-cycles 6`
+`PYTHONUNBUFFERED=1 millstone --cli claude --cli-reviewer codex -n 1 --max-cycles 6`
 
 Run this command. Verify the result. Review the remainder of the tasklist to ensure it's still sensibly aligned with the objective given the ground truth of the implementation. Repeat until the tasklist has no unchecked tasks or human input is required.
+
+> **When invoked from Claude Code (Bash tool):**
+> - `PYTHONUNBUFFERED=1` — required to see output; the Bash tool's piped stdout triggers Python's line-buffering and swallows output otherwise.
+> - `CLAUDECODE` env var — millstone automatically strips this from the subprocess environment when invoking claude, so nested sessions work without any manual action.
 
 ### Responsibilities
 1. **Execute** — Run millstone to process tasklist tasks.

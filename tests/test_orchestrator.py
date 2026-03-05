@@ -13731,6 +13731,80 @@ class TestContextFileAnnotation:
             orch.cleanup()
 
 
+class TestAcceptanceCriteriaInjection:
+    """Tests for acceptance criteria injection into builder and reviewer prompts."""
+
+    def test_get_tasklist_prompt_includes_criteria(self, temp_repo):
+        """get_tasklist_prompt injects acceptance criteria when present."""
+        tasklist = temp_repo / ".millstone" / "tasklist.md"
+        tasklist.parent.mkdir(parents=True, exist_ok=True)
+        tasklist.write_text(
+            "# Tasklist\n\n"
+            "- [ ] **Add retry**: To the HTTP client\n"
+            "  **Acceptance criteria:**\n"
+            "  - Retries up to 3 times\n"
+            "  - Uses exponential backoff\n"
+        )
+
+        orch = Orchestrator()
+        try:
+            prompt = orch.get_tasklist_prompt()
+            assert "Your implementation must satisfy:" in prompt
+            assert "Retries up to 3 times" in prompt
+            assert "Uses exponential backoff" in prompt
+        finally:
+            orch.cleanup()
+
+    def test_get_tasklist_prompt_no_criteria_section_when_absent(self, temp_repo):
+        """get_tasklist_prompt has no criteria injection when task has none."""
+        tasklist = temp_repo / ".millstone" / "tasklist.md"
+        tasklist.parent.mkdir(parents=True, exist_ok=True)
+        tasklist.write_text("# Tasklist\n\n- [ ] **Plain task**: nothing special\n")
+
+        orch = Orchestrator()
+        try:
+            prompt = orch.get_tasklist_prompt()
+            assert "Your implementation must satisfy:" not in prompt
+            assert "{{ACCEPTANCE_CRITERIA}}" not in prompt
+        finally:
+            orch.cleanup()
+
+    def test_get_review_prompt_includes_criteria(self, temp_repo):
+        """get_review_prompt injects acceptance criteria for the reviewer."""
+        tasklist = temp_repo / ".millstone" / "tasklist.md"
+        tasklist.parent.mkdir(parents=True, exist_ok=True)
+        tasklist.write_text(
+            "# Tasklist\n\n"
+            "- [ ] **Add retry**: desc\n"
+            "  **Acceptance criteria:**\n"
+            "  - Retries 3 times on 5xx\n"
+            "  - Existing tests pass\n"
+        )
+
+        orch = Orchestrator()
+        try:
+            prompt = orch.get_review_prompt(builder_output="done", git_diff="diff")
+            assert "Verify each criterion is met:" in prompt
+            assert "Retries 3 times on 5xx" in prompt
+            assert "Existing tests pass" in prompt
+        finally:
+            orch.cleanup()
+
+    def test_get_review_prompt_no_criteria_section_when_absent(self, temp_repo):
+        """get_review_prompt has no criteria injection when task has none."""
+        tasklist = temp_repo / ".millstone" / "tasklist.md"
+        tasklist.parent.mkdir(parents=True, exist_ok=True)
+        tasklist.write_text("# Tasklist\n\n- [ ] **Plain task**: nothing special\n")
+
+        orch = Orchestrator()
+        try:
+            prompt = orch.get_review_prompt(builder_output="done", git_diff="diff")
+            assert "Verify each criterion is met:" not in prompt
+            assert "{{ACCEPTANCE_CRITERIA}}" not in prompt
+        finally:
+            orch.cleanup()
+
+
 class TestProjectAdapterInterface:
     """Tests for .millstone/project.toml project adapter interface."""
 
@@ -16155,5 +16229,130 @@ class TestAutonomousOrgHooks:
                 prompt = mock_agent.call_args[0][0]
                 assert "alert1" in prompt
                 assert "Service: millstone" in prompt
+        finally:
+            orch.cleanup()
+
+
+class TestPrintFailureSummary:
+    """Tests for _print_failure_summary() — inline failure diagnosis on task abandonment."""
+
+    def _make_verdict(self, approved: bool = False, feedback: str = ""):
+        from millstone.runtime.orchestrator import BuilderVerdict
+
+        return BuilderVerdict(
+            approved=approved,
+            decision=None,
+            raw_output=feedback,
+            feedback=feedback,
+        )
+
+    def test_prints_task_title_and_rejection(self, temp_repo, capsys):
+        orch = Orchestrator(task="Add retry logic", quiet=False)
+        try:
+            verdict = self._make_verdict(approved=False, feedback="Missing unit test\nNo jitter")
+            orch._print_failure_summary("Add retry logic", "builder did some work", verdict)
+            out = capsys.readouterr().out
+            assert "Task Failed" in out
+            assert "Add retry logic" in out
+            assert "REJECTED" in out
+            assert "Missing unit test" in out
+            assert "No jitter" in out
+        finally:
+            orch.cleanup()
+
+    def test_truncates_builder_output_to_20_lines(self, temp_repo, capsys):
+        orch = Orchestrator(task="test", quiet=False)
+        try:
+            long_output = "\n".join(f"line {i}" for i in range(40))
+            orch._print_failure_summary("test", long_output, None)
+            out = capsys.readouterr().out
+            assert "line 0" in out
+            assert "line 19" in out
+            assert "line 20" not in out
+            assert "20 more lines" in out
+        finally:
+            orch.cleanup()
+
+    def test_no_builder_output_shows_none(self, temp_repo, capsys):
+        orch = Orchestrator(task="test", quiet=False)
+        try:
+            orch._print_failure_summary("test", None, None)
+            out = capsys.readouterr().out
+            assert "Last builder output: (none)" in out
+        finally:
+            orch.cleanup()
+
+    def test_no_verdict_shows_na(self, temp_repo, capsys):
+        orch = Orchestrator(task="test", quiet=False)
+        try:
+            orch._print_failure_summary("test", "some output", None)
+            out = capsys.readouterr().out
+            assert "Reviewer verdict: N/A" in out
+        finally:
+            orch.cleanup()
+
+    def test_quiet_flag_suppresses_output(self, temp_repo, capsys):
+        orch = Orchestrator(task="test", quiet=True)
+        try:
+            verdict = self._make_verdict(approved=False, feedback="feedback here")
+            orch._print_failure_summary("test", "builder output", verdict)
+            out = capsys.readouterr().out
+            assert out == ""
+        finally:
+            orch.cleanup()
+
+    def test_includes_log_path(self, temp_repo, capsys):
+        orch = Orchestrator(task="test", quiet=False)
+        try:
+            orch._print_failure_summary("test", None, None)
+            out = capsys.readouterr().out
+            assert ".millstone/runs/" in out
+        finally:
+            orch.cleanup()
+
+    def test_includes_suggestion(self, temp_repo, capsys):
+        orch = Orchestrator(task="test", quiet=False)
+        try:
+            orch._print_failure_summary("test", None, None)
+            out = capsys.readouterr().out
+            assert "Suggestion:" in out
+        finally:
+            orch.cleanup()
+
+    def test_run_single_task_prints_failure_summary_on_max_cycles_exceeded(self, temp_repo, capsys):
+        """When run_single_task exhausts max cycles, _print_failure_summary fires."""
+        from millstone.loops.engine import LoopResult
+        from millstone.runtime.orchestrator import BuilderArtifact, BuilderVerdict
+
+        orch = Orchestrator(task="Add retry logic", quiet=False)
+        try:
+            artifact = BuilderArtifact(output="I tried but failed", git_status="", git_diff="")
+            verdict = BuilderVerdict(
+                approved=False,
+                decision=None,
+                raw_output="Missing tests",
+                feedback="Missing tests",
+            )
+            loop_result = LoopResult(
+                success=False,
+                cycles=3,
+                artifact=artifact,
+                verdict=verdict,
+                error="max cycles exceeded",
+            )
+            with (
+                patch.object(orch, "save_task_metrics"),
+                patch(
+                    "millstone.runtime.orchestrator.ArtifactReviewLoop.run",
+                    return_value=loop_result,
+                ),
+            ):
+                result = orch.run_single_task()
+
+            assert result is False
+            out = capsys.readouterr().out
+            assert "Task Failed" in out
+            assert "REJECTED" in out
+            assert "Missing tests" in out
         finally:
             orch.cleanup()
