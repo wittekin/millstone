@@ -1,0 +1,35 @@
+site_name: millstone
+site_description: Deterministic builder-reviewer orchestration CLI
+site_url: https://wittekin.github.io/millstone/
+repo_url: https://github.com/wittekin/millstone
+repo_name: wittekin/millstone
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.sections
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Worktrees: worktrees.md
+  - Tasklist Spec: tasklist.md
+  - Opportunities Spec: opportunities.md
+  - Architecture:
+      - Ontology: architecture/ontology.md
+      - Scope: architecture/scope.md
+  - Release:
+      - Changelog: https://github.com/wittekin/millstone/blob/main/CHANGELOG.md
+      - Release Checklist: maintainer/release_checklist.md
+  - Community:
+      - Contributing: maintainer/contributing.md
+      - Maintainers: maintainer/maintainers.md
+      - Security: maintainer/security.md
+      - Code of Conduct: maintainer/code-of-conduct.md
