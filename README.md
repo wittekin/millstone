@@ -275,7 +275,7 @@ This directory is auto-added to `.gitignore`.
 
 ## Expected Runtime
 
-Each task typically takes 2-4 minutes. The orchestrator makes 5+ LLM calls per task: builder, implementation sanity check, reviewer, review sanity check, commit delegation, plus fix cycles if needed.
+Depending on cycles, tasks, and your agent provider / model, millstone can run for minutes or hours.
 
 ## Requirements
 
