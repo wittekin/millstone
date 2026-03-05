@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import errno
-import fcntl
+import sys
 import time
 from contextlib import suppress
 from pathlib import Path
 from typing import TextIO
 
+if sys.platform != "win32":
+    import fcntl
+else:
+    fcntl = None  # type: ignore[assignment]
+
 
 class AdvisoryLock:
     """File-based advisory lock using POSIX fcntl/lockf.
 
-    This is intentionally POSIX-only (Linux/WSL target). Workers must not acquire
-    these locks; they are owned by the control plane.
+    On Windows the lock is a no-op (parallel worktree support is POSIX-only).
     """
 
     def __init__(self, path: Path, timeout: float = 30.0, poll_interval: float = 0.05):
@@ -23,6 +27,9 @@ class AdvisoryLock:
 
     def acquire(self) -> None:
         """Acquire an exclusive lock, waiting up to timeout seconds."""
+        if fcntl is None:
+            return  # no-op on Windows
+
         if self._fh is not None:
             return
 
@@ -53,6 +60,9 @@ class AdvisoryLock:
 
     def release(self) -> None:
         """Release the lock (idempotent)."""
+        if fcntl is None:
+            return  # no-op on Windows
+
         fh = self._fh
         if fh is None:
             return
