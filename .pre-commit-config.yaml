@@ -1,0 +1,38 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff lint
+        entry: ruff check
+        language: system
+        args: [src, tests]
+        pass_filenames: false
+
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format --check
+        language: system
+        args: [src, tests, docs]
+        pass_filenames: false
+
+      - id: mypy
+        name: mypy type check
+        entry: mypy
+        language: system
+        args: [src/millstone]
+        pass_filenames: false
+
+      - id: vulture
+        name: vulture dead code
+        entry: vulture
+        language: system
+        args: [src, tests, --min-confidence, "80"]
+        pass_filenames: false
+
+      - id: pytest
+        name: pytest
+        entry: pytest
+        language: system
+        args: [--tb=short, -q]
+        pass_filenames: false
+        stages: [pre-push]
