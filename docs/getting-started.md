@@ -35,24 +35,31 @@ pip install -e .[release]
 
 ## Basic usage
 
-Design-first flow (recommended):
+Choose the workflow that matches what you have:
 
 ```bash
-# 1) Draft + review a design
-millstone --design "Add retry logic"
+# 1) One task now (no tasklist setup)
+millstone --task "add retry logic"
 
-# 2) Plan tasks from that design
-# Design files default to .millstone/designs/<kebab-case-opportunity>.md
-millstone --plan .millstone/designs/add-retry-logic.md
+# 2) Existing local backlog file -> migrate once
+millstone --migrate-tasklist backlog.md
+millstone
 
-# 3) Execute the first planned task
-millstone -n 1
+# 3) Design -> plan -> execute one objective (skips analyze)
+millstone --deliver "Add retry logic"
+
+# 4) New app / fresh repo
+millstone --init
+millstone --deliver "Build a CLI app for release note generation"
+
+# 5) Full autonomous improvement loop
+millstone --cycle
 ```
 
-Fast smoke test (no tasklist required):
+Roadmap-driven flow (no analyze step):
 
 ```bash
-millstone --task "add retry logic"
+millstone --cycle --roadmap docs/roadmap.md
 ```
 
 Run from tasklist directly:
@@ -62,15 +69,7 @@ millstone
 ```
 
 `millstone` and `millstone -n 1` read tasks from the configured tasklist path
-(default: `.millstone/tasklist.md`). Use `--task` for one-off execution when no tasklist exists yet.
-
-Closest single-command flow:
-
-```bash
-millstone --cycle
-```
-
-When no pending tasks exist, `--cycle` runs `analyze -> design -> plan -> build -> eval`.
+(default: `.millstone/tasklist.md`).
 
 Explore all options:
 
