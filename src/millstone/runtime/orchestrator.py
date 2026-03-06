@@ -145,6 +145,110 @@ def _configure_python_logging_for_verbosity(log_verbosity: str) -> None:
     root_logger.addHandler(handler)
 
 
+def _ensure_tasklist_file(tasklist_path: Path) -> None:
+    """Create a minimal tasklist file if it does not exist."""
+    if tasklist_path.exists():
+        return
+    tasklist_path.parent.mkdir(parents=True, exist_ok=True)
+    tasklist_path.write_text("# Tasklist\n")
+
+
+def _extract_backlog_items(backlog_text: str) -> list[tuple[str, str]]:
+    """Extract backlog items from markdown/plain text into (status, task_text)."""
+    items: list[tuple[str, str]] = []
+    in_code_block = False
+
+    # Prefer explicit task-like syntax when present.
+    has_structured_tasks = bool(
+        re.search(
+            r"^\s*(?:[-*]\s+\[[ xX]\]\s+|[-*]\s+|\d+[.)]\s+|\[[ xX]\]\s+|TODO[:\-]\s+)",
+            backlog_text,
+            re.MULTILINE,
+        )
+    )
+
+    for raw_line in backlog_text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
+        if stripped.startswith("#") or stripped.startswith("<!--"):
+            continue
+
+        # Checked/unchecked markdown checkbox list items.
+        checkbox_match = re.match(r"^\s*[-*]\s+\[([ xX])\]\s+(.+?)\s*$", raw_line)
+        if checkbox_match:
+            status = "x" if checkbox_match.group(1).strip().lower() == "x" else " "
+            items.append((status, checkbox_match.group(2).strip()))
+            continue
+
+        # Bare checkbox without markdown bullet.
+        bare_checkbox_match = re.match(r"^\s*\[([ xX])\]\s+(.+?)\s*$", raw_line)
+        if bare_checkbox_match:
+            status = "x" if bare_checkbox_match.group(1).strip().lower() == "x" else " "
+            items.append((status, bare_checkbox_match.group(2).strip()))
+            continue
+
+        # Bullet lists.
+        bullet_match = re.match(r"^\s*[-*]\s+(.+?)\s*$", raw_line)
+        if bullet_match:
+            items.append((" ", bullet_match.group(1).strip()))
+            continue
+
+        # Numbered lists.
+        numbered_match = re.match(r"^\s*\d+[.)]\s+(.+?)\s*$", raw_line)
+        if numbered_match:
+            items.append((" ", numbered_match.group(1).strip()))
+            continue
+
+        # TODO-prefixed lines.
+        todo_match = re.match(r"^\s*TODO[:\-]\s+(.+?)\s*$", raw_line, re.IGNORECASE)
+        if todo_match:
+            items.append((" ", todo_match.group(1).strip()))
+            continue
+
+        # Plain-text migration fallback for line-oriented backlogs.
+        if not has_structured_tasks:
+            items.append((" ", stripped))
+
+    return items
+
+
+def _migrate_local_backlog(source_path: Path, output_path: Path) -> dict[str, Any]:
+    """Convert a local backlog file into canonical markdown tasklist format."""
+    if not source_path.exists():
+        raise FileNotFoundError(f"Backlog file not found: {source_path}")
+
+    backlog_text = source_path.read_text()
+    items = _extract_backlog_items(backlog_text)
+    if not items:
+        raise ValueError(
+            "No actionable backlog items found. Use bullet/numbered lines or one task per line."
+        )
+
+    output_lines = ["# Tasklist", ""]
+    for status, task_text in items:
+        output_lines.append(f"- [{status}] {task_text}")
+    output_lines.append("")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(output_lines))
+
+    completed_count = sum(1 for status, _ in items if status == "x")
+    pending_count = len(items) - completed_count
+    return {
+        "source_path": str(source_path),
+        "output_path": str(output_path),
+        "task_count": len(items),
+        "pending_count": pending_count,
+        "completed_count": completed_count,
+    }
+
+
 class _NoopLock:
     """Minimal lock protocol implementation for best-effort worker state writes."""
 
@@ -3016,12 +3120,25 @@ def main():
         "then iterates through build-review cycles until approval or max cycles reached.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+Common workflows:
+  1) One task now
+     %(prog)s --task "add login page"
+  2) Existing backlog (local)
+     %(prog)s --migrate-tasklist backlog.md
+     %(prog)s
+  3) Design -> plan -> execute (skip analyze)
+     %(prog)s --deliver "Add retry logic to API client"
+  4) New project / fresh app
+     %(prog)s --init
+     %(prog)s --deliver "Build a CLI app for ..."
+  5) Full autonomous improvement loop
+     %(prog)s --cycle
+
 Examples:
   %(prog)s                           Run using default tasklist (.millstone/tasklist.md)
-  %(prog)s --task "add login page"   Execute a single task directly
-  %(prog)s --tasklist TODO.md      Use custom tasklist file
+  %(prog)s --tasklist TODO.md        Use custom tasklist file
   %(prog)s --max-cycles 5            Allow up to 5 build-review iterations
-  %(prog)s --dry-run                 Preview prompts without invoking claude
+  %(prog)s --dry-run                 Preview prompts without invoking the configured CLI
 
 Configuration:
   Settings can be stored in .millstone/config.toml. CLI flags override config file values.
@@ -3095,6 +3212,15 @@ Remote backlog scoping (Jira / Linear / GitHub):
         help="Path to the markdown tasklist file containing tasks. The builder picks "
         "the first unchecked task (- [ ]) and marks it complete (- [x]) when done. "
         f"Ignored if --task is provided. (default: {config['tasklist']})",
+    )
+    parser.add_argument(
+        "--migrate-tasklist",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Convert a local backlog file into canonical tasklist format and write it to "
+        "--tasklist (default: .millstone/tasklist.md). Accepts markdown checklists, bullet "
+        "lists, numbered lists, TODO-prefixed lines, or one-task-per-line text files.",
     )
     parser.add_argument(
         "--roadmap",
@@ -3527,6 +3653,16 @@ Remote backlog scoping (Jira / Linear / GitHub):
         "Example: --plan designs/add-retry-logic.md",
     )
     parser.add_argument(
+        "--deliver",
+        type=str,
+        default=None,
+        metavar="OBJECTIVE",
+        help="Run design -> optional design review -> plan -> execute for one objective. "
+        "This explicitly skips analyze, creates --tasklist if missing for file-backed tasklists, "
+        "and halts if pending tasks already exist to avoid mixing scopes. "
+        "Example: --deliver 'Add retry logic to API client'",
+    )
+    parser.add_argument(
         "--cycle",
         action="store_true",
         help="Run the full autonomous cycle: analyze → design → plan → build → eval. "
@@ -3581,6 +3717,14 @@ Remote backlog scoping (Jira / Linear / GitHub):
     if args.issues and not args.analyze:
         parser.error("--issues requires --analyze. Use: --analyze --issues PATH")
 
+    # Validate --deliver exclusivity with other outer-loop entrypoints
+    if args.deliver and (
+        args.analyze or args.design or args.plan or args.cycle or args.review_design
+    ):
+        parser.error(
+            "--deliver cannot be combined with --analyze, --design, --review-design, --plan, or --cycle."
+        )
+
     # Preserve config values not exposed as CLI args (CLI overrides config)
     prompts_dir = args.prompts_dir if args.prompts_dir else config.get("prompts_dir")
     eval_scripts = config.get("eval_scripts", [])
@@ -3589,6 +3733,27 @@ Remote backlog scoping (Jira / Linear / GitHub):
     _configure_python_logging_for_verbosity(log_verbosity)
     # Compute effective log_diff_mode: --full-diff flag overrides config
     log_diff_mode = "full" if args.full_diff else config.get("log_diff_mode", "summary")
+
+    # Handle --migrate-tasklist: normalize a local backlog into markdown checklist format
+    if args.migrate_tasklist:
+        try:
+            source_path = Path(args.migrate_tasklist)
+            output_path = Path(args.tasklist)
+            result = _migrate_local_backlog(source_path=source_path, output_path=output_path)
+            print("Tasklist migration complete:")
+            print(f"  Source: {result['source_path']}")
+            print(f"  Output: {result['output_path']}")
+            print(
+                f"  Tasks: {result['task_count']} total "
+                f"({result['pending_count']} pending, {result['completed_count']} completed)"
+            )
+            print()
+            print("Next step:")
+            print("  millstone")
+            sys.exit(0)
+        except Exception as e:
+            print(f"Error migrating tasklist: {e}", file=sys.stderr)
+            sys.exit(1)
 
     # Handle --clear-sessions: clear stored session IDs and exit
     if args.clear_sessions:
@@ -3802,6 +3967,78 @@ Remote backlog scoping (Jira / Linear / GitHub):
             sys.exit(0 if result.get("success", False) else 1)
         except Exception as e:
             print(f"Error running plan: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    # Handle --deliver: design -> review(optional) -> plan -> execute
+    if args.deliver:
+        review_designs = config.get("review_designs", True)
+        using_remote_provider = config.get("tasklist_provider", "file") != "file"
+        if not using_remote_provider:
+            _ensure_tasklist_file(Path.cwd() / args.tasklist)
+
+        orchestrator = Orchestrator(
+            max_cycles=args.max_cycles,
+            loc_threshold=args.loc_threshold,
+            tasklist=args.tasklist,
+            max_tasks=args.max_tasks,
+            dry_run=args.dry_run,
+            prompts_dir=prompts_dir,
+            compact_threshold=args.compact_threshold,
+            eval_on_commit=args.eval_on_commit,
+            auto_rollback=args.auto_rollback,
+            eval_scripts=eval_scripts,
+            eval_on_task=args.eval_on_task,
+            skip_eval=args.skip_eval,
+            review_designs=review_designs,
+            profile=config.get("profile", "dev_implementation"),
+            cli=args.cli,
+            cli_builder=args.cli_builder,
+            cli_reviewer=args.cli_reviewer,
+            cli_sanity=args.cli_sanity,
+            cli_analyzer=args.cli_analyzer,
+            log_verbosity=log_verbosity,
+            log_diff_mode=log_diff_mode,
+        )
+        try:
+            orchestrator.preflight_checks()
+
+            if orchestrator.has_remaining_tasks():
+                print(
+                    "Error: --deliver requires an empty pending tasklist so the new objective "
+                    "does not mix with existing backlog tasks.",
+                    file=sys.stderr,
+                )
+                print(
+                    "Run `millstone` to finish existing tasks first, or point `--tasklist` "
+                    "to a fresh file for this objective.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+            design_result = orchestrator.run_design(opportunity=args.deliver)
+            if not design_result.get("success", False):
+                sys.exit(1)
+
+            design_ref = design_result.get("design_file") or design_result.get("design_id")
+            if not design_ref:
+                print("Error: design did not return a usable design reference.", file=sys.stderr)
+                sys.exit(1)
+
+            if review_designs:
+                review_result = orchestrator.review_design(str(design_ref))
+                if not review_result.get("approved", False):
+                    sys.exit(1)
+
+            plan_result = orchestrator.run_plan(design_path=str(design_ref))
+            if not plan_result.get("success", False):
+                sys.exit(1)
+
+            sys.exit(orchestrator.run())
+        except PreflightError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error running deliver flow: {e}", file=sys.stderr)
             sys.exit(1)
 
     # Handle --cycle: run full autonomous cycle and exit

@@ -391,6 +391,52 @@ class TestCapabilityProfileCliPlumbing:
         _, kwargs = mock_init.call_args
         assert kwargs["max_cycles"] == 7
 
+    def test_deliver_branch_passes_profile_and_max_cycles(self, temp_repo):
+        """--deliver passes profile and max_cycles into Orchestrator."""
+        from millstone import orchestrate
+
+        with patch(
+            "sys.argv",
+            [
+                "orchestrate.py",
+                "--deliver",
+                "Add retries",
+                "--max-cycles",
+                "7",
+                "--tasklist",
+                ".millstone/deliver.md",
+            ],
+        ):
+            with patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(orchestrate.Orchestrator, "preflight_checks"):
+                    with patch.object(
+                        orchestrate.Orchestrator, "has_remaining_tasks", return_value=False
+                    ):
+                        with patch.object(
+                            orchestrate.Orchestrator,
+                            "run_design",
+                            return_value={"success": True, "design_file": "designs/add-retries.md"},
+                        ):
+                            with patch.object(
+                                orchestrate.Orchestrator,
+                                "review_design",
+                                return_value={"approved": True},
+                            ):
+                                with patch.object(
+                                    orchestrate.Orchestrator,
+                                    "run_plan",
+                                    return_value={"success": True, "tasks_added": 1},
+                                ):
+                                    with patch.object(
+                                        orchestrate.Orchestrator, "run", return_value=0
+                                    ):
+                                        with pytest.raises(SystemExit):
+                                            orchestrate.main()
+
+        _, kwargs = mock_init.call_args
+        assert kwargs["profile"] == "dev_implementation"
+        assert kwargs["max_cycles"] == 7
+
 
 class TestOuterLoopManagerMaxCyclesPlumbing:
     """Tests that Orchestrator forwards max_cycles to OuterLoopManager."""
@@ -10864,6 +10910,207 @@ class TestPlanCLI:
 
                 # Verify the tasklist argument was passed to run_plan
                 mock_plan.assert_called_once()
+
+
+class TestMigrateTasklistCLI:
+    """Tests for --migrate-tasklist CLI flag."""
+
+    def test_migrate_tasklist_converts_bullets(self, temp_repo):
+        """Migrates markdown bullets into tasklist checkbox format."""
+        from millstone import orchestrate
+
+        backlog = temp_repo / "backlog.md"
+        backlog.write_text("# Backlog\n\n- Add retry logic\n- Improve docs\n")
+        output = temp_repo / ".millstone" / "migrated.md"
+
+        with patch(
+            "sys.argv",
+            [
+                "orchestrate.py",
+                "--migrate-tasklist",
+                str(backlog),
+                "--tasklist",
+                str(output.relative_to(temp_repo)),
+            ],
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                orchestrate.main()
+
+        assert exc_info.value.code == 0
+        content = output.read_text()
+        assert content.startswith("# Tasklist")
+        assert "- [ ] Add retry logic" in content
+        assert "- [ ] Improve docs" in content
+
+    def test_migrate_tasklist_preserves_checked_items(self, temp_repo):
+        """Checked markdown tasks remain checked in migrated tasklist."""
+        from millstone import orchestrate
+
+        backlog = temp_repo / "backlog.md"
+        backlog.write_text("- [x] Completed task\n- [ ] Pending task\n")
+        output = temp_repo / ".millstone" / "migrated.md"
+
+        with patch(
+            "sys.argv",
+            [
+                "orchestrate.py",
+                "--migrate-tasklist",
+                str(backlog),
+                "--tasklist",
+                str(output.relative_to(temp_repo)),
+            ],
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                orchestrate.main()
+
+        assert exc_info.value.code == 0
+        content = output.read_text()
+        assert "- [x] Completed task" in content
+        assert "- [ ] Pending task" in content
+
+    def test_migrate_tasklist_exits_1_when_no_items_found(self, temp_repo):
+        """Migration fails with exit code 1 when no actionable items can be parsed."""
+        from millstone import orchestrate
+
+        backlog = temp_repo / "backlog.md"
+        backlog.write_text("# Backlog\n\n## Notes\n\n")
+
+        with patch("sys.argv", ["orchestrate.py", "--migrate-tasklist", str(backlog)]):
+            with pytest.raises(SystemExit) as exc_info:
+                orchestrate.main()
+
+        assert exc_info.value.code == 1
+
+
+class TestDeliverCLI:
+    """Tests for --deliver CLI flow."""
+
+    def test_deliver_runs_design_plan_execute(self, temp_repo):
+        """--deliver executes design, review, plan, then run."""
+        from millstone import orchestrate
+
+        with patch(
+            "sys.argv",
+            [
+                "orchestrate.py",
+                "--deliver",
+                "Add retry logic",
+                "--tasklist",
+                ".millstone/deliver.md",
+            ],
+        ):
+            with patch.object(Orchestrator, "preflight_checks"):
+                with patch.object(Orchestrator, "has_remaining_tasks", return_value=False):
+                    with patch.object(Orchestrator, "run_design") as mock_design:
+                        with patch.object(Orchestrator, "review_design") as mock_review:
+                            with patch.object(Orchestrator, "run_plan") as mock_plan:
+                                with patch.object(Orchestrator, "run", return_value=0) as mock_run:
+                                    mock_design.return_value = {
+                                        "success": True,
+                                        "design_file": "designs/add-retry-logic.md",
+                                    }
+                                    mock_review.return_value = {"approved": True}
+                                    mock_plan.return_value = {"success": True, "tasks_added": 3}
+
+                                    with pytest.raises(SystemExit) as exc_info:
+                                        orchestrate.main()
+
+        assert exc_info.value.code == 0
+        mock_design.assert_called_once_with(opportunity="Add retry logic")
+        mock_review.assert_called_once_with("designs/add-retry-logic.md")
+        mock_plan.assert_called_once_with(design_path="designs/add-retry-logic.md")
+        mock_run.assert_called_once()
+
+    def test_deliver_skips_design_review_when_disabled_in_config(self, temp_repo):
+        """When review_designs=false, --deliver skips review_design call."""
+        from millstone import orchestrate
+
+        config_dir = temp_repo / ".millstone"
+        config_dir.mkdir(exist_ok=True)
+        (config_dir / "config.toml").write_text("review_designs = false\n")
+
+        with patch(
+            "sys.argv",
+            ["orchestrate.py", "--deliver", "Add retry logic", "--tasklist", ".millstone/new.md"],
+        ):
+            with patch.object(Orchestrator, "preflight_checks"):
+                with patch.object(Orchestrator, "has_remaining_tasks", return_value=False):
+                    with patch.object(Orchestrator, "run_design") as mock_design:
+                        with patch.object(Orchestrator, "review_design") as mock_review:
+                            with patch.object(Orchestrator, "run_plan") as mock_plan:
+                                with patch.object(Orchestrator, "run", return_value=0):
+                                    mock_design.return_value = {
+                                        "success": True,
+                                        "design_file": "designs/add-retry-logic.md",
+                                    }
+                                    mock_plan.return_value = {"success": True, "tasks_added": 1}
+
+                                    with pytest.raises(SystemExit) as exc_info:
+                                        orchestrate.main()
+
+        assert exc_info.value.code == 0
+        mock_review.assert_not_called()
+
+    def test_deliver_exits_1_when_pending_tasks_exist(self, temp_repo):
+        """--deliver halts when tasklist already has pending tasks."""
+        from millstone import orchestrate
+
+        with patch("sys.argv", ["orchestrate.py", "--deliver", "Add retry logic"]):
+            with patch.object(Orchestrator, "preflight_checks"):
+                with patch.object(Orchestrator, "has_remaining_tasks", return_value=True):
+                    with patch.object(Orchestrator, "run_design") as mock_design:
+                        with pytest.raises(SystemExit) as exc_info:
+                            orchestrate.main()
+
+        assert exc_info.value.code == 1
+        mock_design.assert_not_called()
+
+    def test_deliver_creates_missing_tasklist_for_file_provider(self, temp_repo):
+        """--deliver creates tasklist file when target path is missing."""
+        from millstone import orchestrate
+
+        target = temp_repo / ".millstone" / "new-tasklist.md"
+        assert not target.exists()
+
+        with patch(
+            "sys.argv",
+            [
+                "orchestrate.py",
+                "--deliver",
+                "Add retry logic",
+                "--tasklist",
+                ".millstone/new-tasklist.md",
+            ],
+        ):
+            with patch.object(Orchestrator, "preflight_checks"):
+                with patch.object(Orchestrator, "has_remaining_tasks", return_value=False):
+                    with patch.object(Orchestrator, "run_design") as mock_design:
+                        with patch.object(Orchestrator, "review_design") as mock_review:
+                            with patch.object(Orchestrator, "run_plan") as mock_plan:
+                                with patch.object(Orchestrator, "run", return_value=0):
+                                    mock_design.return_value = {
+                                        "success": True,
+                                        "design_file": "designs/add-retry-logic.md",
+                                    }
+                                    mock_review.return_value = {"approved": True}
+                                    mock_plan.return_value = {"success": True, "tasks_added": 1}
+
+                                    with pytest.raises(SystemExit) as exc_info:
+                                        orchestrate.main()
+
+        assert exc_info.value.code == 0
+        assert target.exists()
+        assert target.read_text().startswith("# Tasklist")
+
+    def test_deliver_cannot_be_combined_with_cycle(self, temp_repo):
+        """--deliver with --cycle is an argument error."""
+        from millstone import orchestrate
+
+        with patch("sys.argv", ["orchestrate.py", "--deliver", "Add retry logic", "--cycle"]):
+            with pytest.raises(SystemExit) as exc_info:
+                orchestrate.main()
+
+        assert exc_info.value.code == 2
 
 
 class TestSelectOpportunity:

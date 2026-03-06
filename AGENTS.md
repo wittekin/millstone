@@ -29,8 +29,10 @@ pytest --cov=. --cov-report=term-missing
 
 # Run the orchestrator (requires at least one supported CLI installed:
 # claude, codex, gemini, or opencode)
-millstone                           # Process tasks from .millstone.artifacts.tasklist.md
+millstone                           # Process tasks from .millstone/tasklist.md
 millstone --task "description"      # Single direct task
+millstone --migrate-tasklist backlog.md  # Convert a local backlog to tasklist format
+millstone --deliver "objective"     # Design -> plan -> execute (skip analyze)
 millstone --dry-run                 # Preview prompts without invoking agent
 millstone --cli codex               # Use Codex CLI instead of Claude
 
@@ -156,7 +158,7 @@ the full open-issue set for the configured project/team/repo. Use `[millstone.ar
 in `.millstone/config.toml` to restrict execution without changing provider options.
 
 **When to use local vs remote**:
-- **Local `.millstone.artifacts.tasklist.md`** — solo work, personal projects, explicit ordering.
+- **Local `.millstone/tasklist.md`** — solo work, personal projects, explicit ordering.
 - **Remote provider + filter** — team boards in Jira/Linear/GitHub where the backlog is shared.
 
 **Quick examples**:

@@ -17,6 +17,9 @@ Coding agents produce dramatically better results when they plan before they cod
 
 ## Quick Start
 
+Before installing `millstone`, install and authenticate at least one supported coding agent CLI.
+See [Supported Agents](docs/cli-providers/index.md).
+
 ```bash
 # 1) Install
 pipx install millstone
@@ -29,28 +32,34 @@ cd /path/to/your/project
 # @docs/prompts/design.md   (design + plan a new feature)
 ```
 
-Design-first quickstart (recommended):
+Pick the path that matches your intent:
 
 ```bash
-# 1) Draft + review a design
-millstone --design "Add retry logic to API client"
-
-# 2) Turn that design into tasklist items
-DESIGN_DOC=$(ls -t .millstone/designs/*.md | head -n 1)
-millstone --plan "$DESIGN_DOC"
-
-# 3) Execute the first planned task
-millstone -n 1
-```
-
-Fast smoke test (no tasklist required):
-
-```bash
+# 1) One task now (no tasklist setup required)
 millstone --task "add retry logic to API client"
+
+# 2) Existing local backlog -> migrate once, then execute
+millstone --migrate-tasklist backlog.md
+millstone
+
+# 3) Design -> plan -> execute one objective (skips analyze)
+millstone --deliver "Add retry logic to API client"
+
+# 4) New app / fresh repo
+millstone --init
+millstone --deliver "Build a CLI app for release note generation"
+
+# 5) Full autonomous loop on an existing project
+millstone --cycle
 ```
 
-`millstone` / `millstone -n 1` read from the configured tasklist path (default: `.millstone/tasklist.md`).
-Use `--task` when you want a one-off run without tasklist setup.
+For a series of human-written goals with no analyze step, use roadmap + cycle:
+
+```bash
+millstone --cycle --roadmap docs/roadmap.md
+```
+
+`millstone` reads from `.millstone/tasklist.md` by default.
 
 ## Highlights
 
@@ -71,12 +80,15 @@ Use `--task` when you want a one-off run without tasklist setup.
 | Execute next tasks from tasklist | `millstone` |
 | Limit to one task | `millstone -n 1` |
 | Run custom one-off task | `millstone --task "..."` |
+| Migrate an existing local backlog to tasklist format | `millstone --migrate-tasklist backlog.md` |
+| Design, plan, and execute one scoped objective | `millstone --deliver "..."` |
 | Claude code as author, codex as reviewer, one task, max of 6 write/review cycles task | `millstone --cli claude --cli-reviewer codex -n 1 --max-cycles 6` |
 | Run 4 tasks in parallel (worktree mode) | `millstone --worktrees --concurrency 4` |
 | Dry-run prompt flow without invoking agents | `millstone --dry-run` |
 | Scan codebase for opportunities | `millstone --analyze` |
 | Generate a design doc | `millstone --design "Add caching layer"` |
 | Turn design into atomic tasks | `millstone --plan .millstone/designs/add-caching-layer.md` |
+| Execute roadmap goals without analyze | `millstone --cycle --roadmap docs/roadmap.md` |
 | Run autonomous cycle end-to-end | `millstone --cycle` |
 
 ## How It Works
