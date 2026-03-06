@@ -1,4 +1,5 @@
 <h1><img src="docs/assets/logo-wordmark.svg" alt="millstone logo" width="760" /></h1>
+
 [![CI](https://github.com/wittekin/millstone/actions/workflows/ci.yml/badge.svg)](https://github.com/wittekin/millstone/actions/workflows/ci.yml)
 [![Quality](https://github.com/wittekin/millstone/actions/workflows/quality.yml/badge.svg)](https://github.com/wittekin/millstone/actions/workflows/quality.yml)
 [![Coverage](https://codecov.io/gh/wittekin/millstone/branch/main/graph/badge.svg)](https://codecov.io/gh/wittekin/millstone)
