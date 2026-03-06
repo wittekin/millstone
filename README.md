@@ -29,11 +29,28 @@ cd /path/to/your/project
 # @docs/prompts/design.md   (design + plan a new feature)
 ```
 
-Manual run to complete one task from your tasklist:
+Design-first quickstart (recommended):
 
 ```bash
+# 1) Draft + review a design
+millstone --design "Add retry logic to API client"
+
+# 2) Turn that design into tasklist items
+DESIGN_DOC=$(ls -t .millstone/designs/*.md | head -n 1)
+millstone --plan "$DESIGN_DOC"
+
+# 3) Execute the first planned task
 millstone -n 1
 ```
+
+Fast smoke test (no tasklist required):
+
+```bash
+millstone --task "add retry logic to API client"
+```
+
+`millstone` / `millstone -n 1` read from the configured tasklist path (default: `.millstone/tasklist.md`).
+Use `--task` when you want a one-off run without tasklist setup.
 
 ## Highlights
 
