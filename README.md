@@ -35,9 +35,9 @@ Design-first quickstart (recommended):
 # 1) Draft + review a design
 millstone --design "Add retry logic to API client"
 
-# 2) Turn that design into tasklist items
-DESIGN_DOC=$(ls -t .millstone/designs/*.md | head -n 1)
-millstone --plan "$DESIGN_DOC"
+# 2) Plan tasks from that design
+# Design files default to .millstone/designs/<kebab-case-opportunity>.md
+millstone --plan .millstone/designs/add-retry-logic-to-api-client.md
 
 # 3) Execute the first planned task
 millstone -n 1
@@ -51,6 +51,14 @@ millstone --task "add retry logic to API client"
 
 `millstone` / `millstone -n 1` read from the configured tasklist path (default: `.millstone/tasklist.md`).
 Use `--task` when you want a one-off run without tasklist setup.
+
+Closest single-command flow:
+
+```bash
+millstone --cycle
+```
+
+`--cycle` runs `analyze -> design -> plan -> build -> eval` when no pending tasks exist.
 
 ## Highlights
 

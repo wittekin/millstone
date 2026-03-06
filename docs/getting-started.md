@@ -41,9 +41,9 @@ Design-first flow (recommended):
 # 1) Draft + review a design
 millstone --design "Add retry logic"
 
-# 2) Turn that design into a tasklist
-DESIGN_DOC=$(ls -t .millstone/designs/*.md | head -n 1)
-millstone --plan "$DESIGN_DOC"
+# 2) Plan tasks from that design
+# Design files default to .millstone/designs/<kebab-case-opportunity>.md
+millstone --plan .millstone/designs/add-retry-logic.md
 
 # 3) Execute the first planned task
 millstone -n 1
@@ -63,6 +63,14 @@ millstone
 
 `millstone` and `millstone -n 1` read tasks from the configured tasklist path
 (default: `.millstone/tasklist.md`). Use `--task` for one-off execution when no tasklist exists yet.
+
+Closest single-command flow:
+
+```bash
+millstone --cycle
+```
+
+When no pending tasks exist, `--cycle` runs `analyze -> design -> plan -> build -> eval`.
 
 Explore all options:
 
