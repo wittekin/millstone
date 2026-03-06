@@ -2980,13 +2980,12 @@ class Orchestrator:
                 # Load both session IDs (with fallback to legacy session_id for old state files)
                 self.builder_session_id = state.get("builder_session_id") or state.get("session_id")
                 self.reviewer_session_id = state.get("reviewer_session_id")
-                # Skip mechanical checks for first task since user has reviewed
-                self._skip_mechanical_checks = True
-
                 # Route to the correct outer-loop stage if a checkpoint exists.
                 # Stages: analyze_complete -> design_complete -> plan_complete -> inner loop.
                 outer = state.get("outer_loop")
                 if outer and outer.get("stage"):
+                    # Outer-loop resume: builder hasn't run yet, so mechanical
+                    # checks must remain active for the first task.
                     stage = outer["stage"]
                     print(f"Outer-loop stage checkpoint: {stage}")
                     print()
@@ -3012,6 +3011,10 @@ class Orchestrator:
                             f"Warning: --continue found unknown outer_loop stage "
                             f"'{stage}', running inner loop normally."
                         )
+                else:
+                    # Inner-loop resume (LoC/sensitive-file halt): user has
+                    # already reviewed the diff, so skip mechanical checks.
+                    self._skip_mechanical_checks = True
             else:
                 print("Warning: --continue specified but no saved state found.")
                 print("Running normally...")
@@ -4003,8 +4006,11 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 print("=" * 60)
                 print("")
                 print(f"Selected opportunity: {selected.title}")
+                orchestrator.save_outer_loop_checkpoint(
+                    "analyze_complete", opportunity=selected.title
+                )
                 print("Review opportunities.md and re-run with:")
-                print("  millstone --design '<opportunity description>'")
+                print("  millstone --continue")
                 print("")
                 print("Or run with --no-approve for fully autonomous operation.")
                 sys.exit(0)
@@ -4054,14 +4060,22 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 print("=" * 60)
                 print("")
                 print(f"Review the design: {design_ref}")
+                full_orchestrator.save_outer_loop_checkpoint(
+                    "design_complete",
+                    design_path=str(design_ref),
+                    opportunity=selected.title,
+                )
                 print("Then re-run with:")
-                print(f"  millstone --plan {design_ref}")
+                print("  millstone --continue")
                 print("")
                 print("Or run with --no-approve for fully autonomous operation.")
                 sys.exit(0)
             plan_result = full_orchestrator.run_plan(design_path=str(design_ref))
             if not plan_result.get("success", False):
                 sys.exit(1)
+            if not plan_result.get("tasks_added", 0):
+                print("No tasks were created by the planning agent.")
+                sys.exit(0)
             # Approval gate: pause after plan for human review
             if _approve_plans:
                 print("")
@@ -4070,8 +4084,13 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 print("=" * 60)
                 print("")
                 print(f"Review the new tasks in: {args.tasklist}")
+                full_orchestrator.save_outer_loop_checkpoint(
+                    "plan_complete",
+                    design_path=str(design_ref),
+                    tasks_created=plan_result.get("tasks_added", 0),
+                )
                 print("Then re-run to execute:")
-                print("  millstone")
+                print("  millstone --continue")
                 print("")
                 print("Or run with --no-approve for fully autonomous operation.")
                 sys.exit(0)
@@ -4127,8 +4146,13 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 print("=" * 60)
                 print("")
                 print(f"Review the design: {design_ref}")
+                orchestrator.save_outer_loop_checkpoint(
+                    "design_complete",
+                    design_path=str(design_ref),
+                    opportunity=args.design,
+                )
                 print("Then re-run with:")
-                print(f"  millstone --plan {design_ref}")
+                print("  millstone --continue")
                 print("")
                 print("Or run with --no-approve for fully autonomous operation.")
                 sys.exit(0)
@@ -4161,6 +4185,9 @@ Remote backlog scoping (Jira / Linear / GitHub):
             plan_result = full_orchestrator.run_plan(design_path=str(design_ref))
             if not plan_result.get("success", False):
                 sys.exit(1)
+            if not plan_result.get("tasks_added", 0):
+                print("No tasks were created by the planning agent.")
+                sys.exit(0)
             # Approval gate: pause after plan for human review
             if _approve_plans:
                 print("")
@@ -4169,8 +4196,13 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 print("=" * 60)
                 print("")
                 print(f"Review the new tasks in: {args.tasklist}")
+                full_orchestrator.save_outer_loop_checkpoint(
+                    "plan_complete",
+                    design_path=str(design_ref),
+                    tasks_created=plan_result.get("tasks_added", 0),
+                )
                 print("Then re-run to execute:")
-                print("  millstone")
+                print("  millstone --continue")
                 print("")
                 print("Or run with --no-approve for fully autonomous operation.")
                 sys.exit(0)
@@ -4218,6 +4250,9 @@ Remote backlog scoping (Jira / Linear / GitHub):
             if not args.complete:
                 sys.exit(0)
             # --complete: chain through execute
+            if not result.get("tasks_added", 0):
+                print("No tasks were created by the planning agent.")
+                sys.exit(0)
             # Resolve approval gates (same logic as --cycle)
             _approve_plans = False if args.no_approve else config.get("approve_plans", True)
             # Approval gate: pause after plan for human review
@@ -4228,8 +4263,13 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 print("=" * 60)
                 print("")
                 print(f"Review the new tasks in: {args.tasklist}")
+                orchestrator.save_outer_loop_checkpoint(
+                    "plan_complete",
+                    design_path=args.plan,
+                    tasks_created=result.get("tasks_added", 0),
+                )
                 print("Then re-run to execute:")
-                print("  millstone")
+                print("  millstone --continue")
                 print("")
                 print("Or run with --no-approve for fully autonomous operation.")
                 sys.exit(0)

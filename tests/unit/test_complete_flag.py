@@ -44,6 +44,7 @@ class TestPlanCompleteFlag:
                 return_value=_base_config(tasklist_provider="mcp"),
             ),
             patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "save_outer_loop_checkpoint"),
             patch.object(
                 orchestrate.Orchestrator,
                 "run_plan",
@@ -201,6 +202,7 @@ class TestDesignCompleteFlag:
                 return_value=_base_config(tasklist_provider="mcp", review_designs=False),
             ),
             patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "save_outer_loop_checkpoint"),
             patch.object(
                 orchestrate.Orchestrator,
                 "run_design",
@@ -234,6 +236,7 @@ class TestDesignCompleteFlag:
                 ),
             ),
             patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "save_outer_loop_checkpoint"),
             patch.object(
                 orchestrate.Orchestrator,
                 "run_design",
@@ -351,6 +354,7 @@ class TestAnalyzeCompleteFlag:
                 return_value=_base_config(tasklist_provider="mcp"),
             ),
             patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "save_outer_loop_checkpoint"),
             patch.object(orchestrate.Orchestrator, "run_analyze", return_value={"success": True}),
             patch.object(
                 orchestrate.Orchestrator,
@@ -438,6 +442,7 @@ class TestAnalyzeCompleteFlag:
                 ),
             ),
             patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "save_outer_loop_checkpoint"),
             patch.object(orchestrate.Orchestrator, "run_analyze", return_value={"success": True}),
             patch.object(
                 orchestrate.Orchestrator,
