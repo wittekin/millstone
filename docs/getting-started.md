@@ -35,17 +35,34 @@ pip install -e .[release]
 
 ## Basic usage
 
-Run tasks from `.millstone/tasklist.md`:
+Design-first flow (recommended):
+
+```bash
+# 1) Draft + review a design
+millstone --design "Add retry logic"
+
+# 2) Turn that design into a tasklist
+DESIGN_DOC=$(ls -t .millstone/designs/*.md | head -n 1)
+millstone --plan "$DESIGN_DOC"
+
+# 3) Execute the first planned task
+millstone -n 1
+```
+
+Fast smoke test (no tasklist required):
+
+```bash
+millstone --task "add retry logic"
+```
+
+Run from tasklist directly:
 
 ```bash
 millstone
 ```
 
-Run a one-off task:
-
-```bash
-millstone --task "add retry logic"
-```
+`millstone` and `millstone -n 1` read tasks from the configured tasklist path
+(default: `.millstone/tasklist.md`). Use `--task` for one-off execution when no tasklist exists yet.
 
 Explore all options:
 
