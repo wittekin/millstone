@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="512"
+  height="512"
+  viewBox="36 36 440 440"
+  role="img"
+  aria-label="millstone logo icon"
+>
+  <defs>
+    <mask id="millstoneCuts">
+      <rect width="512" height="512" fill="#fff" />
+      <g transform="translate(256 256)" fill="#000">
+        <rect x="-19" y="-246" width="38" height="84" rx="3" ry="3" />
+        <rect x="-19" y="-246" width="38" height="84" rx="3" ry="3" transform="rotate(45)" />
+        <rect x="-19" y="-246" width="38" height="84" rx="3" ry="3" transform="rotate(90)" />
+        <rect x="-19" y="-246" width="38" height="84" rx="3" ry="3" transform="rotate(135)" />
+        <rect x="-19" y="-246" width="38" height="84" rx="3" ry="3" transform="rotate(180)" />
+        <rect x="-19" y="-246" width="38" height="84" rx="3" ry="3" transform="rotate(225)" />
+        <rect x="-19" y="-246" width="38" height="84" rx="3" ry="3" transform="rotate(270)" />
+        <rect x="-19" y="-246" width="38" height="84" rx="3" ry="3" transform="rotate(315)" />
+      </g>
+    </mask>
+  </defs>
+  <path
+    fill="#98C379"
+    fill-rule="evenodd"
+    mask="url(#millstoneCuts)"
+    d="M256 36A220 220 0 1 1 256 476A220 220 0 1 1 256 36ZM256 116A140 140 0 1 0 256 396A140 140 0 1 0 256 116Z"
+  />
+</svg>

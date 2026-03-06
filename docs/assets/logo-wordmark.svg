@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1420"
+  height="340"
+  viewBox="0 0 1420 340"
+  role="img"
+  aria-label="millstone wordmark"
+>
+  <defs>
+    <mask id="millstoneCuts" maskUnits="userSpaceOnUse" x="0" y="0" width="360" height="340">
+      <rect width="360" height="340" fill="#fff" />
+      <g transform="translate(170 156)" fill="#000">
+        <rect x="-16" y="-190" width="32" height="68" rx="3" ry="3" />
+        <rect x="-16" y="-190" width="32" height="68" rx="3" ry="3" transform="rotate(45)" />
+        <rect x="-16" y="-190" width="32" height="68" rx="3" ry="3" transform="rotate(90)" />
+        <rect x="-16" y="-190" width="32" height="68" rx="3" ry="3" transform="rotate(135)" />
+        <rect x="-16" y="-190" width="32" height="68" rx="3" ry="3" transform="rotate(180)" />
+        <rect x="-16" y="-190" width="32" height="68" rx="3" ry="3" transform="rotate(225)" />
+        <rect x="-16" y="-190" width="32" height="68" rx="3" ry="3" transform="rotate(270)" />
+        <rect x="-16" y="-190" width="32" height="68" rx="3" ry="3" transform="rotate(315)" />
+      </g>
+    </mask>
+  </defs>
+
+  <path
+    fill="#98C379"
+    fill-rule="evenodd"
+    mask="url(#millstoneCuts)"
+    d="M170 0A156 156 0 1 1 170 312A156 156 0 1 1 170 0ZM170 57A99 99 0 1 0 170 255A99 99 0 1 0 170 57Z"
+  />
+
+  <text
+    x="340"
+    y="312"
+    font-family="JetBrains Mono, Fira Code, Cascadia Code, SFMono-Regular, Menlo, Consolas, monospace"
+    font-size="132"
+    font-weight="700"
+    letter-spacing="2"
+  >
+    <tspan fill="#E06C75">m</tspan><tspan fill="#98C379">illstone</tspan>
+  </text>
+</svg>
