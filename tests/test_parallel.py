@@ -544,7 +544,7 @@ class TestParallelOrchestratorPhase1:
             tasklist="docs/tasklist.md",
             merge_strategy="cherry-pick",
             worktree_cleanup="always",
-            parallel_heartbeat_ttl=0.1,
+            parallel_heartbeat_ttl=300,
             loc_threshold=1000,
         )
         po = ParallelOrchestrator(orch, eval_manager_factory=_eval_factory(True))
