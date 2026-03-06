@@ -3746,6 +3746,15 @@ Remote backlog scoping (Jira / Linear / GitHub):
         "the cycle to run without human intervention. Use with caution in trusted/low-risk scenarios.",
     )
     parser.add_argument(
+        "--complete",
+        action="store_true",
+        help="When combined with --plan, --design, or --analyze, continue executing all "
+        "remaining outer-loop stages through to task implementation. "
+        "--plan file.md --complete runs plan then executes all resulting tasks. "
+        "--design 'objective' --complete runs design, plan, then executes. "
+        "--analyze --complete runs analyze, selects top opportunity, then design, plan, execute.",
+    )
+    parser.add_argument(
         "--init",
         action="store_true",
         help="Scaffold a new millstone project. Detects project type (Python/Node/Go/Rust), "
@@ -3790,6 +3799,12 @@ Remote backlog scoping (Jira / Linear / GitHub):
         parser.error(
             "--deliver cannot be combined with --analyze, --design, --review-design, --plan, or --cycle."
         )
+
+    # Validate --complete usage
+    if args.complete and not (args.plan or args.design or args.analyze):
+        parser.error("--complete requires --plan, --design, or --analyze")
+    if args.complete and (args.deliver or args.cycle):
+        parser.error("--complete cannot be used with --deliver or --cycle")
 
     # Preserve config values not exposed as CLI args (CLI overrides config)
     prompts_dir = args.prompts_dir if args.prompts_dir else config.get("prompts_dir")
@@ -3947,7 +3962,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
             print(f"Error splitting task: {e}", file=sys.stderr)
             sys.exit(1)
 
-    # Handle --analyze: run analysis agent and exit
+    # Handle --analyze: run analysis agent and exit (or continue with --complete)
     if args.analyze:
         # Minimal orchestrator for analyze - just needs work directory
         orchestrator = Orchestrator(
@@ -3962,12 +3977,110 @@ Remote backlog scoping (Jira / Linear / GitHub):
         )
         try:
             result = orchestrator.run_analyze(issues_file=args.issues)
-            sys.exit(0 if result.get("success", False) else 1)
+            if not result.get("success", False):
+                sys.exit(1)
+            if not args.complete:
+                sys.exit(0)
+            # --complete: select top opportunity and chain through design → plan → execute
+            selected = orchestrator._select_opportunity()
+            if not selected:
+                print("No opportunities found. Nothing to do.")
+                sys.exit(0)
+            # Resolve approval gates (same logic as --cycle)
+            if args.no_approve:
+                _approve_opportunities = False
+                _approve_designs = False
+                _approve_plans = False
+            else:
+                _approve_opportunities = config.get("approve_opportunities", True)
+                _approve_designs = config.get("approve_designs", True)
+                _approve_plans = config.get("approve_plans", True)
+            # Approval gate: pause after analyze for human to pick opportunity
+            if _approve_opportunities:
+                print("")
+                print("=" * 60)
+                print("APPROVAL GATE: Opportunities identified")
+                print("=" * 60)
+                print("")
+                print(f"Selected opportunity: {selected.title}")
+                print("Review opportunities.md and re-run with:")
+                print("  millstone --design '<opportunity description>'")
+                print("")
+                print("Or run with --no-approve for fully autonomous operation.")
+                sys.exit(0)
+            review_designs = config.get("review_designs", True)
+            using_remote_provider = config.get("tasklist_provider", "file") != "file"
+            if not using_remote_provider:
+                _ensure_tasklist_file(Path.cwd() / args.tasklist)
+            full_orchestrator = Orchestrator(
+                max_cycles=args.max_cycles,
+                loc_threshold=args.loc_threshold,
+                tasklist=args.tasklist,
+                max_tasks=args.max_tasks,
+                dry_run=args.dry_run,
+                prompts_dir=prompts_dir,
+                compact_threshold=args.compact_threshold,
+                eval_on_commit=args.eval_on_commit,
+                auto_rollback=args.auto_rollback,
+                eval_scripts=eval_scripts,
+                eval_on_task=args.eval_on_task,
+                skip_eval=args.skip_eval,
+                review_designs=review_designs,
+                profile=config.get("profile", "dev_implementation"),
+                cli=args.cli,
+                cli_builder=args.cli_builder,
+                cli_reviewer=args.cli_reviewer,
+                cli_sanity=args.cli_sanity,
+                cli_analyzer=args.cli_analyzer,
+                log_verbosity=log_verbosity,
+                log_diff_mode=log_diff_mode,
+            )
+            design_result = full_orchestrator.run_design(opportunity=selected.title)
+            if not design_result.get("success", False):
+                sys.exit(1)
+            design_ref = design_result.get("design_file") or design_result.get("design_id")
+            if not design_ref:
+                print("Error: design did not return a usable design reference.", file=sys.stderr)
+                sys.exit(1)
+            if review_designs:
+                review_result = full_orchestrator.review_design(str(design_ref))
+                if not review_result.get("approved", False):
+                    sys.exit(1)
+            # Approval gate: pause after design for human review
+            if _approve_designs:
+                print("")
+                print("=" * 60)
+                print("APPROVAL GATE: Design created")
+                print("=" * 60)
+                print("")
+                print(f"Review the design: {design_ref}")
+                print("Then re-run with:")
+                print(f"  millstone --plan {design_ref}")
+                print("")
+                print("Or run with --no-approve for fully autonomous operation.")
+                sys.exit(0)
+            plan_result = full_orchestrator.run_plan(design_path=str(design_ref))
+            if not plan_result.get("success", False):
+                sys.exit(1)
+            # Approval gate: pause after plan for human review
+            if _approve_plans:
+                print("")
+                print("=" * 60)
+                print("APPROVAL GATE: Tasks added to tasklist")
+                print("=" * 60)
+                print("")
+                print(f"Review the new tasks in: {args.tasklist}")
+                print("Then re-run to execute:")
+                print("  millstone")
+                print("")
+                print("Or run with --no-approve for fully autonomous operation.")
+                sys.exit(0)
+            sys.exit(full_orchestrator.run())
         except Exception as e:
             print(f"Error running analysis: {e}", file=sys.stderr)
             sys.exit(1)
 
-    # Handle --design: run design agent and exit
+    # Handle --design: run design agent and exit (or continue with --complete)
     if args.design:
         review_designs = config.get("review_designs", True)
         # Minimal orchestrator for design - just needs work directory
@@ -3990,8 +4103,78 @@ Remote backlog scoping (Jira / Linear / GitHub):
             # If design was created and review_designs is enabled, automatically review it
             if review_designs and result.get("design_file"):
                 review_result = orchestrator.review_design(result["design_file"])
-                sys.exit(0 if review_result.get("approved", False) else 1)
-            sys.exit(0)
+                if not review_result.get("approved", False):
+                    sys.exit(1)
+            if not args.complete:
+                sys.exit(0)
+            # --complete: chain through plan → execute
+            # Resolve approval gates (same logic as --cycle)
+            if args.no_approve:
+                _approve_designs = False
+                _approve_plans = False
+            else:
+                _approve_designs = config.get("approve_designs", True)
+                _approve_plans = config.get("approve_plans", True)
+            design_ref = result.get("design_file") or result.get("design_id")
+            if not design_ref:
+                print("Error: design did not return a usable design reference.", file=sys.stderr)
+                sys.exit(1)
+            # Approval gate: pause after design for human review
+            if _approve_designs:
+                print("")
+                print("=" * 60)
+                print("APPROVAL GATE: Design created")
+                print("=" * 60)
+                print("")
+                print(f"Review the design: {design_ref}")
+                print("Then re-run with:")
+                print(f"  millstone --plan {design_ref}")
+                print("")
+                print("Or run with --no-approve for fully autonomous operation.")
+                sys.exit(0)
+            using_remote_provider = config.get("tasklist_provider", "file") != "file"
+            if not using_remote_provider:
+                _ensure_tasklist_file(Path.cwd() / args.tasklist)
+            full_orchestrator = Orchestrator(
+                max_cycles=args.max_cycles,
+                loc_threshold=args.loc_threshold,
+                tasklist=args.tasklist,
+                max_tasks=args.max_tasks,
+                dry_run=args.dry_run,
+                prompts_dir=prompts_dir,
+                compact_threshold=args.compact_threshold,
+                eval_on_commit=args.eval_on_commit,
+                auto_rollback=args.auto_rollback,
+                eval_scripts=eval_scripts,
+                eval_on_task=args.eval_on_task,
+                skip_eval=args.skip_eval,
+                review_designs=review_designs,
+                profile=config.get("profile", "dev_implementation"),
+                cli=args.cli,
+                cli_builder=args.cli_builder,
+                cli_reviewer=args.cli_reviewer,
+                cli_sanity=args.cli_sanity,
+                cli_analyzer=args.cli_analyzer,
+                log_verbosity=log_verbosity,
+                log_diff_mode=log_diff_mode,
+            )
+            plan_result = full_orchestrator.run_plan(design_path=str(design_ref))
+            if not plan_result.get("success", False):
+                sys.exit(1)
+            # Approval gate: pause after plan for human review
+            if _approve_plans:
+                print("")
+                print("=" * 60)
+                print("APPROVAL GATE: Tasks added to tasklist")
+                print("=" * 60)
+                print("")
+                print(f"Review the new tasks in: {args.tasklist}")
+                print("Then re-run to execute:")
+                print("  millstone")
+                print("")
+                print("Or run with --no-approve for fully autonomous operation.")
+                sys.exit(0)
+            sys.exit(full_orchestrator.run())
         except Exception as e:
             print(f"Error running design: {e}", file=sys.stderr)
             sys.exit(1)
@@ -4015,7 +4198,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
             print(f"Error reviewing design: {e}", file=sys.stderr)
             sys.exit(1)
 
-    # Handle --plan: run planning agent and exit
+    # Handle --plan: run planning agent and exit (or continue with --complete)
     if args.plan:
         # Plan needs tasklist, so use the configured one
         orchestrator = Orchestrator(
@@ -4030,7 +4213,52 @@ Remote backlog scoping (Jira / Linear / GitHub):
         )
         try:
             result = orchestrator.run_plan(design_path=args.plan)
-            sys.exit(0 if result.get("success", False) else 1)
+            if not result.get("success", False):
+                sys.exit(1)
+            if not args.complete:
+                sys.exit(0)
+            # --complete: chain through execute
+            # Resolve approval gates (same logic as --cycle)
+            _approve_plans = False if args.no_approve else config.get("approve_plans", True)
+            # Approval gate: pause after plan for human review
+            if _approve_plans:
+                print("")
+                print("=" * 60)
+                print("APPROVAL GATE: Tasks added to tasklist")
+                print("=" * 60)
+                print("")
+                print(f"Review the new tasks in: {args.tasklist}")
+                print("Then re-run to execute:")
+                print("  millstone")
+                print("")
+                print("Or run with --no-approve for fully autonomous operation.")
+                sys.exit(0)
+            using_remote_provider = config.get("tasklist_provider", "file") != "file"
+            if not using_remote_provider:
+                _ensure_tasklist_file(Path.cwd() / args.tasklist)
+            full_orchestrator = Orchestrator(
+                max_cycles=args.max_cycles,
+                loc_threshold=args.loc_threshold,
+                tasklist=args.tasklist,
+                max_tasks=args.max_tasks,
+                dry_run=args.dry_run,
+                prompts_dir=prompts_dir,
+                compact_threshold=args.compact_threshold,
+                eval_on_commit=args.eval_on_commit,
+                auto_rollback=args.auto_rollback,
+                eval_scripts=eval_scripts,
+                eval_on_task=args.eval_on_task,
+                skip_eval=args.skip_eval,
+                profile=config.get("profile", "dev_implementation"),
+                cli=args.cli,
+                cli_builder=args.cli_builder,
+                cli_reviewer=args.cli_reviewer,
+                cli_sanity=args.cli_sanity,
+                cli_analyzer=args.cli_analyzer,
+                log_verbosity=log_verbosity,
+                log_diff_mode=log_diff_mode,
+            )
+            sys.exit(full_orchestrator.run())
         except Exception as e:
             print(f"Error running plan: {e}", file=sys.stderr)
             sys.exit(1)
