@@ -1,12 +1,12 @@
-# millstone
+<h1><img src="docs/assets/logo-wordmark.svg" alt="millstone logo" width="760" /></h1>
 [![CI](https://github.com/wittekin/millstone/actions/workflows/ci.yml/badge.svg)](https://github.com/wittekin/millstone/actions/workflows/ci.yml)
 [![Quality](https://github.com/wittekin/millstone/actions/workflows/quality.yml/badge.svg)](https://github.com/wittekin/millstone/actions/workflows/quality.yml)
 [![Coverage](https://codecov.io/gh/wittekin/millstone/branch/main/graph/badge.svg)](https://codecov.io/gh/wittekin/millstone)
 [![Docs](https://github.com/wittekin/millstone/actions/workflows/docs.yml/badge.svg)](https://github.com/wittekin/millstone/actions/workflows/docs.yml)
 [![Release](https://github.com/wittekin/millstone/actions/workflows/release.yml/badge.svg)](https://github.com/wittekin/millstone/actions/workflows/release.yml)
-[![PyPI version](https://img.shields.io/pypi/v/millstone.svg)](https://pypi.org/project/millstone/)
-[![Python versions](https://img.shields.io/pypi/pyversions/millstone.svg)](https://pypi.org/project/millstone/)
-[![License](https://img.shields.io/pypi/l/millstone.svg)](https://github.com/wittekin/millstone/blob/main/LICENSE)
+[![PyPI version](https://img.shields.io/pypi/v/millstone.svg?cacheSeconds=300)](https://pypi.org/project/millstone/)
+[![Python versions](https://img.shields.io/pypi/pyversions/millstone.svg?cacheSeconds=300)](https://pypi.org/project/millstone/)
+[![License](https://img.shields.io/pypi/l/millstone.svg?cacheSeconds=300)](https://github.com/wittekin/millstone/blob/main/LICENSE)
 
 Coding agents produce dramatically better results when they plan before they code, and when their output is reviewed by a second agent — ideally from a different model provider. The catch: manually running that cycle (design → review → revise → approve → plan → review → revise → implement → review → revise → commit) across multiple agents is extremely time-consuming.
 

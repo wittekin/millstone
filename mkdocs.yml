@@ -6,6 +6,8 @@ repo_name: wittekin/millstone
 
 theme:
   name: material
+  logo: assets/logo-icon.svg
+  favicon: assets/logo-icon.svg
   features:
     - navigation.instant
     - navigation.sections
