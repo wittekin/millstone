@@ -149,18 +149,18 @@ def test_list_tasks_uses_cache_on_second_call():
     assert mock_cb.call_count == 1
 
 
-def test_list_tasks_maps_raw_description_to_raw_field():
+def test_list_tasks_returns_compact_items_without_raw():
+    """list_tasks returns id/title/status only — no description fetched to avoid 80KB responses."""
     provider = MCPTasklistProvider("linear")
-    description = "- Risk: low\n  - Tests: pytest\n  - Criteria: done"
-    response = json.dumps(
-        [{"id": "t-1", "title": "My Task", "status": "todo", "description": description}]
-    )
+    response = json.dumps([{"id": "t-1", "title": "My Task", "status": "todo"}])
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
     result = provider.list_tasks()
 
-    assert result[0].raw == description
+    assert result[0].task_id == "t-1"
+    assert result[0].title == "My Task"
+    assert result[0].raw is None  # No description requested or stored
 
 
 # ---------------------------------------------------------------------------
@@ -168,26 +168,14 @@ def test_list_tasks_maps_raw_description_to_raw_field():
 # ---------------------------------------------------------------------------
 
 
-def test_get_snapshot_returns_full_block_markdown_with_metadata():
-    """get_snapshot() reconstructs full-block markdown including metadata lines."""
+def test_get_snapshot_returns_title_block_from_compact_list_tasks():
+    """get_snapshot() from list_tasks results renders title-only blocks (no metadata).
+
+    list_tasks no longer fetches descriptions, so snapshot reconstructs from
+    id/title/status only. Full metadata is fetched separately via get_task().
+    """
     provider = MCPTasklistProvider("linear")
-    description = (
-        "Implement auth flow\n"
-        "  - Tests: pytest tests/test_auth.py\n"
-        "  - Risk: medium\n"
-        "  - Criteria: all tests pass\n"
-        "  - Context: see RFC-42"
-    )
-    response = json.dumps(
-        [
-            {
-                "id": "t-1",
-                "title": "Add authentication",
-                "status": "todo",
-                "description": description,
-            }
-        ]
-    )
+    response = json.dumps([{"id": "t-1", "title": "Add authentication", "status": "todo"}])
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -195,7 +183,6 @@ def test_get_snapshot_returns_full_block_markdown_with_metadata():
 
     assert "- [ ]" in snapshot
     assert "Add authentication" in snapshot
-    assert "Tests:" in snapshot or "pytest tests/test_auth.py" in snapshot
 
 
 def test_get_snapshot_uses_done_checkbox_for_done_status():
@@ -309,53 +296,34 @@ def test_get_snapshot_full_metadata_fields_reconstructed():
     assert "- [ ]" in snapshot
 
 
-def test_get_snapshot_output_passes_validate_generated_tasks_without_metadata_violations(tmp_path):
-    """get_snapshot() output for a task with all required fields produces no
-    metadata-missing violations when fed to _validate_generated_tasks(old='', new=snapshot).
+def test_get_snapshot_output_is_parseable_by_task_metadata_parser(tmp_path):
+    """get_snapshot() output from compact list_tasks results is parseable by
+    _parse_task_metadata, even though it produces title-only blocks.
 
-    This ensures the snapshot markdown format is compatible with the atomizer
-    validation logic used in _run_plan_impl.
+    list_tasks no longer fetches task descriptions (to avoid 80KB responses).
+    Snapshot blocks therefore contain title + checkbox only. Metadata for MCP
+    tasks must be fetched individually via get_task() when needed, not from
+    the snapshot diff.
     """
     provider = MCPTasklistProvider("linear")
-    # Full-block raw format: get_snapshot() will update the checkbox and pass
-    # it through verbatim, preserving the indented metadata lines that
-    # TasklistManager._parse_task_metadata expects.
-    description = (
-        "- [ ] **Add new feature**\n"
-        "  - Tests: pytest tests/test_feature.py\n"
-        "  - Risk: low\n"
-        "  - Criteria: all tests pass\n"
-        "  - Context: see design doc"
-    )
-    response = json.dumps(
-        [
-            {
-                "id": "t-1",
-                "title": "Add new feature",
-                "status": "todo",
-                "description": description,
-            }
-        ]
-    )
+    response = json.dumps([{"id": "t-1", "title": "Add new feature", "status": "todo"}])
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
     snapshot = provider.get_snapshot()
 
-    # Parse snapshot using the real TasklistManager metadata parser so we
-    # exercise the same code path as _validate_generated_tasks.
-    mgr = TasklistManager(repo_dir=tmp_path)
-    # _extract_new_tasks returns task text after "- [ ] ", so strip the prefix
-    # the same way the real code does before calling _parse_task_metadata.
     import re as _re
 
     new_task_texts = _re.findall(r"^- \[ \] (.+(?:\n(?:  .+))*)", snapshot, _re.MULTILINE)
     assert new_task_texts, "get_snapshot() produced no parseable task blocks"
 
+    mgr = TasklistManager(repo_dir=tmp_path)
     parsed = mgr._parse_task_metadata(new_task_texts[0])
 
-    assert parsed["tests"] is not None, "tests field missing from snapshot"
-    assert parsed["criteria"] is not None, "criteria field missing from snapshot"
+    # Title is always present; metadata fields are None (not fetched from list_tasks)
+    assert parsed["title"] == "Add new feature"
+    assert parsed["tests"] is None  # Not in list_tasks response; use get_task() for full details
+    assert parsed["criteria"] is None
 
 
 def test_reset_snapshot_baseline_allows_new_baseline_on_next_get_snapshot():

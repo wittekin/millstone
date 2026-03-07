@@ -200,10 +200,8 @@ class MCPTasklistProvider(TasklistProviderBase):
         prompt = (
             f"Use the {self._mcp_server} MCP to list ALL tasks in all states "
             f"(todo, in_progress, done, blocked){label_clause}{project_clause}. "
-            f"Output ONLY a JSON array, no other text. "
-            f'Each item: {{"id": "...", "title": "...", '
-            f'"status": "todo|in_progress|done|blocked", '
-            f'"description": "full stored task body text including all metadata lines"}}'
+            f"Output ONLY a compact JSON array directly in your response — do not write to a file. "
+            f'Each item: {{"id": "...", "title": "...", "status": "todo|in_progress|done|blocked"}}'
         )
         response = cb(prompt)
         try:
@@ -221,7 +219,6 @@ class MCPTasklistProvider(TasklistProviderBase):
                     task_id=item["id"],
                     title=item["title"],
                     status=status,
-                    raw=item.get("description") or "",
                 )
             )
         self._task_cache = results
@@ -528,9 +525,9 @@ class MCPDesignProvider(DesignProviderBase):
         prompt = (
             f"Use the {self._mcp_server} MCP to list ALL design documents"
             f"{project_clause}. "
-            f"Output ONLY a JSON array, no other text. "
+            f"Output ONLY a compact JSON array directly in your response — do not write to a file. "
             f'Each item: {{"id": "...", "title": "...", "status": "draft|reviewed|approved|superseded", '
-            f'"opportunity_ref": "...", "body": "full document body"}}'
+            f'"opportunity_ref": "..."}}'
         )
         response = cb(prompt)
         try:
@@ -548,7 +545,7 @@ class MCPDesignProvider(DesignProviderBase):
                     design_id=item["id"],
                     title=item.get("title", ""),
                     status=status,
-                    body=item.get("body", ""),
+                    body="",  # Not fetched in list; use get_design() for full body
                     opportunity_ref=item.get("opportunity_ref"),
                 )
             )
