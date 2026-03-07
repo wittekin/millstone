@@ -200,10 +200,8 @@ class MCPTasklistProvider(TasklistProviderBase):
         prompt = (
             f"Use the {self._mcp_server} MCP to list ALL tasks in all states "
             f"(todo, in_progress, done, blocked){label_clause}{project_clause}. "
-            f"Output ONLY a JSON array, no other text. "
-            f'Each item: {{"id": "...", "title": "...", '
-            f'"status": "todo|in_progress|done|blocked", '
-            f'"description": "full stored task body text including all metadata lines"}}'
+            f"Output ONLY a compact JSON array directly in your response — do not write to a file. "
+            f'Each item: {{"id": "...", "title": "...", "status": "todo|in_progress|done|blocked"}}'
         )
         response = cb(prompt)
         try:
@@ -221,7 +219,6 @@ class MCPTasklistProvider(TasklistProviderBase):
                     task_id=item["id"],
                     title=item["title"],
                     status=status,
-                    raw=item.get("description") or "",
                 )
             )
         self._task_cache = results
@@ -232,7 +229,7 @@ class MCPTasklistProvider(TasklistProviderBase):
         cb = self._require_callback()
         prompt = (
             f"Use the {self._mcp_server} MCP to get the task with ID '{task_id}'. "
-            f"Output ONLY a JSON object with fields: id, title, status, context, criteria."
+            f"Output ONLY a JSON object with fields: id, title, status, context, criteria, tests, risk."
         )
         response = cb(prompt)
         try:
@@ -248,6 +245,8 @@ class MCPTasklistProvider(TasklistProviderBase):
             status=status,
             context=item.get("context"),
             criteria=item.get("criteria"),
+            tests=item.get("tests"),
+            risk=item.get("risk"),
         )
 
     def get_snapshot(self) -> str:
@@ -262,9 +261,9 @@ class MCPTasklistProvider(TasklistProviderBase):
         The status checkbox is always derived from ``t.status`` (not from raw),
         so the snapshot reflects the true current state.
 
-        The full-block format is required because _validate_generated_tasks()
-        calls _parse_task_metadata() on new-task text extracted from the snapshot
-        diff and validates Tests/Risk/Criteria/Context fields.
+        For MCP providers, _validate_generated_tasks() fetches full task details
+        via get_task() instead of parsing snapshot text, so compact snapshots
+        (title-only) are fine for validation purposes.
         """
         tasks = self.list_tasks()
         # Only capture the baseline on the first call; subsequent calls (e.g.
@@ -528,9 +527,9 @@ class MCPDesignProvider(DesignProviderBase):
         prompt = (
             f"Use the {self._mcp_server} MCP to list ALL design documents"
             f"{project_clause}. "
-            f"Output ONLY a JSON array, no other text. "
+            f"Output ONLY a compact JSON array directly in your response — do not write to a file. "
             f'Each item: {{"id": "...", "title": "...", "status": "draft|reviewed|approved|superseded", '
-            f'"opportunity_ref": "...", "body": "full document body"}}'
+            f'"opportunity_ref": "..."}}'
         )
         response = cb(prompt)
         try:
@@ -548,7 +547,7 @@ class MCPDesignProvider(DesignProviderBase):
                     design_id=item["id"],
                     title=item.get("title", ""),
                     status=status,
-                    body=item.get("body", ""),
+                    body="",  # Not fetched in list; use get_design() for full body
                     opportunity_ref=item.get("opportunity_ref"),
                 )
             )

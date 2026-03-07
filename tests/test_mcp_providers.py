@@ -149,18 +149,18 @@ def test_list_tasks_uses_cache_on_second_call():
     assert mock_cb.call_count == 1
 
 
-def test_list_tasks_maps_raw_description_to_raw_field():
+def test_list_tasks_returns_compact_items_without_raw():
+    """list_tasks returns id/title/status only — no description fetched to avoid 80KB responses."""
     provider = MCPTasklistProvider("linear")
-    description = "- Risk: low\n  - Tests: pytest\n  - Criteria: done"
-    response = json.dumps(
-        [{"id": "t-1", "title": "My Task", "status": "todo", "description": description}]
-    )
+    response = json.dumps([{"id": "t-1", "title": "My Task", "status": "todo"}])
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
     result = provider.list_tasks()
 
-    assert result[0].raw == description
+    assert result[0].task_id == "t-1"
+    assert result[0].title == "My Task"
+    assert result[0].raw is None  # No description requested or stored
 
 
 # ---------------------------------------------------------------------------
@@ -168,26 +168,14 @@ def test_list_tasks_maps_raw_description_to_raw_field():
 # ---------------------------------------------------------------------------
 
 
-def test_get_snapshot_returns_full_block_markdown_with_metadata():
-    """get_snapshot() reconstructs full-block markdown including metadata lines."""
+def test_get_snapshot_returns_title_block_from_compact_list_tasks():
+    """get_snapshot() from list_tasks results renders title-only blocks (no metadata).
+
+    list_tasks no longer fetches descriptions, so snapshot reconstructs from
+    id/title/status only. Full metadata is fetched separately via get_task().
+    """
     provider = MCPTasklistProvider("linear")
-    description = (
-        "Implement auth flow\n"
-        "  - Tests: pytest tests/test_auth.py\n"
-        "  - Risk: medium\n"
-        "  - Criteria: all tests pass\n"
-        "  - Context: see RFC-42"
-    )
-    response = json.dumps(
-        [
-            {
-                "id": "t-1",
-                "title": "Add authentication",
-                "status": "todo",
-                "description": description,
-            }
-        ]
-    )
+    response = json.dumps([{"id": "t-1", "title": "Add authentication", "status": "todo"}])
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
@@ -195,7 +183,6 @@ def test_get_snapshot_returns_full_block_markdown_with_metadata():
 
     assert "- [ ]" in snapshot
     assert "Add authentication" in snapshot
-    assert "Tests:" in snapshot or "pytest tests/test_auth.py" in snapshot
 
 
 def test_get_snapshot_uses_done_checkbox_for_done_status():
@@ -309,53 +296,34 @@ def test_get_snapshot_full_metadata_fields_reconstructed():
     assert "- [ ]" in snapshot
 
 
-def test_get_snapshot_output_passes_validate_generated_tasks_without_metadata_violations(tmp_path):
-    """get_snapshot() output for a task with all required fields produces no
-    metadata-missing violations when fed to _validate_generated_tasks(old='', new=snapshot).
+def test_get_snapshot_output_is_parseable_by_task_metadata_parser(tmp_path):
+    """get_snapshot() output from compact list_tasks results is parseable by
+    _parse_task_metadata, even though it produces title-only blocks.
 
-    This ensures the snapshot markdown format is compatible with the atomizer
-    validation logic used in _run_plan_impl.
+    list_tasks no longer fetches task descriptions (to avoid 80KB responses).
+    Snapshot blocks therefore contain title + checkbox only. Metadata for MCP
+    tasks must be fetched individually via get_task() when needed, not from
+    the snapshot diff.
     """
     provider = MCPTasklistProvider("linear")
-    # Full-block raw format: get_snapshot() will update the checkbox and pass
-    # it through verbatim, preserving the indented metadata lines that
-    # TasklistManager._parse_task_metadata expects.
-    description = (
-        "- [ ] **Add new feature**\n"
-        "  - Tests: pytest tests/test_feature.py\n"
-        "  - Risk: low\n"
-        "  - Criteria: all tests pass\n"
-        "  - Context: see design doc"
-    )
-    response = json.dumps(
-        [
-            {
-                "id": "t-1",
-                "title": "Add new feature",
-                "status": "todo",
-                "description": description,
-            }
-        ]
-    )
+    response = json.dumps([{"id": "t-1", "title": "Add new feature", "status": "todo"}])
     mock_cb = MagicMock(return_value=response)
     provider.set_agent_callback(mock_cb)
 
     snapshot = provider.get_snapshot()
 
-    # Parse snapshot using the real TasklistManager metadata parser so we
-    # exercise the same code path as _validate_generated_tasks.
-    mgr = TasklistManager(repo_dir=tmp_path)
-    # _extract_new_tasks returns task text after "- [ ] ", so strip the prefix
-    # the same way the real code does before calling _parse_task_metadata.
     import re as _re
 
     new_task_texts = _re.findall(r"^- \[ \] (.+(?:\n(?:  .+))*)", snapshot, _re.MULTILINE)
     assert new_task_texts, "get_snapshot() produced no parseable task blocks"
 
+    mgr = TasklistManager(repo_dir=tmp_path)
     parsed = mgr._parse_task_metadata(new_task_texts[0])
 
-    assert parsed["tests"] is not None, "tests field missing from snapshot"
-    assert parsed["criteria"] is not None, "criteria field missing from snapshot"
+    # Title is always present; metadata fields are None (not fetched from list_tasks)
+    assert parsed["title"] == "Add new feature"
+    assert parsed["tests"] is None  # Not in list_tasks response; use get_task() for full details
+    assert parsed["criteria"] is None
 
 
 def test_reset_snapshot_baseline_allows_new_baseline_on_next_get_snapshot():
@@ -1594,3 +1562,298 @@ class TestMCPFencedJsonResponses:
         provider = MCPOpportunityProvider("github")
         provider.set_agent_callback(lambda _prompt: "```json\nnot-json\n```")
         assert provider.get_opportunity("o1") is None
+
+
+# ---------------------------------------------------------------------------
+# MCP plan validation tests
+# ---------------------------------------------------------------------------
+
+
+class TestMCPPlanValidation:
+    """Test that _validate_generated_tasks fetches full details for MCP providers."""
+
+    def _make_manager(self, mcp_provider, tmp_path):
+        """Create an OuterLoopManager with an MCP tasklist provider."""
+        from millstone.loops.outer import OuterLoopManager
+
+        work_dir = tmp_path / ".millstone"
+        work_dir.mkdir()
+        return OuterLoopManager(
+            work_dir=work_dir,
+            repo_dir=tmp_path,
+            tasklist=".millstone/tasklist.md",
+            task_constraints={
+                "max_loc": 200,
+                "require_tests": True,
+                "require_criteria": True,
+                "require_risk": True,
+                "require_context": True,
+            },
+            tasklist_provider=mcp_provider,
+        )
+
+    def test_mcp_task_with_metadata_passes_validation(self, tmp_path):
+        """MCP task with all metadata passes validation when fetched via get_task()."""
+        provider = MCPTasklistProvider("github")
+
+        # get_task returns full details including metadata
+        get_response = json.dumps(
+            {
+                "id": "new-1",
+                "title": "Add caching layer",
+                "status": "todo",
+                "tests": "test_caching.py",
+                "risk": "low",
+                "criteria": "Cache hit rate >90%",
+                "context": "src/caching/",
+            }
+        )
+
+        def agent_callback(prompt):
+            if "get the task with ID" in prompt:
+                return get_response
+            return "[]"
+
+        provider.set_agent_callback(agent_callback)
+        manager = self._make_manager(provider, tmp_path)
+
+        # Pass pre-computed new task IDs (as callers now do after planning)
+        result = manager._validate_generated_tasks("", "", new_task_ids=["new-1"])
+
+        assert result["valid"] is True
+        assert len(result["tasks"]) == 1
+        assert result["tasks"][0]["validation"]["valid"] is True
+        assert result["tasks"][0]["metadata"]["tests"] == "test_caching.py"
+        assert result["tasks"][0]["metadata"]["risk"] == "low"
+        assert result["tasks"][0]["metadata"]["criteria"] == "Cache hit rate >90%"
+        assert result["tasks"][0]["metadata"]["context"] == "src/caching/"
+
+    def test_mcp_task_without_metadata_fails_validation(self, tmp_path):
+        """MCP task missing metadata fails validation even though snapshot is compact."""
+        provider = MCPTasklistProvider("github")
+
+        # get_task returns task with NO metadata
+        get_response = json.dumps(
+            {
+                "id": "new-1",
+                "title": "Add caching layer",
+                "status": "todo",
+            }
+        )
+
+        def agent_callback(prompt):
+            if "get the task with ID" in prompt:
+                return get_response
+            return "[]"
+
+        provider.set_agent_callback(agent_callback)
+        manager = self._make_manager(provider, tmp_path)
+
+        result = manager._validate_generated_tasks("", "", new_task_ids=["new-1"])
+
+        assert result["valid"] is False
+        assert len(result["tasks"]) == 1
+        assert result["tasks"][0]["validation"]["valid"] is False
+        violations = result["tasks"][0]["validation"]["violations"]
+        assert len(violations) >= 3  # tests, criteria, risk, context
+
+    def test_file_provider_unchanged_without_new_task_ids(self, tmp_path):
+        """File provider uses text-based validation when new_task_ids is not passed."""
+        from millstone.artifacts.tasklist import TasklistManager
+        from millstone.loops.outer import OuterLoopManager
+
+        work_dir = tmp_path / ".millstone"
+        work_dir.mkdir()
+        tm = TasklistManager(str(tmp_path / ".millstone" / "tasklist.md"))
+        manager = OuterLoopManager(
+            work_dir=work_dir,
+            repo_dir=tmp_path,
+            tasklist=".millstone/tasklist.md",
+            task_constraints={
+                "max_loc": 200,
+                "require_tests": True,
+                "require_criteria": True,
+                "require_risk": True,
+                "require_context": True,
+            },
+            parse_task_metadata_callback=tm._parse_task_metadata,
+        )
+
+        old_content = "- [ ] Old task"
+        new_content = """- [ ] Old task
+- [ ] **Good task**: Description
+  - Est. LoC: 50
+  - Tests: test.py
+  - Risk: low
+  - Criteria: All pass
+  - Context: src/"""
+
+        # No new_task_ids → file-provider text-based path
+        result = manager._validate_generated_tasks(old_content, new_content)
+        assert result["valid"] is True
+        assert len(result["tasks"]) == 1
+
+    def test_mcp_get_task_includes_tests_and_risk_fields(self):
+        """get_task() prompt requests and parses tests and risk fields."""
+        provider = MCPTasklistProvider("github")
+        response = json.dumps(
+            {
+                "id": "t1",
+                "title": "Task 1",
+                "status": "todo",
+                "tests": "test_foo.py",
+                "risk": "high",
+                "context": "src/foo/",
+                "criteria": "All green",
+            }
+        )
+        provider.set_agent_callback(lambda _prompt: response)
+        task = provider.get_task("t1")
+        assert task is not None
+        assert task.tests == "test_foo.py"
+        assert task.risk == "high"
+        assert task.context == "src/foo/"
+        assert task.criteria == "All green"
+
+    def test_mcp_get_task_returns_none_fails_validation(self, tmp_path):
+        """When get_task() returns None for a new task, validation must fail."""
+        provider = MCPTasklistProvider("github")
+
+        def agent_callback(prompt):
+            if "get the task with ID" in prompt:
+                return "not valid json {{{}"
+            return "[]"
+
+        provider.set_agent_callback(agent_callback)
+        manager = self._make_manager(provider, tmp_path)
+
+        result = manager._validate_generated_tasks("", "", new_task_ids=["new-1"])
+
+        assert result["valid"] is False
+        assert "failed to fetch task details" in result["violations_summary"]
+
+    def test_external_mcp_tasks_excluded_from_planner_output(self, tmp_path):
+        """Tasks created by external actors between agent calls are not
+        attributed to the planner and are excluded from validation/results.
+
+        Scenario: planner creates plan-1 (missing metadata → validation fails).
+        Between the after-snapshot of the initial plan call and the
+        before-snapshot of the split-fix call, an external actor creates ext-1
+        on the shared MCP backlog. After split fixes plan-1 and the reviewer
+        approves, ext-1 must NOT appear in the planner's output.
+        """
+        from millstone.artifacts.models import Design, DesignStatus
+        from millstone.loops.outer import OuterLoopManager
+
+        provider = MCPTasklistProvider("github")
+
+        # Mutable shared backlog — simulates a real MCP backend.
+        task_store: list[dict] = []
+        list_tasks_count = 0
+
+        def provider_callback(prompt):
+            """Handles list_tasks / get_task calls from the MCP provider."""
+            nonlocal list_tasks_count
+            if "get the task with ID" in prompt:
+                for t in task_store:
+                    if t["id"] in prompt:
+                        return json.dumps(t)
+                return "invalid"
+            # All other provider calls are list_tasks.
+            list_tasks_count += 1
+            # Inject ext-1 on the 4th list_tasks call — this is the split
+            # agent's before-snapshot.  ext-1 then appears in both the
+            # before and after snapshots of the split call, so the per-call
+            # diff excludes it (correctly attributing only plan-1 to the
+            # planner).  Under the old set-difference approach,
+            # current - tasks_before_ids would have included ext-1.
+            if list_tasks_count == 4 and not any(t["id"] == "ext-1" for t in task_store):
+                task_store.append(
+                    {
+                        "id": "ext-1",
+                        "title": "External task",
+                        "status": "todo",
+                        "tests": "e.py",
+                        "risk": "low",
+                        "criteria": "done",
+                        "context": "src/",
+                    }
+                )
+            return json.dumps(task_store)
+
+        provider.set_agent_callback(provider_callback)
+
+        # Set up design
+        designs_dir = tmp_path / ".millstone" / "designs"
+        designs_dir.mkdir(parents=True)
+        design_file = designs_dir / "test-design.md"
+        design_file.write_text("# Design: Test\nSome design content")
+
+        mock_design_provider = MagicMock()
+        mock_design_provider.get_design.return_value = Design(
+            design_id="test-design",
+            title="Test",
+            body="Some design content",
+            status=DesignStatus.approved,
+        )
+
+        manager = OuterLoopManager(
+            work_dir=tmp_path / ".millstone",
+            repo_dir=tmp_path,
+            tasklist=".millstone/tasklist.md",
+            task_constraints={
+                "max_loc": 200,
+                "require_tests": True,
+                "require_criteria": True,
+                "require_risk": True,
+                "require_context": True,
+                "max_split_attempts": 1,
+            },
+            tasklist_provider=provider,
+            design_provider=mock_design_provider,
+        )
+
+        def run_agent(prompt):
+            if "plan_prompt" in prompt:
+                # Initial plan agent — creates plan-1 (missing metadata)
+                task_store.append(
+                    {
+                        "id": "plan-1",
+                        "title": "Planner task",
+                        "status": "todo",
+                    }
+                )
+                return "Created plan-1"
+            if "task_split_prompt" in prompt:
+                # Split-fix agent — adds metadata to plan-1
+                for i, t in enumerate(task_store):
+                    if t["id"] == "plan-1":
+                        task_store[i] = {
+                            "id": "plan-1",
+                            "title": "Planner task",
+                            "status": "todo",
+                            "tests": "t.py",
+                            "risk": "low",
+                            "criteria": "done",
+                            "context": "src/",
+                        }
+                return "Fixed plan-1"
+            if "plan_review_prompt" in prompt:
+                return '{"verdict": "APPROVED", "score": 10}'
+            return "noop"
+
+        provider._task_cache = None
+
+        result = manager._run_plan_impl(
+            design_path=str(design_file),
+            load_prompt_callback=lambda name: (
+                f"prompt_name: {name}\n{{{{DESIGN_CONTENT}}}}\n{{{{TASKLIST_CONTENT}}}}\n{{{{MAX_LOC}}}}\n{{{{VIOLATIONS}}}}\n{{{{PROPOSED_PLAN}}}}"
+            ),
+            run_agent_callback=run_agent,
+        )
+
+        assert result["success"] is True
+        # Only plan-1 should be counted (created by planner).
+        # ext-1 was injected between agent calls by an external actor and
+        # must NOT be attributed to this planning pass.
+        assert result["tasks_added"] == 1

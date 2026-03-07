@@ -1739,12 +1739,23 @@ When addressing similar areas, try a different approach than what caused the reg
             "violations": violations,
         }
 
-    def _validate_generated_tasks(self, old_content: str, new_content: str) -> dict:
+    def _validate_generated_tasks(
+        self,
+        old_content: str,
+        new_content: str,
+        *,
+        new_task_ids: list[str] | None = None,
+    ) -> dict:
         """Validate all newly generated tasks against constraints.
 
         Args:
             old_content: Tasklist content before planning.
             new_content: Tasklist content after planning.
+            new_task_ids: Optional list of task IDs created by this planning pass.
+                When provided and the tasklist provider is an MCP provider, full
+                details are fetched via get_task() instead of parsing snapshot text.
+                Callers must compute this immediately after the planning agent
+                returns to avoid including tasks added by external actors.
 
         Returns:
             Dict with validation results:
@@ -1752,6 +1763,10 @@ When addressing similar areas, try a different approach than what caused the reg
             - tasks: List of dicts with task metadata and validation results
             - violations_summary: Human-readable summary of all violations
         """
+        # For MCP providers, fetch full task details instead of parsing compact snapshot text
+        if new_task_ids is not None and self._is_mcp_provider():
+            return self._validate_generated_tasks_mcp(new_task_ids)
+
         new_tasks = self._extract_new_tasks(old_content, new_content)
 
         results = []
@@ -1772,6 +1787,73 @@ When addressing similar areas, try a different approach than what caused the reg
                 title = metadata["title"] or metadata["description"][:50]
                 for v in validation["violations"]:
                     all_violations.append(f"- **{title}**: {v}")
+
+        return {
+            "valid": len(all_violations) == 0,
+            "tasks": results,
+            "violations_summary": "\n".join(all_violations) if all_violations else "",
+        }
+
+    def _is_mcp_provider(self) -> bool:
+        """Check if the current tasklist provider is an MCP provider."""
+        try:
+            from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+            return isinstance(self.tasklist_provider, MCPTasklistProvider)
+        except ImportError:
+            return False
+
+    def _validate_generated_tasks_mcp(self, new_task_ids: list[str]) -> dict:
+        """Validate newly generated MCP tasks by fetching full details via get_task().
+
+        MCP list_tasks() returns compact data (id/title/status only) to avoid large
+        responses. This method fetches full task details for each new task so that
+        metadata validation (tests, risk, criteria, context) works correctly.
+
+        Args:
+            new_task_ids: Pre-computed list of task IDs created by the current
+                planning pass. Callers must compute this immediately after the
+                planning agent returns to avoid picking up tasks added by
+                external actors on shared MCP backlogs.
+        """
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        provider: MCPTasklistProvider = self.tasklist_provider  # type: ignore[assignment]
+
+        results = []
+        all_violations = []
+
+        for task_id in new_task_ids:
+            task = provider.get_task(task_id)
+            if task is None:
+                all_violations.append(
+                    f"- **{task_id}**: failed to fetch task details via get_task()"
+                )
+                continue
+
+            metadata: dict[str, Any] = {
+                "title": task.title,
+                "description": task.title,
+                "est_loc": None,
+                "tests": task.tests,
+                "risk": task.risk,
+                "criteria": task.criteria,
+                "context": task.context,
+                "context_file": None,
+                "raw": task.raw or task.title,
+            }
+
+            validation = self._validate_task(metadata)
+            results.append(
+                {
+                    "metadata": metadata,
+                    "validation": validation,
+                }
+            )
+
+            if not validation["valid"]:
+                for v in validation["violations"]:
+                    all_violations.append(f"- **{task.title}**: {v}")
 
         return {
             "valid": len(all_violations) == 0,
@@ -1883,8 +1965,6 @@ When addressing similar areas, try a different approach than what caused the reg
                 log_callback("plan_failed", design_path=design_path, reason="tasklist_not_found")
             print(f"\n=== Planning Failed ===\n{error_msg}")
             return {"success": False, "tasks_added": 0, "error": error_msg}
-        tasks_before_ids = {t.task_id for t in self.tasklist_provider.list_tasks()}
-
         # Callbacks are validated and injected by the run_plan() entry point.
 
         # State tracking for the loop
@@ -1893,17 +1973,31 @@ When addressing similar areas, try a different approach than what caused the reg
             "validation": {"valid": False, "violations_summary": ""},
         }
 
+        # Accumulate task IDs created by this planning session's agent calls.
+        # We snapshot IDs immediately before and after each agent call, so
+        # external tasks added on shared MCP backlogs between calls are excluded.
+        planner_task_ids: set[str] = set()
+
         tasklist_placeholders = self.tasklist_provider.get_prompt_placeholders()
+
+        def _snapshot_and_run(prompt: str) -> None:
+            """Snapshot task IDs, run agent, then diff to find newly created IDs."""
+            _invalidate_tasklist_cache(self.tasklist_provider)
+            ids_before_call = {t.task_id for t in self.tasklist_provider.list_tasks()}
+            run_agent_callback(prompt)
+            _invalidate_tasklist_cache(self.tasklist_provider)
+            ids_after_call = {t.task_id for t in self.tasklist_provider.list_tasks()}
+            planner_task_ids.update(ids_after_call - ids_before_call)
+            # Also remove any IDs the agent deleted during a split/fix
+            planner_task_ids.intersection_update(ids_after_call)
 
         def produce_tasks(feedback: str | None = None) -> list[str]:
             """Inner producer that handles both initial generation and refinement."""
             if feedback:
-                # Get tasks the agent added so far (by ID diff) for the fix prompt.
+                # Get tasks the agent added so far for the fix prompt.
                 # No restore here — agent edits the existing tasks in place.
                 current_tasks = [
-                    t
-                    for t in self.tasklist_provider.list_tasks()
-                    if t.task_id not in tasks_before_ids
+                    t for t in self.tasklist_provider.list_tasks() if t.task_id in planner_task_ids
                 ]
                 current_added = "\n".join(f"- [ ] {t.raw or t.title}" for t in current_tasks)
 
@@ -1914,8 +2008,7 @@ When addressing similar areas, try a different approach than what caused the reg
                 fix_prompt = apply_provider_placeholders(fix_prompt, tasklist_placeholders)
                 # Backward-compat: custom --prompts-dir templates may still use {{TASKLIST_PATH}}
                 fix_prompt = fix_prompt.replace("{{TASKLIST_PATH}}", self.tasklist)
-                run_agent_callback(fix_prompt)
-                _invalidate_tasklist_cache(self.tasklist_provider)
+                _snapshot_and_run(fix_prompt)
             else:
                 # Initial generation
                 plan_prompt = load_prompt_callback("plan_prompt.md")
@@ -1926,12 +2019,14 @@ When addressing similar areas, try a different approach than what caused the reg
                 plan_prompt = apply_provider_placeholders(plan_prompt, tasklist_placeholders)
                 # Backward-compat: custom --prompts-dir templates may still use {{TASKLIST_PATH}}
                 plan_prompt = plan_prompt.replace("{{TASKLIST_PATH}}", self.tasklist)
-                run_agent_callback(plan_prompt)
-                _invalidate_tasklist_cache(self.tasklist_provider)
+                _snapshot_and_run(plan_prompt)
 
             # Mechanical validation loop (Atomizer)
             new_content = self.tasklist_provider.get_snapshot()
-            validation = self._validate_generated_tasks(original_tasklist_content, new_content)
+            new_task_ids = list(planner_task_ids)
+            validation = self._validate_generated_tasks(
+                original_tasklist_content, new_content, new_task_ids=new_task_ids
+            )
 
             max_split_attempts = self.task_constraints.get("max_split_attempts", 2)
             split_attempt = 0
@@ -1953,16 +2048,18 @@ When addressing similar areas, try a different approach than what caused the reg
                 # Backward-compat: custom --prompts-dir templates may still use {{TASKLIST_PATH}}
                 split_prompt = split_prompt.replace("{{TASKLIST_PATH}}", self.tasklist)
 
-                run_agent_callback(split_prompt)
-                _invalidate_tasklist_cache(self.tasklist_provider)
+                _snapshot_and_run(split_prompt)
+                # planner_task_ids already updated by _snapshot_and_run
+                new_task_ids = list(planner_task_ids)
                 validation = self._validate_generated_tasks(
                     original_tasklist_content,
                     self.tasklist_provider.get_snapshot(),
+                    new_task_ids=new_task_ids,
                 )
 
             state["validation"] = validation
             tasks_after = self.tasklist_provider.list_tasks()
-            return [t.title for t in tasks_after if t.task_id not in tasks_before_ids]
+            return [t.title for t in tasks_after if t.task_id in planner_task_ids]
 
         def review_tasks(tasks: list[str]) -> dict:
             added_content = "\n".join(f"- [ ] {t}" for t in tasks)
