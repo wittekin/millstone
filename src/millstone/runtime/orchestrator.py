@@ -1976,6 +1976,24 @@ class Orchestrator:
         )
 
     def analyze_tasklist(self) -> dict:
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        provider = self._outer_loop_manager.tasklist_provider
+        if isinstance(provider, MCPTasklistProvider):
+            label_str = ", ".join(provider._labels) if provider._labels else "none"
+            print(f"Remote tasklist provider: {provider._mcp_server}")
+            print(f"  Labels: {label_str}")
+            print()
+            print("Task analysis is not available for remote providers.")
+            print("Use --dry-run to inspect prompts that would be sent.")
+            return {
+                "pending_count": 0,
+                "completed_count": 0,
+                "total_count": 0,
+                "tasks": [],
+                "dependencies": [],
+                "suggested_order": [],
+            }
         # Delegates to TasklistManager
         return self._tasklist_manager.analyze_tasklist(
             estimate_time_callback=self.estimate_remaining_time,
@@ -3271,22 +3289,32 @@ class Orchestrator:
         # Show tasklist file info if applicable
         if not self.task:
             print("--- Tasklist Info ---")
-            tasklist_path = self.repo_dir / self.tasklist
-            print(f"  File: {tasklist_path}")
-            print(f"  Exists: {tasklist_path.exists()}")
-            if tasklist_path.exists():
-                content = tasklist_path.read_text()
-                unchecked = len(re.findall(r"^- \[ \]", content, re.MULTILINE))
-                self.completed_task_count = self.count_completed_tasks()
-                print(f"  Unchecked tasks: {unchecked}")
-                print(f"  Completed tasks: {self.completed_task_count}")
-                print(f"  Compact threshold: {self.compact_threshold}")
-                if self.should_compact():
-                    print("  Compaction: WOULD TRIGGER (completed >= threshold)")
-                elif self.compact_threshold <= 0:
-                    print("  Compaction: DISABLED")
-                else:
-                    print("  Compaction: not needed (completed < threshold)")
+            from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+            provider = self._outer_loop_manager.tasklist_provider
+            if isinstance(provider, MCPTasklistProvider):
+                print(f"  Provider: {provider._mcp_server} (remote)")
+                label_str = ", ".join(provider._labels) if provider._labels else "none"
+                print(f"  Labels: {label_str}")
+                project_str = ", ".join(provider._projects) if provider._projects else "none"
+                print(f"  Projects: {project_str}")
+            else:
+                tasklist_path = self.repo_dir / self.tasklist
+                print(f"  File: {tasklist_path}")
+                print(f"  Exists: {tasklist_path.exists()}")
+                if tasklist_path.exists():
+                    content = tasklist_path.read_text()
+                    unchecked = len(re.findall(r"^- \[ \]", content, re.MULTILINE))
+                    self.completed_task_count = self.count_completed_tasks()
+                    print(f"  Unchecked tasks: {unchecked}")
+                    print(f"  Completed tasks: {self.completed_task_count}")
+                    print(f"  Compact threshold: {self.compact_threshold}")
+                    if self.should_compact():
+                        print("  Compaction: WOULD TRIGGER (completed >= threshold)")
+                    elif self.compact_threshold <= 0:
+                        print("  Compaction: DISABLED")
+                    else:
+                        print("  Compaction: not needed (completed < threshold)")
             print()
 
         # Show work directory info
