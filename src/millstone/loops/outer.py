@@ -243,7 +243,7 @@ class OuterLoopManager:
             return EffectRecord(
                 intent=intent,
                 status=EffectStatus.skipped,
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                timestamp=datetime.now(timezone.utc).isoformat(),
             )
         return self._effect_gate.apply(intent)
 

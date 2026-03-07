@@ -2313,8 +2313,8 @@ class Orchestrator:
             created_at = entry.get("created_at", "")
             if created_at:
                 try:
-                    created_dt = datetime.fromisoformat(created_at.rstrip("Z"))
-                    age_hours = (datetime.utcnow() - created_dt).total_seconds() / 3600
+                    created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    age_hours = (datetime.now(timezone.utc) - created_dt).total_seconds() / 3600
                     if age_hours > 24:
                         print(
                             f"[staging] WARNING: pending MCP sync for {sync_type} is "
