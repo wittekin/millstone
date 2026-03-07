@@ -2228,10 +2228,18 @@ class Orchestrator:
         self._outer_loop_manager.task_constraints = self.task_constraints
         return self._outer_loop_manager._validate_task(task_metadata)
 
-    def _validate_generated_tasks(self, old_content: str, new_content: str) -> dict:
+    def _validate_generated_tasks(
+        self,
+        old_content: str,
+        new_content: str,
+        *,
+        new_task_ids: list[str] | None = None,
+    ) -> dict:
         # Delegates to OuterLoopManager (syncs constraints first)
         self._outer_loop_manager.task_constraints = self.task_constraints
-        return self._outer_loop_manager._validate_generated_tasks(old_content, new_content)
+        return self._outer_loop_manager._validate_generated_tasks(
+            old_content, new_content, new_task_ids=new_task_ids
+        )
 
     def run_plan(self, design_path: str) -> dict:
         # Delegates to OuterLoopManager

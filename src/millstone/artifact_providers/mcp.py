@@ -229,7 +229,7 @@ class MCPTasklistProvider(TasklistProviderBase):
         cb = self._require_callback()
         prompt = (
             f"Use the {self._mcp_server} MCP to get the task with ID '{task_id}'. "
-            f"Output ONLY a JSON object with fields: id, title, status, context, criteria."
+            f"Output ONLY a JSON object with fields: id, title, status, context, criteria, tests, risk."
         )
         response = cb(prompt)
         try:
@@ -245,6 +245,8 @@ class MCPTasklistProvider(TasklistProviderBase):
             status=status,
             context=item.get("context"),
             criteria=item.get("criteria"),
+            tests=item.get("tests"),
+            risk=item.get("risk"),
         )
 
     def get_snapshot(self) -> str:
@@ -259,9 +261,9 @@ class MCPTasklistProvider(TasklistProviderBase):
         The status checkbox is always derived from ``t.status`` (not from raw),
         so the snapshot reflects the true current state.
 
-        The full-block format is required because _validate_generated_tasks()
-        calls _parse_task_metadata() on new-task text extracted from the snapshot
-        diff and validates Tests/Risk/Criteria/Context fields.
+        For MCP providers, _validate_generated_tasks() fetches full task details
+        via get_task() instead of parsing snapshot text, so compact snapshots
+        (title-only) are fine for validation purposes.
         """
         tasks = self.list_tasks()
         # Only capture the baseline on the first call; subsequent calls (e.g.
