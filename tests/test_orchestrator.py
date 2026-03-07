@@ -3194,6 +3194,25 @@ compact_threshold = 50
         finally:
             orch.cleanup()
 
+    def test_dry_run_shows_mcp_provider_info(self, temp_repo, capsys):
+        """Dry run with MCP provider shows provider name and labels, not file path."""
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        orch = Orchestrator(dry_run=True)
+        try:
+            provider = MCPTasklistProvider("github", labels=["millstone"])
+            orch._outer_loop_manager.tasklist_provider = provider
+            orch.run()
+            captured = capsys.readouterr()
+            assert "Provider: github (remote)" in captured.out
+            assert "Labels: millstone" in captured.out
+            # Tasklist Info section should not show file-based info
+            tasklist_section = captured.out.split("--- Tasklist Info ---")[1].split("---")[0]
+            assert "File:" not in tasklist_section
+            assert "Unchecked tasks:" not in tasklist_section
+        finally:
+            orch.cleanup()
+
     def test_run_compaction_logs_event(self, temp_repo):
         """run_compaction logs compaction events."""
         tasklist_path = temp_repo / ".millstone" / "tasklist.md"
@@ -15563,6 +15582,25 @@ class TestAnalyzeTasklist:
 
             captured = capsys.readouterr()
             assert "Tasklist not found" in captured.out
+            assert result["pending_count"] == 0
+            assert result["total_count"] == 0
+        finally:
+            orch.cleanup()
+
+    def test_analyze_tasklist_with_mcp_provider(self, temp_repo, capsys):
+        """--analyze-tasklist with MCP provider shows remote info, not file error."""
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        orch = Orchestrator(dry_run=False, quiet=True)
+        try:
+            provider = MCPTasklistProvider("github", labels=["millstone"])
+            orch._outer_loop_manager.tasklist_provider = provider
+            result = orch.analyze_tasklist()
+
+            captured = capsys.readouterr()
+            assert "Remote tasklist provider: github" in captured.out
+            assert "Labels: millstone" in captured.out
+            assert "Tasklist not found" not in captured.out
             assert result["pending_count"] == 0
             assert result["total_count"] == 0
         finally:
