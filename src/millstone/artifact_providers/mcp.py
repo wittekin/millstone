@@ -60,12 +60,18 @@ from millstone.policy.effects import EffectClass, EffectIntent, EffectRecord, Ef
 
 logger = logging.getLogger(__name__)
 
-_CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*\n(.*?)\n```\s*$", re.DOTALL)
+_CODE_FENCE_JSON_RE = re.compile(r"```json\s*\n(.*?)\n```", re.DOTALL)
+_CODE_FENCE_RE = re.compile(r"```\s*\n(.*?)\n```", re.DOTALL)
 
 
 def _strip_json_fences(text: str) -> str:
-    """Strip markdown code fences from agent responses before JSON parsing."""
-    m = _CODE_FENCE_RE.match(text.strip())
+    """Strip markdown code fences from agent responses before JSON parsing.
+
+    Prefers ```json fences over plain ``` fences so that prefixed prose or
+    non-JSON fenced blocks (e.g. ```python) don't shadow the JSON payload.
+    """
+    stripped = text.strip()
+    m = _CODE_FENCE_JSON_RE.search(stripped) or _CODE_FENCE_RE.search(stripped)
     return m.group(1) if m else text
 
 

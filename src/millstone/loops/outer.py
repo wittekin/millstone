@@ -2106,6 +2106,7 @@ When addressing similar areas, try a different approach than what caused the reg
         run_eval_callback: Callable[[], dict] | None = None,
         eval_on_commit: bool = False,
         log_callback: Callable[..., None] | None = None,
+        save_checkpoint_callback: Callable[..., None] | None = None,
     ) -> int:
         """Run the full autonomous cycle: analyze -> design -> plan -> build -> eval.
 
@@ -2221,6 +2222,9 @@ When addressing similar areas, try a different approach than what caused the reg
             progress("  millstone --design '<opportunity description>'")
             progress("")
             progress("Or run with --no-approve for fully autonomous operation.")
+            if save_checkpoint_callback is not None:
+                opportunity_text = selected.title if selected is not None else ""
+                save_checkpoint_callback("analyze_complete", opportunity=opportunity_text)
             return 0
 
         # Step 4: Design
@@ -2282,6 +2286,10 @@ When addressing similar areas, try a different approach than what caused the reg
             progress(f"  millstone --plan {design_ref}")
             progress("")
             progress("Or run with --no-approve for fully autonomous operation.")
+            if save_checkpoint_callback is not None:
+                save_checkpoint_callback(
+                    "design_complete", design_path=design_ref, opportunity=objective
+                )
             return 0
 
         # Step 6: Plan
@@ -2313,6 +2321,10 @@ When addressing similar areas, try a different approach than what caused the reg
             progress("  millstone")
             progress("")
             progress("Or run with --no-approve for fully autonomous operation.")
+            if save_checkpoint_callback is not None:
+                save_checkpoint_callback(
+                    "plan_complete", design_path=design_ref, tasks_created=tasks_added
+                )
             return 0
 
         # Step 7: Run inner loop (existing task execution)

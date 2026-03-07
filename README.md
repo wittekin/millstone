@@ -88,8 +88,10 @@ millstone --cycle --roadmap docs/roadmap.md
 | Scan codebase for opportunities | `millstone --analyze` |
 | Generate a design doc | `millstone --design "Add caching layer"` |
 | Turn design into atomic tasks | `millstone --plan .millstone/designs/add-caching-layer.md` |
+| Plan and execute from existing design | `millstone --plan .millstone/designs/foo.md --complete` |
 | Execute roadmap goals without analyze | `millstone --cycle --roadmap docs/roadmap.md` |
 | Run autonomous cycle end-to-end | `millstone --cycle` |
+| Resume an interrupted run | `millstone --continue` |
 
 ## How It Works
 
@@ -280,7 +282,7 @@ Creates `.millstone/` in your repo containing:
 - `runs/` - Timestamped logs of each run
 - `evals/` - JSON eval results for comparison
 - `cycles/` - Logs of autonomous cycle decisions
-- `state.json` - Saved state for --continue
+- `state.json` - Saved state for --continue (inner-loop halts and outer-loop stage checkpoints)
 - `config.toml` - Per-repo configuration
 - `STOP.md` - Created by sanity check to halt
 

@@ -35,7 +35,10 @@ millstone --eval-compare            # Compare two most recent eval runs
 millstone --analyze                 # Scan codebase for improvement opportunities
 millstone --design "opportunity"    # Create design doc for an opportunity
 millstone --plan .millstone/designs/foo.md  # Break design into tasklist tasks
+millstone --plan .millstone/designs/foo.md --complete  # Plan then execute all resulting tasks
+millstone --design "opportunity" --complete  # Design → plan → execute
 millstone --cycle                   # Full autonomous loop (analyze → design → plan → build → eval)
+millstone --continue                # Resume an interrupted run from last checkpoint
 ```
 
 ## Practical Note
@@ -91,6 +94,8 @@ Analyze → Design → Plan → [Inner Loop] → Eval → (loop back)
 
 **State management**:
 - `save_state()` / `load_state()` - State persistence for --continue
+- `save_outer_loop_checkpoint()` - Persist outer-loop stage (analyze/design/plan complete) for --continue resumption
+- `clear_state()` - Remove state file after clean completion
 
 ## Prompts
 
@@ -116,7 +121,7 @@ Templates in `prompts/` with `{{PLACEHOLDER}}` substitution. Loaded via `load_pr
 - `runs/` - Timestamped logs of each run
 - `evals/` - JSON eval results for trend analysis
 - `cycles/` - Logs of autonomous cycle decisions
-- `state.json` - Saved state for --continue recovery
+- `state.json` - Saved state for --continue (inner-loop halts and outer-loop stage checkpoints)
 - `config.toml` - Per-repo configuration
 - `STOP.md` - Created by sanity check to halt on problems
 

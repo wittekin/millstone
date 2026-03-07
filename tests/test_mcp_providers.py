@@ -1451,6 +1451,15 @@ class TestStripJsonFences:
         result = _strip_json_fences(text)
         assert result == text.strip()
 
+    def test_json_fence_preferred_over_preceding_bare_fence(self):
+        # A bare ``` fence before a ```json fence must not shadow the JSON payload.
+        text = 'prefix\n```\nnot json\n```\n```json\n[{"id": "t1"}]\n```\nsuffix'
+        assert _strip_json_fences(text) == '[{"id": "t1"}]'
+
+    def test_no_fence_returns_original(self):
+        text = "some plain text without any fences"
+        assert _strip_json_fences(text) == text
+
     def test_multiline_content_preserved(self):
         inner = '[\n  {"id": "t1"},\n  {"id": "t2"}\n]'
         text = f"```json\n{inner}\n```"
