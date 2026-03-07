@@ -57,14 +57,14 @@ class NoOpEffectProvider:
         return EffectRecord(
             intent=intent,
             status=EffectStatus.skipped,
-            timestamp=datetime.datetime.utcnow().isoformat() + "Z",
+            timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
         )
 
     def observe(self, intent: EffectIntent) -> EffectRecord:
         return EffectRecord(
             intent=intent,
             status=EffectStatus.skipped,
-            timestamp=datetime.datetime.utcnow().isoformat() + "Z",
+            timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
         )
 
     def health_check(self) -> bool:
@@ -120,7 +120,7 @@ class EffectPolicyGate:
             return EffectRecord(
                 intent=intent,
                 status=EffectStatus.denied,
-                timestamp=datetime.datetime.utcnow().isoformat() + "Z",
+                timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 error="Effect denied by approval hook",
             )
 
