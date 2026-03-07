@@ -31,11 +31,13 @@ MCP write prompt pattern::
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from pathlib import Path
 from typing import Any
 
 from millstone.artifact_providers.base import (
@@ -120,6 +122,9 @@ class MCPTasklistProvider(TasklistProviderBase):
         self._task_cache: list[TasklistItem] | None = None
         # Set by get_snapshot(); used by restore_snapshot() for scoped rollback.
         self._snapshot_task_ids: set[str] | None = None
+        self._staging_mode: bool = False
+        self._staging_path: Path | None = None
+        self._staging_provider: Any = None  # FileTasklistProvider during staging
 
     def _label_clause(self) -> str:
         return f" with label '{self._labels[0]}'" if self._labels else ""
@@ -147,6 +152,27 @@ class MCPTasklistProvider(TasklistProviderBase):
         prior session.
         """
         self._snapshot_task_ids = None
+
+    @contextlib.contextmanager
+    def staging(self, path: Path) -> Generator[None, None, None]:
+        """Context manager that redirects reads/writes to a local staging file.
+
+        While active, ``get_prompt_placeholders()`` returns file-based write
+        instructions and read methods (``list_tasks``, ``get_snapshot``, etc.)
+        delegate to a ``FileTasklistProvider`` backed by the staging file.
+        Staging mode is always reset on exit, even if an exception occurs.
+        """
+        from millstone.artifact_providers.file import FileTasklistProvider
+
+        self._staging_mode = True
+        self._staging_path = path
+        self._staging_provider = FileTasklistProvider(path)
+        try:
+            yield
+        finally:
+            self._staging_mode = False
+            self._staging_path = None
+            self._staging_provider = None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -191,7 +217,10 @@ class MCPTasklistProvider(TasklistProviderBase):
 
         Fetches all task states (todo, in_progress, done, blocked) so that
         run_plan()'s snapshot diff correctly detects newly added tasks.
+        In staging mode, delegates to the local FileTasklistProvider.
         """
+        if self._staging_mode and self._staging_provider is not None:
+            return self._staging_provider.list_tasks()
         if self._task_cache is not None:
             return self._task_cache
         cb = self._require_callback()
@@ -225,7 +254,12 @@ class MCPTasklistProvider(TasklistProviderBase):
         return results
 
     def get_task(self, task_id: str) -> TasklistItem | None:
-        """Fetch a specific task by ID via agent callback."""
+        """Fetch a specific task by ID via agent callback.
+
+        In staging mode, delegates to the local FileTasklistProvider.
+        """
+        if self._staging_mode and self._staging_provider is not None:
+            return self._staging_provider.get_task(task_id)
         cb = self._require_callback()
         prompt = (
             f"Use the {self._mcp_server} MCP to get the task with ID '{task_id}'. "
@@ -264,7 +298,11 @@ class MCPTasklistProvider(TasklistProviderBase):
         For MCP providers, _validate_generated_tasks() fetches full task details
         via get_task() instead of parsing snapshot text, so compact snapshots
         (title-only) are fine for validation purposes.
+
+        In staging mode, delegates to the local FileTasklistProvider.
         """
+        if self._staging_mode and self._staging_provider is not None:
+            return self._staging_provider.get_snapshot()
         tasks = self.list_tasks()
         # Only capture the baseline on the first call; subsequent calls (e.g.
         # during validation loops in _run_plan_impl) must not overwrite it, or
@@ -304,6 +342,8 @@ class MCPTasklistProvider(TasklistProviderBase):
         Uses ``self._snapshot_task_ids`` set by the last ``get_snapshot()`` call.
         If no snapshot was taken, logs a warning and returns without error.
 
+        In staging mode, delegates to the local FileTasklistProvider.
+
         **Known limitation**: Only removes newly added tasks. Does NOT restore
         status changes or content edits made to pre-existing tasks. This is
         acceptable because: (a) the planner prompt explicitly instructs the agent
@@ -311,6 +351,8 @@ class MCPTasklistProvider(TasklistProviderBase):
         (c) full per-task diff + restore would require O(n) update calls and
         bidirectional status mapping.
         """
+        if self._staging_mode and self._staging_provider is not None:
+            return self._staging_provider.restore_snapshot(content)
         if self._snapshot_task_ids is None:
             logger.warning(
                 "MCPTasklistProvider.restore_snapshot called before get_snapshot; "
@@ -336,7 +378,13 @@ class MCPTasklistProvider(TasklistProviderBase):
     # ------------------------------------------------------------------
 
     def get_prompt_placeholders(self) -> dict[str, str]:
-        """Return MCP-idiomatic instructions for prompt template substitution."""
+        """Return prompt placeholder instructions.
+
+        When ``staging_mode`` is active, returns file-based write instructions
+        so the agent writes to a local staging file instead of MCP.
+        """
+        if self._staging_mode and self._staging_path is not None:
+            return self._staging_provider.get_prompt_placeholders()
         label_clause = self._label_clause()
         project_clause = self._project_clause()
         return {
@@ -472,6 +520,8 @@ class MCPDesignProvider(DesignProviderBase):
         self._projects: list[str] = projects or []
         self._agent_callback: Callable[[str], str] | None = None
         self._effect_applier: Callable[[EffectIntent], EffectRecord] | None = effect_applier
+        self._staging_mode: bool = False
+        self._staging_path: Path | None = None
 
     def _project_clause(self) -> str:
         return f" in project '{self._projects[0]}'" if self._projects else ""
@@ -483,6 +533,22 @@ class MCPDesignProvider(DesignProviderBase):
     def set_effect_applier(self, apply_effect: Callable[[EffectIntent], EffectRecord]) -> None:
         """Attach an outer-loop effect applier for remote write operations."""
         self._effect_applier = apply_effect
+
+    @contextlib.contextmanager
+    def staging(self, path: Path) -> Generator[None, None, None]:
+        """Context manager that redirects writes to a local staging directory.
+
+        While active, ``get_prompt_placeholders()`` returns file-based write
+        instructions so the agent writes to a local directory instead of MCP.
+        Staging mode is always reset on exit, even if an exception occurs.
+        """
+        self._staging_mode = True
+        self._staging_path = path
+        try:
+            yield
+        finally:
+            self._staging_mode = False
+            self._staging_path = None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -584,7 +650,17 @@ class MCPDesignProvider(DesignProviderBase):
     # ------------------------------------------------------------------
 
     def get_prompt_placeholders(self) -> dict[str, str]:
-        """Return MCP-idiomatic instructions for prompt template substitution."""
+        """Return prompt placeholder instructions.
+
+        When ``staging_mode`` is active, returns file-based write instructions
+        so the agent writes to a local staging directory instead of MCP.
+        """
+        if self._staging_mode and self._staging_path is not None:
+            return {
+                "DESIGN_WRITE_INSTRUCTIONS": (
+                    f"Write the design document to `{self._staging_path}`."
+                ),
+            }
         project_clause = self._project_clause()
         return {
             "DESIGN_WRITE_INSTRUCTIONS": (
@@ -671,6 +747,8 @@ class MCPOpportunityProvider(OpportunityProviderBase):
         self._projects: list[str] = projects or []
         self._agent_callback: Callable[[str], str] | None = None
         self._effect_applier: Callable[[EffectIntent], EffectRecord] | None = effect_applier
+        self._staging_mode: bool = False
+        self._staging_path: Path | None = None
 
     def _project_clause(self) -> str:
         return f" in project '{self._projects[0]}'" if self._projects else ""
@@ -682,6 +760,22 @@ class MCPOpportunityProvider(OpportunityProviderBase):
     def set_effect_applier(self, apply_effect: Callable[[EffectIntent], EffectRecord]) -> None:
         """Attach an outer-loop effect applier for remote write operations."""
         self._effect_applier = apply_effect
+
+    @contextlib.contextmanager
+    def staging(self, path: Path) -> Generator[None, None, None]:
+        """Context manager that redirects writes to a local staging file.
+
+        While active, ``get_prompt_placeholders()`` returns file-based write
+        instructions so the agent writes to a local file instead of MCP.
+        Staging mode is always reset on exit, even if an exception occurs.
+        """
+        self._staging_mode = True
+        self._staging_path = path
+        try:
+            yield
+        finally:
+            self._staging_mode = False
+            self._staging_path = None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -783,7 +877,20 @@ class MCPOpportunityProvider(OpportunityProviderBase):
     # ------------------------------------------------------------------
 
     def get_prompt_placeholders(self) -> dict[str, str]:
-        """Return MCP-idiomatic instructions for prompt template substitution."""
+        """Return prompt placeholder instructions.
+
+        When ``staging_mode`` is active, returns file-based write instructions
+        so the agent writes to a local staging file instead of MCP.
+        """
+        if self._staging_mode and self._staging_path is not None:
+            return {
+                "OPPORTUNITY_WRITE_INSTRUCTIONS": (
+                    f"Write your findings to `{self._staging_path}`."
+                ),
+                "OPPORTUNITY_READ_INSTRUCTIONS": (
+                    f"Read opportunities from `{self._staging_path}`."
+                ),
+            }
         project_clause = self._project_clause()
         return {
             "OPPORTUNITY_WRITE_INSTRUCTIONS": (
