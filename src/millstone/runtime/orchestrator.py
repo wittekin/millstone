@@ -2254,8 +2254,344 @@ class Orchestrator:
             task_constraints=self.task_constraints,
         )
 
+    def _persist_pending_mcp_syncs(self, pending_syncs: list[dict]) -> None:
+        """Write updated pending_mcp_syncs back to state.json.
+
+        Called after each successful MCP write during sync so that
+        ``last_synced_index`` is durably persisted for retry recovery.
+        """
+        state_file = self._get_state_file_path()
+        state: dict = {}
+        if state_file.exists():
+            with contextlib.suppress(json.JSONDecodeError, OSError):
+                state = json.loads(state_file.read_text())
+        outer = state.get("outer_loop", {})
+        outer["pending_mcp_syncs"] = pending_syncs
+        state["outer_loop"] = outer
+        state_file.write_text(json.dumps(state, indent=2))
+
+    def _clear_pending_mcp_syncs(self) -> None:
+        """Remove pending_mcp_syncs from state.json after successful sync."""
+        state_file = self._get_state_file_path()
+        if not state_file.exists():
+            return
+        state: dict = {}
+        with contextlib.suppress(json.JSONDecodeError, OSError):
+            state = json.loads(state_file.read_text())
+        outer = state.get("outer_loop", {})
+        outer.pop("pending_mcp_syncs", None)
+        state["outer_loop"] = outer
+        state_file.write_text(json.dumps(state, indent=2))
+
+    def _sync_pending_mcp_writes(self, pending_syncs: list[dict]) -> None:
+        """Process pending MCP syncs from a previous run's staging files.
+
+        Reads each staging file via the appropriate file provider and writes
+        the content to the corresponding MCP provider.  After successful sync,
+        archives the staging file to ``<path>.synced``.
+
+        Args:
+            pending_syncs: List of pending sync entries from state.json.
+        """
+        from millstone.artifact_providers.file import FileOpportunityProvider
+        from millstone.artifact_providers.mcp import MCPOpportunityProvider
+
+        for entry in pending_syncs:
+            sync_type = entry.get("type")
+            staging_file = entry.get("staging_file")
+            if not sync_type or not staging_file:
+                continue
+
+            staging_path = Path(staging_file)
+            if not staging_path.is_absolute():
+                staging_path = self.repo_dir / staging_file
+            if not staging_path.exists():
+                print(f"[staging] Skipping sync: staging file not found: {staging_path}")
+                continue
+
+            # Stale sync warning (>24h)
+            created_at = entry.get("created_at", "")
+            if created_at:
+                try:
+                    created_dt = datetime.fromisoformat(created_at.rstrip("Z"))
+                    age_hours = (datetime.utcnow() - created_dt).total_seconds() / 3600
+                    if age_hours > 24:
+                        print(
+                            f"[staging] WARNING: pending MCP sync for {sync_type} is "
+                            f"{age_hours:.0f}h old — this may indicate an abandoned run. "
+                            "Proceeding with sync."
+                        )
+                except (ValueError, TypeError):
+                    pass
+
+            if sync_type == "opportunities":
+                opp_provider = self._outer_loop_manager.opportunity_provider
+                if not isinstance(opp_provider, MCPOpportunityProvider):
+                    print("[staging] Skipping sync: opportunity provider is not MCP-backed")
+                    continue
+
+                progress(f"[staging] Syncing pending MCP write: {sync_type} from {staging_file}")
+
+                # Inject agent callback for MCP writes during sync
+                opp_provider.set_agent_callback(
+                    lambda p, **k: self.run_agent(p, role="analyzer", **k)
+                )
+
+                file_prov = FileOpportunityProvider(staging_path)
+                opportunities = file_prov.list_opportunities()
+                last_synced = entry.get("last_synced_index", 0)
+                synced_count = 0
+
+                for i, opp in enumerate(opportunities):
+                    if i < last_synced:
+                        continue
+                    opp_provider.write_opportunity(opp)
+                    synced_count += 1
+                    # Persist progress after each successful write so that a
+                    # mid-sync failure can resume without replaying items.
+                    entry["last_synced_index"] = i + 1
+                    self._persist_pending_mcp_syncs(pending_syncs)
+
+                # Archive the staging file
+                archived_path = Path(str(staging_path) + ".synced")
+                staging_path.rename(archived_path)
+                # Clear pending syncs from state now that sync is complete
+                self._clear_pending_mcp_syncs()
+                progress(
+                    f"[staging] Sync complete: {synced_count} item(s) written to MCP; "
+                    f"staging file archived to {archived_path}"
+                )
+            elif sync_type == "designs":
+                from millstone.artifact_providers.file import FileDesignProvider
+                from millstone.artifact_providers.mcp import MCPDesignProvider
+
+                design_provider = self._outer_loop_manager.design_provider
+                if not isinstance(design_provider, MCPDesignProvider):
+                    print("[staging] Skipping sync: design provider is not MCP-backed")
+                    continue
+
+                progress(f"[staging] Syncing pending MCP write: {sync_type} from {staging_file}")
+
+                # Inject agent callback for MCP writes during sync
+                design_provider.set_agent_callback(
+                    lambda p, **k: self.run_agent(p, role="author", **k)
+                )
+
+                file_design_prov = FileDesignProvider(staging_path)
+                designs = file_design_prov.list_designs()
+                last_synced = entry.get("last_synced_index", 0)
+                synced_count = 0
+
+                for i, design in enumerate(designs):
+                    if i < last_synced:
+                        continue
+                    design_provider.write_design(design)
+                    synced_count += 1
+                    entry["last_synced_index"] = i + 1
+                    self._persist_pending_mcp_syncs(pending_syncs)
+
+                # Archive the staging directory
+                archived_path = Path(str(staging_path) + ".synced")
+                staging_path.rename(archived_path)
+                self._clear_pending_mcp_syncs()
+                progress(
+                    f"[staging] Sync complete: {synced_count} design(s) written to MCP; "
+                    f"staging directory archived to {archived_path}"
+                )
+            elif sync_type == "tasks":
+                from millstone.artifact_providers.file import FileTasklistProvider
+                from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+                task_provider = self._outer_loop_manager.tasklist_provider
+                if not isinstance(task_provider, MCPTasklistProvider):
+                    print("[staging] Skipping sync: tasklist provider is not MCP-backed")
+                    continue
+
+                progress(f"[staging] Syncing pending MCP write: {sync_type} from {staging_file}")
+
+                # Inject agent callback for MCP writes during sync
+                task_provider.set_agent_callback(
+                    lambda p, **k: self.run_agent(p, role="author", **k)
+                )
+
+                file_task_prov = FileTasklistProvider(staging_path)
+                tasks = file_task_prov.list_tasks()
+                last_synced = entry.get("last_synced_index", 0)
+                synced_count = 0
+
+                for i, task in enumerate(tasks):
+                    if i < last_synced:
+                        continue
+                    task_provider.append_tasks([task])
+                    synced_count += 1
+                    entry["last_synced_index"] = i + 1
+                    self._persist_pending_mcp_syncs(pending_syncs)
+
+                # Archive the staging file
+                archived_path = Path(str(staging_path) + ".synced")
+                staging_path.rename(archived_path)
+                self._clear_pending_mcp_syncs()
+                progress(
+                    f"[staging] Sync complete: {synced_count} task(s) written to MCP; "
+                    f"staging file archived to {archived_path}"
+                )
+            else:
+                print(f"[staging] Skipping unknown sync type: {sync_type}")
+
+    def _resume_from_stage(
+        self, stage: str, outer: dict, *, enforce_gates: bool = True
+    ) -> int | None:
+        """Resume outer-loop from a checkpoint stage.
+
+        Args:
+            stage: The checkpoint stage name (e.g. "analyze_complete").
+            outer: The outer_loop section from state.json.
+            enforce_gates: When True, approval gates (approve_designs,
+                approve_plans) are respected and may halt the resume.
+                When False (e.g. --continue), gates are skipped since the
+                user explicitly approved by re-running.
+
+        Returns an exit code if the stage was handled (including halting at a
+        gate), or None if the stage is unknown and the caller should fall
+        through to a full cycle.
+        """
+        progress(f"Resuming cycle from checkpoint: {stage}")
+
+        if stage == "analyze_complete":
+            design_result = self.run_design(opportunity=outer.get("opportunity", ""))
+            if not design_result.get("success"):
+                return 1
+            design_ref = design_result.get("design_file") or design_result.get("design_id") or ""
+            # Respect approve_designs gate when enforcement is active
+            if enforce_gates and self.approve_designs:
+                progress("")
+                progress("=" * 60)
+                progress("APPROVAL GATE: Design created")
+                progress("=" * 60)
+                progress("")
+                progress(f"Review the design: {design_ref}")
+                progress("Then re-run with:")
+                progress(f"  millstone --plan {design_ref}")
+                progress("")
+                progress("Or run with --no-approve for fully autonomous operation.")
+                # Build pending syncs for design if staged
+                pending_syncs: list[dict] = []
+                if design_result.get("staged"):
+                    pending_syncs.append(
+                        {
+                            "type": "designs",
+                            "staging_file": design_result["staging_file"],
+                            "last_synced_index": 0,
+                            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        }
+                    )
+                self.save_outer_loop_checkpoint(
+                    "design_complete",
+                    design_path=design_ref,
+                    opportunity=outer.get("opportunity", ""),
+                    pending_mcp_syncs=pending_syncs if pending_syncs else None,
+                )
+                return 0
+            # No gate — continue to plan
+            plan_result = self.run_plan(design_path=design_ref)
+            if not plan_result.get("success"):
+                return 1
+            # Respect approve_plans gate when enforcement is active
+            if enforce_gates and self.approve_plans:
+                progress("")
+                progress("=" * 60)
+                progress("APPROVAL GATE: Tasks added to tasklist")
+                progress("=" * 60)
+                progress("")
+                progress("Review the new tasks, then re-run to execute:")
+                progress("  millstone")
+                progress("")
+                progress("Or run with --no-approve for fully autonomous operation.")
+                plan_pending_syncs: list[dict] = []
+                if plan_result.get("staged"):
+                    plan_pending_syncs.append(
+                        {
+                            "type": "tasks",
+                            "staging_file": plan_result["staging_file"],
+                            "last_synced_index": 0,
+                            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        }
+                    )
+                self.save_outer_loop_checkpoint(
+                    "plan_complete",
+                    design_path=design_ref,
+                    tasks_created=plan_result.get("tasks_added", 0),
+                    pending_mcp_syncs=plan_pending_syncs if plan_pending_syncs else None,
+                )
+                return 0
+            self.clear_state()
+            return self.run()
+
+        elif stage == "design_complete":
+            plan_result = self.run_plan(design_path=outer.get("design_path", ""))
+            if not plan_result.get("success"):
+                return 1
+            # Respect approve_plans gate when enforcement is active
+            if enforce_gates and self.approve_plans:
+                progress("")
+                progress("=" * 60)
+                progress("APPROVAL GATE: Tasks added to tasklist")
+                progress("=" * 60)
+                progress("")
+                progress("Review the new tasks, then re-run to execute:")
+                progress("  millstone")
+                progress("")
+                progress("Or run with --no-approve for fully autonomous operation.")
+                design_plan_pending_syncs: list[dict] = []
+                if plan_result.get("staged"):
+                    design_plan_pending_syncs.append(
+                        {
+                            "type": "tasks",
+                            "staging_file": plan_result["staging_file"],
+                            "last_synced_index": 0,
+                            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        }
+                    )
+                self.save_outer_loop_checkpoint(
+                    "plan_complete",
+                    design_path=outer.get("design_path", ""),
+                    tasks_created=plan_result.get("tasks_added", 0),
+                    pending_mcp_syncs=design_plan_pending_syncs
+                    if design_plan_pending_syncs
+                    else None,
+                )
+                return 0
+            self.clear_state()
+            return self.run()
+
+        elif stage == "plan_complete":
+            self.clear_state()
+            return self.run()
+
+        else:
+            progress(f"Warning: unknown outer_loop stage '{stage}', running full cycle.")
+            return None
+
     def run_cycle(self) -> int:
-        # Delegates to OuterLoopManager
+        # Process any pending MCP syncs from a previous halted run.
+        # When syncs exist, resume from the saved outer-loop stage
+        # (e.g. analyze_complete → design → plan → execute) instead of
+        # restarting the full cycle — the analysis output has already been
+        # produced and just needed to be flushed to MCP.
+        state = self.load_state()
+        if state:
+            outer = state.get("outer_loop") or {}
+            pending_syncs = outer.get("pending_mcp_syncs")
+            if pending_syncs:
+                self._sync_pending_mcp_writes(pending_syncs)
+                # Resume from the checkpoint stage after syncing,
+                # respecting downstream approval gates.
+                stage = outer.get("stage")
+                if stage:
+                    result = self._resume_from_stage(stage, outer)
+                    if result is not None:
+                        return result
+        # No pending syncs or no checkpoint — run full cycle from scratch.
         self._capability_gate.assert_permitted(CapabilityTier.C1_LOCAL_WRITE)
         return self._outer_loop_manager.run_cycle(
             has_remaining_tasks_callback=self.has_remaining_tasks,
@@ -2997,28 +3333,14 @@ class Orchestrator:
                     stage = outer["stage"]
                     print(f"Outer-loop stage checkpoint: {stage}")
                     print()
-                    if stage == "analyze_complete":
-                        design_result = self.run_design(opportunity=outer.get("opportunity", ""))
-                        if not design_result.get("success"):
-                            return 1
-                        plan_result = self.run_plan(
-                            design_path=design_result.get("design_file")
-                            or design_result.get("design_id")
-                            or ""
-                        )
-                        if not plan_result.get("success"):
-                            return 1
-                    elif stage == "design_complete":
-                        plan_result = self.run_plan(design_path=outer.get("design_path", ""))
-                        if not plan_result.get("success"):
-                            return 1
-                    elif stage == "plan_complete":
-                        pass  # Tasks already in tasklist; fall through to inner loop.
-                    else:
-                        print(
-                            f"Warning: --continue found unknown outer_loop stage "
-                            f"'{stage}', running inner loop normally."
-                        )
+                    # Process any pending MCP syncs from the previous run.
+                    pending_syncs = outer.get("pending_mcp_syncs")
+                    if pending_syncs:
+                        self._sync_pending_mcp_writes(pending_syncs)
+                    # --continue is explicit user approval, so skip gates.
+                    result = self._resume_from_stage(stage, outer, enforce_gates=False)
+                    if result is not None:
+                        return result
                 else:
                     # Inner-loop resume (LoC/sensitive-file halt): user has
                     # already reviewed the diff, so skip mechanical checks.

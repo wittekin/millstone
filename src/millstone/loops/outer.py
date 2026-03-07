@@ -14,7 +14,7 @@ import re
 import shutil
 import subprocess
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -263,6 +263,57 @@ class OuterLoopManager:
             set_cb = getattr(provider, "set_agent_callback", None)
             if callable(set_cb):
                 set_cb(cb)
+
+    # =========================================================================
+    # Staging helpers (deferred MCP writes)
+    # =========================================================================
+
+    def _should_stage_opportunities(self) -> bool:
+        """Check whether opportunity writes should be staged locally.
+
+        Returns True when the opportunity provider is MCP-backed and the
+        ``approve_opportunities`` gate is active.  File providers are never
+        staged — they already write locally.
+        """
+        from millstone.artifact_providers.mcp import MCPOpportunityProvider
+
+        return self.approve_opportunities and isinstance(
+            self.opportunity_provider, MCPOpportunityProvider
+        )
+
+    def _get_opportunity_staging_path(self) -> Path:
+        """Return the local file path used for staging opportunities."""
+        return self.work_dir / "opportunities.md"
+
+    def _should_stage_designs(self) -> bool:
+        """Check whether design writes should be staged locally.
+
+        Returns True when the design provider is MCP-backed and the
+        ``approve_designs`` gate is active.  File providers are never
+        staged — they already write locally.
+        """
+        from millstone.artifact_providers.mcp import MCPDesignProvider
+
+        return self.approve_designs and isinstance(self.design_provider, MCPDesignProvider)
+
+    def _get_design_staging_path(self) -> Path:
+        """Return the local directory path used for staging designs."""
+        return self.work_dir / "designs"
+
+    def _should_stage_tasks(self) -> bool:
+        """Check whether task writes should be staged locally.
+
+        Returns True when the tasklist provider is MCP-backed and the
+        ``approve_plans`` gate is active.  File providers are never
+        staged — they already write locally.
+        """
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        return self.approve_plans and isinstance(self.tasklist_provider, MCPTasklistProvider)
+
+    def _get_task_staging_path(self) -> Path:
+        """Return the local file path used for staging tasks."""
+        return self.work_dir / "tasklist-staged.md"
 
     # =========================================================================
     # Roadmap helpers
@@ -649,6 +700,10 @@ class OuterLoopManager:
 
     def _get_opportunities_content(self) -> str:
         """Return current opportunities as a string for prompt injection."""
+        # When staging is active, read from the staging file instead of MCP.
+        staging_path = getattr(self.opportunity_provider, "_staging_path", None)
+        if staging_path is not None and Path(staging_path).exists():
+            return Path(staging_path).read_text()
         if hasattr(self.opportunity_provider, "path"):
             path = self.opportunity_provider.path
             if path.exists():
@@ -822,152 +877,192 @@ When addressing similar areas, try a different approach than what caused the reg
         else:
             analyze_prompt = analyze_prompt.replace("{{ROLLBACK_CONTEXT}}", "")
 
-        # Apply provider placeholders (static substitutions must precede this call).
-        opp_placeholders = self.opportunity_provider.get_prompt_placeholders()
-        analyze_prompt = apply_provider_placeholders(analyze_prompt, opp_placeholders)
+        # Deferred MCP writes: when the opportunity provider is MCP-backed and the
+        # approval gate is active, redirect the agent to write to a local staging
+        # file instead of MCP.  Uses the staging() context manager for exception
+        # safety — staging mode is always reset on exit.
+        staging_active = self._should_stage_opportunities()
+        staging_path = self._get_opportunity_staging_path() if staging_active else None
+        _staging_stack = contextlib.ExitStack()
+        if staging_active:
+            from millstone.artifact_providers.mcp import MCPOpportunityProvider
 
-        if reviewer_callback is not None:
-            # Wrap analyze generation in ArtifactReviewLoop with explicit reviewer role.
-            def produce_opportunities(feedback=None):
-                if feedback is None:
-                    run_agent_callback(analyze_prompt)
+            assert staging_path is not None
+            assert isinstance(self.opportunity_provider, MCPOpportunityProvider)
+            progress(
+                f"[staging] MCP write deferred — approval gate active; writing to {staging_path}"
+            )
+            _staging_stack.enter_context(self.opportunity_provider.staging(staging_path))
+
+        try:
+            # Apply provider placeholders (static substitutions must precede this call).
+            # In staging mode, the MCP provider returns file-based write instructions.
+            opp_placeholders = self.opportunity_provider.get_prompt_placeholders()
+            analyze_prompt = apply_provider_placeholders(analyze_prompt, opp_placeholders)
+
+            if reviewer_callback is not None:
+                # Wrap analyze generation in ArtifactReviewLoop with explicit reviewer role.
+                def produce_opportunities(feedback=None):
+                    if feedback is None:
+                        run_agent_callback(analyze_prompt)
+                    else:
+                        ops_content = self._get_opportunities_content()
+                        fix_prompt = load_prompt_callback("analyze_fix_prompt.md")
+                        fix_prompt = fix_prompt.replace("{{OPPORTUNITIES_CONTENT}}", ops_content)
+                        fix_prompt = fix_prompt.replace("{{FEEDBACK}}", feedback)
+                        fix_prompt = fix_prompt.replace("{{HARD_SIGNALS}}", signals_section)
+                        fix_prompt = fix_prompt.replace("{{PROJECT_GOALS}}", goals_section)
+                        fix_prompt = apply_provider_placeholders(fix_prompt, opp_placeholders)
+                        run_agent_callback(fix_prompt)
+                    return self._get_opportunities_content()
+
+                def review_opportunities(ops_content):
+                    review_prompt = load_prompt_callback("analyze_review_prompt.md")
+                    review_prompt = review_prompt.replace("{{OPPORTUNITIES_CONTENT}}", ops_content)
+                    review_prompt = review_prompt.replace("{{HARD_SIGNALS}}", signals_section)
+                    review_prompt = review_prompt.replace("{{PROJECT_GOALS}}", goals_section)
+                    output = reviewer_callback(review_prompt)
+                    return self._parse_analyze_review_verdict(output)
+
+                loop = ArtifactReviewLoop(
+                    name="Analyzer",
+                    producer=produce_opportunities,
+                    reviewer=review_opportunities,
+                    is_approved=lambda v: isinstance(v, dict) and v.get("verdict") == "APPROVED",
+                    max_cycles=self.max_cycles,
+                )
+                loop_result = loop.run()
+
+                opportunities_file: str | None
+                if staging_active:
+                    _file_prov = FileOpportunityProvider(staging_path)
+                    opportunities = _file_prov.list_opportunities()
+                    opportunities_file = str(staging_path)
                 else:
-                    ops_content = self._get_opportunities_content()
-                    fix_prompt = load_prompt_callback("analyze_fix_prompt.md")
-                    fix_prompt = fix_prompt.replace("{{OPPORTUNITIES_CONTENT}}", ops_content)
-                    fix_prompt = fix_prompt.replace("{{FEEDBACK}}", feedback)
-                    fix_prompt = fix_prompt.replace("{{HARD_SIGNALS}}", signals_section)
-                    fix_prompt = fix_prompt.replace("{{PROJECT_GOALS}}", goals_section)
-                    fix_prompt = apply_provider_placeholders(fix_prompt, opp_placeholders)
-                    run_agent_callback(fix_prompt)
-                return self._get_opportunities_content()
-
-            def review_opportunities(ops_content):
-                review_prompt = load_prompt_callback("analyze_review_prompt.md")
-                review_prompt = review_prompt.replace("{{OPPORTUNITIES_CONTENT}}", ops_content)
-                review_prompt = review_prompt.replace("{{HARD_SIGNALS}}", signals_section)
-                review_prompt = review_prompt.replace("{{PROJECT_GOALS}}", goals_section)
-                output = reviewer_callback(review_prompt)
-                return self._parse_analyze_review_verdict(output)
-
-            loop = ArtifactReviewLoop(
-                name="Analyzer",
-                producer=produce_opportunities,
-                reviewer=review_opportunities,
-                is_approved=lambda v: isinstance(v, dict) and v.get("verdict") == "APPROVED",
-                max_cycles=self.max_cycles,
-            )
-            loop_result = loop.run()
-
-            opportunities = self.opportunity_provider.list_opportunities()
-            opportunities_file = (
-                str(self.opportunity_provider.path)
-                if isinstance(self.opportunity_provider, FileOpportunityProvider)
-                else None
-            )
-
-            if not loop_result.success:
-                if log_callback:
-                    log_callback(
-                        "analyze_failed",
-                        reason="Review loop failed without approval",
-                        cycles=str(loop_result.cycles),
+                    opportunities = self.opportunity_provider.list_opportunities()
+                    opportunities_file = (
+                        str(self.opportunity_provider.path)
+                        if isinstance(self.opportunity_provider, FileOpportunityProvider)
+                        else None
                     )
-                return {
-                    "success": False,
+
+                if not loop_result.success:
+                    if log_callback:
+                        log_callback(
+                            "analyze_failed",
+                            reason="Review loop failed without approval",
+                            cycles=str(loop_result.cycles),
+                        )
+                    return {
+                        "success": False,
+                        "opportunities_file": opportunities_file,
+                        "cycles": loop_result.cycles,
+                        "error": loop_result.error or "Review loop failed without approval",
+                        "goals_used": goals_used,
+                        "issues_used": issues_used,
+                        "hard_signals": hard_signals,
+                    }
+
+                opportunity_count = len(opportunities)
+                result = {
+                    "success": True,
                     "opportunities_file": opportunities_file,
-                    "cycles": loop_result.cycles,
-                    "error": loop_result.error or "Review loop failed without approval",
                     "goals_used": goals_used,
                     "issues_used": issues_used,
                     "hard_signals": hard_signals,
+                    "opportunity_count": opportunity_count,
                 }
+                if staging_active:
+                    result["staged"] = True
+                    result["staging_file"] = str(staging_path)
+                if log_callback:
+                    log_callback(
+                        "analyze_completed",
+                        opportunities_file=opportunities_file,
+                        opportunity_count=str(opportunity_count),
+                        goals_used=str(goals_used),
+                        issues_used=str(issues_used),
+                        hard_signals_count=str(hard_signals.get("total_signals", 0)),
+                    )
+                print()
+                print("=== Analysis Complete ===")
+                print(f"Hard signals collected: {hard_signals.get('total_signals', 0)}")
+                print(f"Opportunities file: {opportunities_file or 'provider-managed'}")
+                print(f"Opportunities found: {opportunity_count}")
+                if goals_used:
+                    print("Project goals: incorporated from goals.md")
+                if issues_used:
+                    print("Known issues: incorporated from issues file")
+                return result
 
-            opportunity_count = len(opportunities)
+            # Single-pass path: reviewer_callback is None
+            output = run_agent_callback(analyze_prompt)
+
+            if staging_active:
+                _file_prov = FileOpportunityProvider(staging_path)
+                opportunities = _file_prov.list_opportunities()
+            else:
+                opportunities = self.opportunity_provider.list_opportunities()
+            success = len(opportunities) > 0
+            if staging_active:
+                opportunities_file = str(staging_path) if success else None
+            else:
+                opportunities_file = (
+                    str(self.opportunity_provider.path)
+                    if success and isinstance(self.opportunity_provider, FileOpportunityProvider)
+                    else None
+                )
+
             result = {
-                "success": True,
+                "success": success,
                 "opportunities_file": opportunities_file,
                 "goals_used": goals_used,
                 "issues_used": issues_used,
                 "hard_signals": hard_signals,
-                "opportunity_count": opportunity_count,
             }
-            if log_callback:
-                log_callback(
-                    "analyze_completed",
-                    opportunities_file=opportunities_file,
-                    opportunity_count=str(opportunity_count),
-                    goals_used=str(goals_used),
-                    issues_used=str(issues_used),
-                    hard_signals_count=str(hard_signals.get("total_signals", 0)),
-                )
-            print()
-            print("=== Analysis Complete ===")
-            print(f"Hard signals collected: {hard_signals.get('total_signals', 0)}")
-            print(f"Opportunities file: {opportunities_file or 'provider-managed'}")
-            print(f"Opportunities found: {opportunity_count}")
-            if goals_used:
-                print("Project goals: incorporated from goals.md")
-            if issues_used:
-                print("Known issues: incorporated from issues file")
+            if staging_active and success:
+                result["staged"] = True
+                result["staging_file"] = str(staging_path)
+
+            if success:
+                opportunity_count = len(opportunities)
+                result["opportunity_count"] = opportunity_count
+
+                if log_callback:
+                    log_callback(
+                        "analyze_completed",
+                        opportunities_file=opportunities_file,
+                        opportunity_count=str(opportunity_count),
+                        goals_used=str(goals_used),
+                        issues_used=str(issues_used),
+                        hard_signals_count=str(hard_signals.get("total_signals", 0)),
+                    )
+
+                # Print summary
+                print()
+                print("=== Analysis Complete ===")
+                print(f"Hard signals collected: {hard_signals.get('total_signals', 0)}")
+                print(f"Opportunities file: {opportunities_file or 'provider-managed'}")
+                print(f"Opportunities found: {opportunity_count}")
+                if goals_used:
+                    print("Project goals: incorporated from goals.md")
+                if issues_used:
+                    print("Known issues: incorporated from issues file")
+            else:
+                if log_callback:
+                    log_callback(
+                        "analyze_failed",
+                        reason="opportunities.md not created",
+                        output=output[:2000],
+                        hard_signals_count=str(hard_signals.get("total_signals", 0)),
+                    )
+                print()
+                print("=== Analysis Failed ===")
+                print("The analysis agent did not create opportunities.md")
+
             return result
-
-        # Single-pass path: reviewer_callback is None
-        output = run_agent_callback(analyze_prompt)
-
-        opportunities = self.opportunity_provider.list_opportunities()
-        success = len(opportunities) > 0
-        opportunities_file = (
-            str(self.opportunity_provider.path)
-            if success and isinstance(self.opportunity_provider, FileOpportunityProvider)
-            else None
-        )
-
-        result = {
-            "success": success,
-            "opportunities_file": opportunities_file,
-            "goals_used": goals_used,
-            "issues_used": issues_used,
-            "hard_signals": hard_signals,
-        }
-
-        if success:
-            opportunity_count = len(opportunities)
-            result["opportunity_count"] = opportunity_count
-
-            if log_callback:
-                log_callback(
-                    "analyze_completed",
-                    opportunities_file=opportunities_file,
-                    opportunity_count=str(opportunity_count),
-                    goals_used=str(goals_used),
-                    issues_used=str(issues_used),
-                    hard_signals_count=str(hard_signals.get("total_signals", 0)),
-                )
-
-            # Print summary
-            print()
-            print("=== Analysis Complete ===")
-            print(f"Hard signals collected: {hard_signals.get('total_signals', 0)}")
-            print(f"Opportunities file: {opportunities_file or 'provider-managed'}")
-            print(f"Opportunities found: {opportunity_count}")
-            if goals_used:
-                print("Project goals: incorporated from goals.md")
-            if issues_used:
-                print("Known issues: incorporated from issues file")
-        else:
-            if log_callback:
-                log_callback(
-                    "analyze_failed",
-                    reason="opportunities.md not created",
-                    output=output[:2000],
-                    hard_signals_count=str(hard_signals.get("total_signals", 0)),
-                )
-            print()
-            print("=== Analysis Failed ===")
-            print("The analysis agent did not create opportunities.md")
-
-        return result
+        finally:
+            _staging_stack.close()
 
     # =========================================================================
     # Design
@@ -1011,21 +1106,73 @@ When addressing similar areas, try a different approach than what caused the reg
             raise ValueError("run_agent_callback is required")
         self._inject_agent_callbacks(run_agent_callback)
 
+        # Deferred MCP writes: when the design provider is MCP-backed and the
+        # approval gate is active, redirect the agent to write to a local staging
+        # directory instead of MCP.  Uses the staging() context manager for
+        # exception safety — staging mode is always reset on exit.
+        staging_active = self._should_stage_designs()
+        staging_path = self._get_design_staging_path() if staging_active else None
+        _staging_stack = contextlib.ExitStack()
+        if staging_active:
+            from millstone.artifact_providers.mcp import MCPDesignProvider
+
+            assert staging_path is not None
+            assert isinstance(self.design_provider, MCPDesignProvider)
+            progress(
+                f"[staging] MCP write deferred — approval gate active; writing to {staging_path}"
+            )
+            staging_path.mkdir(parents=True, exist_ok=True)
+            _staging_stack.enter_context(self.design_provider.staging(staging_path))
+
+        try:
+            return self._run_design_impl(
+                opportunity=opportunity,
+                opportunity_id=opportunity_id,
+                load_prompt_callback=load_prompt_callback,
+                run_agent_callback=run_agent_callback,
+                reviewer_callback=reviewer_callback,
+                log_callback=log_callback,
+                staging_active=staging_active,
+                staging_path=staging_path,
+            )
+        finally:
+            _staging_stack.close()
+
+    def _run_design_impl(
+        self,
+        opportunity: str,
+        opportunity_id: str | None,
+        load_prompt_callback: Callable[[str], str],
+        run_agent_callback: Callable[..., str],
+        reviewer_callback: Callable[..., str] | None,
+        log_callback: Callable[..., None] | None,
+        staging_active: bool = False,
+        staging_path: Path | None = None,
+    ) -> dict:
+        """Core design implementation, factored out for staging wrapper."""
         # Load the design prompt and substitute opportunity
         design_prompt = load_prompt_callback("design_prompt.md")
         design_prompt = design_prompt.replace("{{OPPORTUNITY}}", opportunity)
         design_prompt = design_prompt.replace("{{OPPORTUNITY_ID}}", opportunity_id or "")
 
         # Apply provider placeholders (static substitutions must precede this call).
+        # In staging mode, the MCP provider returns file-based write instructions.
         design_placeholders = self.design_provider.get_prompt_placeholders()
         design_prompt = apply_provider_placeholders(design_prompt, design_placeholders)
 
         if isinstance(self.design_provider, FileDesignProvider):
             self.design_provider.path.mkdir(parents=True, exist_ok=True)
+        elif staging_active and staging_path is not None:
+            staging_path.mkdir(parents=True, exist_ok=True)
+
+        # When staging, detect designs from the staging directory instead of MCP.
+        _detect_provider = self.design_provider
+        if staging_active and staging_path is not None:
+            _detect_provider = FileDesignProvider(staging_path)
 
         # Snapshot existing designs (IDs and bodies) before invoking agent so we can
         # detect both newly-created designs and in-place revisions to existing ones.
-        existing_designs_before = self.design_provider.list_designs()
+        existing_designs_before = _detect_provider.list_designs()
         existing_design_ids = {d.design_id for d in existing_designs_before}
         existing_design_bodies = {d.design_id: d.body for d in existing_designs_before}
 
@@ -1034,10 +1181,10 @@ When addressing similar areas, try a different approach than what caused the reg
             detected_design_id: list[str | None] = [None]
 
             def _find_new_or_revised_design() -> object:
-                current = self.design_provider.list_designs()
+                current = _detect_provider.list_designs()
                 new = [d for d in current if d.design_id not in existing_design_ids]
                 if not new and opportunity_id:
-                    rev = self.design_provider.get_design(opportunity_id)
+                    rev = _detect_provider.get_design(opportunity_id)
                     if rev is not None and rev.body != existing_design_bodies.get(opportunity_id):
                         new = [rev]
                 if not new:
@@ -1056,7 +1203,7 @@ When addressing similar areas, try a different approach than what caused the reg
                 else:
                     design_content = ""
                     if detected_design_id[0]:
-                        d = self.design_provider.get_design(detected_design_id[0])
+                        d = _detect_provider.get_design(detected_design_id[0])
                         if d:
                             design_content = d.body
                     fix_prompt = load_prompt_callback("design_fix_prompt.md")
@@ -1072,8 +1219,8 @@ When addressing similar areas, try a different approach than what caused the reg
                         detected_design_id[0] = found.design_id
                 if detected_design_id[0] is None:
                     return None
-                if isinstance(self.design_provider, FileDesignProvider):
-                    return str(self.design_provider.path / f"{detected_design_id[0]}.md")
+                if isinstance(_detect_provider, FileDesignProvider):
+                    return str(_detect_provider.path / f"{detected_design_id[0]}.md")
                 return detected_design_id[0]
 
             def review_design_for_loop(design_path_or_id):
@@ -1109,11 +1256,11 @@ When addressing similar areas, try a different approach than what caused the reg
             loop_result = loop.run()
 
             if loop_result.success and detected_design_id[0]:
-                new_design = self.design_provider.get_design(detected_design_id[0])
+                new_design = _detect_provider.get_design(detected_design_id[0])
                 if new_design:
                     checker = ReferenceIntegrityChecker(
                         opportunity_provider=self.opportunity_provider,
-                        design_provider=self.design_provider,
+                        design_provider=_detect_provider,
                     )
                     try:
                         checker.check_design(new_design)
@@ -1138,8 +1285,8 @@ When addressing similar areas, try a different approach than what caused the reg
                         }
 
                     design_file = (
-                        str(self.design_provider.path / f"{new_design.design_id}.md")
-                        if isinstance(self.design_provider, FileDesignProvider)
+                        str(_detect_provider.path / f"{new_design.design_id}.md")
+                        if isinstance(_detect_provider, FileDesignProvider)
                         else None
                     )
                     result = {
@@ -1147,6 +1294,9 @@ When addressing similar areas, try a different approach than what caused the reg
                         "design_file": design_file,
                         "design_id": new_design.design_id,
                     }
+                    if staging_active:
+                        result["staged"] = True
+                        result["staging_file"] = str(staging_path)
                     if log_callback:
                         log_callback(
                             "design_completed",
@@ -1189,10 +1339,10 @@ When addressing similar areas, try a different approach than what caused the reg
         #   its ID did not change — the agent edited the existing file per prompt instructions.
         # In-place (opportunity_id=None, e.g. --design CLI path): fall back to body-content
         #   comparison across all pre-existing designs; any change counts as a revision.
-        current_designs = self.design_provider.list_designs()
+        current_designs = _detect_provider.list_designs()
         new_designs = [d for d in current_designs if d.design_id not in existing_design_ids]
         if not new_designs and opportunity_id:
-            revised = self.design_provider.get_design(opportunity_id)
+            revised = _detect_provider.get_design(opportunity_id)
             if revised is not None and revised.body != existing_design_bodies.get(opportunity_id):
                 new_designs = [revised]
         if not new_designs:
@@ -1209,7 +1359,7 @@ When addressing similar areas, try a different approach than what caused the reg
             new_design = new_designs[0]
             checker = ReferenceIntegrityChecker(
                 opportunity_provider=self.opportunity_provider,
-                design_provider=self.design_provider,
+                design_provider=_detect_provider,
             )
             try:
                 checker.check_design(new_design)
@@ -1234,8 +1384,8 @@ When addressing similar areas, try a different approach than what caused the reg
                 }
 
             design_file = (
-                str(self.design_provider.path / f"{new_design.design_id}.md")
-                if isinstance(self.design_provider, FileDesignProvider)
+                str(_detect_provider.path / f"{new_design.design_id}.md")
+                if isinstance(_detect_provider, FileDesignProvider)
                 else None
             )
             result = {
@@ -1243,6 +1393,9 @@ When addressing similar areas, try a different approach than what caused the reg
                 "design_file": design_file,
                 "design_id": new_design.design_id,
             }
+            if staging_active:
+                result["staged"] = True
+                result["staging_file"] = str(staging_path)
 
             if log_callback:
                 log_callback(
@@ -1795,11 +1948,17 @@ When addressing similar areas, try a different approach than what caused the reg
         }
 
     def _is_mcp_provider(self) -> bool:
-        """Check if the current tasklist provider is an MCP provider."""
+        """Check if the current tasklist provider is an active MCP provider.
+
+        Returns False when the provider is in staging mode, since staged tasks
+        live in a local file and should use file-based validation.
+        """
         try:
             from millstone.artifact_providers.mcp import MCPTasklistProvider
 
-            return isinstance(self.tasklist_provider, MCPTasklistProvider)
+            if not isinstance(self.tasklist_provider, MCPTasklistProvider):
+                return False
+            return not self.tasklist_provider._staging_mode
         except ImportError:
             return False
 
@@ -1901,6 +2060,24 @@ When addressing similar areas, try a different approach than what caused the reg
             raise ValueError("run_agent_callback is required")
         self._inject_agent_callbacks(run_agent_callback)
 
+        # Deferred MCP writes: when the tasklist provider is MCP-backed and the
+        # approval gate is active, redirect the agent to write to a local staging
+        # file instead of MCP.  Uses the staging() context manager for exception
+        # safety — staging mode is always reset on exit.
+        staging_active = self._should_stage_tasks()
+        staging_path = self._get_task_staging_path() if staging_active else None
+        _staging_stack = contextlib.ExitStack()
+        if staging_active:
+            from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+            assert staging_path is not None
+            assert isinstance(self.tasklist_provider, MCPTasklistProvider)
+            progress(
+                f"[staging] MCP write deferred — approval gate active; writing to {staging_path}"
+            )
+            staging_path.parent.mkdir(parents=True, exist_ok=True)
+            _staging_stack.enter_context(self.tasklist_provider.staging(staging_path))
+
         # Use passed constraints or fall back to instance variable
         if task_constraints is not None:
             saved_constraints = self.task_constraints
@@ -1909,13 +2086,18 @@ When addressing similar areas, try a different approach than what caused the reg
             saved_constraints = None
 
         try:
-            return self._run_plan_impl(
+            result = self._run_plan_impl(
                 design_path=design_path,
                 load_prompt_callback=load_prompt_callback,
                 run_agent_callback=run_agent_callback,
                 log_callback=log_callback,
             )
+            if staging_active and result.get("success"):
+                result["staged"] = True
+                result["staging_file"] = str(staging_path)
+            return result
         finally:
+            _staging_stack.close()
             if saved_constraints is not None:
                 self.task_constraints = saved_constraints
 
@@ -2167,19 +2349,21 @@ When addressing similar areas, try a different approach than what caused the reg
     # Opportunity selection
     # =========================================================================
 
-    def _select_opportunity(self) -> Opportunity | None:
+    def _select_opportunity(
+        self, opportunities: list[Opportunity] | None = None
+    ) -> Opportunity | None:
         """Return the top identified opportunity by ROI score.
 
-        Calls opportunity_provider.list_opportunities(), filters to identified status
-        only, sorts by roi_score descending (None treated as 0.0), and returns the
-        selected Opportunity record.
+        When *opportunities* is provided (e.g. read from a staging file), uses
+        that list directly.  Otherwise queries the configured provider.
 
         Returns:
             Opportunity or None if no identified opportunities found.
         """
         from millstone.artifacts.models import OpportunityStatus
 
-        opportunities = self.opportunity_provider.list_opportunities()
+        if opportunities is None:
+            opportunities = self.opportunity_provider.list_opportunities()
         identified = [o for o in opportunities if o.status == OpportunityStatus.identified]
 
         if not identified:
@@ -2270,7 +2454,15 @@ When addressing similar areas, try a different approach than what caused the reg
             opportunity_count = analyze_result.get("opportunity_count", 0)
             self._cycle_log("ANALYZE", f"Found {opportunity_count} opportunities")
 
-            selected = self._select_opportunity()
+            # When opportunities were staged to a local file (deferred MCP write),
+            # read them from the staging file for selection.
+            _staged_opps = None
+            if analyze_result.get("staged"):
+                _staging_file = analyze_result["staging_file"]
+                _file_prov = FileOpportunityProvider(Path(_staging_file))
+                _staged_opps = _file_prov.list_opportunities()
+
+            selected = self._select_opportunity(opportunities=_staged_opps)
             if not selected:
                 self._cycle_log("SELECT", "No opportunities found")
                 self._cycle_log_complete("SUCCESS")
@@ -2289,9 +2481,17 @@ When addressing similar areas, try a different approach than what caused the reg
             )
             from millstone.artifacts.models import OpportunityStatus
 
-            self.opportunity_provider.update_opportunity_status(
-                selected.opportunity_id, OpportunityStatus.adopted
-            )
+            # Skip MCP status update when staged — opportunities haven't been
+            # written to MCP yet; update the staging file instead.
+            if analyze_result.get("staged"):
+                _file_prov = FileOpportunityProvider(Path(analyze_result["staging_file"]))
+                _file_prov.update_opportunity_status(
+                    selected.opportunity_id, OpportunityStatus.adopted
+                )
+            else:
+                self.opportunity_provider.update_opportunity_status(
+                    selected.opportunity_id, OpportunityStatus.adopted
+                )
             self._cycle_log(
                 "ADOPT",
                 json.dumps(
@@ -2321,7 +2521,22 @@ When addressing similar areas, try a different approach than what caused the reg
             progress("Or run with --no-approve for fully autonomous operation.")
             if save_checkpoint_callback is not None:
                 opportunity_text = selected.title if selected is not None else ""
-                save_checkpoint_callback("analyze_complete", opportunity=opportunity_text)
+                # Include pending MCP sync info when opportunities were staged.
+                pending_syncs: list[dict[str, Any]] = []
+                if analyze_result.get("staged"):
+                    pending_syncs.append(
+                        {
+                            "type": "opportunities",
+                            "staging_file": analyze_result["staging_file"],
+                            "last_synced_index": 0,
+                            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        }
+                    )
+                save_checkpoint_callback(
+                    "analyze_complete",
+                    opportunity=opportunity_text,
+                    pending_mcp_syncs=pending_syncs if pending_syncs else None,
+                )
             return 0
 
         # Step 4: Design
@@ -2384,8 +2599,22 @@ When addressing similar areas, try a different approach than what caused the reg
             progress("")
             progress("Or run with --no-approve for fully autonomous operation.")
             if save_checkpoint_callback is not None:
+                # Include pending MCP sync info when design was staged.
+                design_pending_syncs: list[dict[str, Any]] = []
+                if design_result.get("staged"):
+                    design_pending_syncs.append(
+                        {
+                            "type": "designs",
+                            "staging_file": design_result["staging_file"],
+                            "last_synced_index": 0,
+                            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        }
+                    )
                 save_checkpoint_callback(
-                    "design_complete", design_path=design_ref, opportunity=objective
+                    "design_complete",
+                    design_path=design_ref,
+                    opportunity=objective,
+                    pending_mcp_syncs=design_pending_syncs if design_pending_syncs else None,
                 )
             return 0
 
@@ -2419,8 +2648,22 @@ When addressing similar areas, try a different approach than what caused the reg
             progress("")
             progress("Or run with --no-approve for fully autonomous operation.")
             if save_checkpoint_callback is not None:
+                # Include pending MCP sync info when tasks were staged.
+                plan_pending_syncs: list[dict[str, Any]] = []
+                if plan_result.get("staged"):
+                    plan_pending_syncs.append(
+                        {
+                            "type": "tasks",
+                            "staging_file": plan_result["staging_file"],
+                            "last_synced_index": 0,
+                            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        }
+                    )
                 save_checkpoint_callback(
-                    "plan_complete", design_path=design_ref, tasks_created=tasks_added
+                    "plan_complete",
+                    design_path=design_ref,
+                    tasks_created=tasks_added,
+                    pending_mcp_syncs=plan_pending_syncs if plan_pending_syncs else None,
                 )
             return 0
 
