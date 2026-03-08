@@ -16277,6 +16277,26 @@ class TestSplitTask:
         finally:
             orch.cleanup()
 
+    def test_split_task_remote_provider_exits_with_error(self, temp_repo, monkeypatch, capsys):
+        """--split-task with remote provider prints error and exits 1."""
+        import sys
+
+        from millstone.runtime.orchestrator import main
+
+        # Configure remote provider
+        config_dir = temp_repo / ".millstone"
+        config_dir.mkdir(exist_ok=True)
+        (config_dir / "config.toml").write_text('tasklist_provider = "mcp"\n')
+
+        monkeypatch.setattr(sys, "argv", ["millstone", "--split-task", "1"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "not supported for remote providers" in captured.err
+
 
 class TestProgressEstimation:
     """Tests for progress estimation functionality."""
