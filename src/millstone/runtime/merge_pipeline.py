@@ -98,6 +98,7 @@ class MergePipeline:
         loc_threshold: int,
         max_retries: int,
         tasklist: str = "docs/tasklist.md",
+        skip_tasklist_mark: bool = False,
     ):
         self.repo_dir = Path(repo_dir)
         self.integration_worktree = Path(integration_worktree)
@@ -109,6 +110,7 @@ class MergePipeline:
         self.policy = policy or {}
         self.loc_threshold = int(loc_threshold)
         self.max_retries = int(max_retries)
+        self.skip_tasklist_mark = skip_tasklist_mark
 
         # Bind tasklist operations to the integration checkout.
         self.tasklist_manager = TasklistManager(
@@ -232,35 +234,37 @@ class MergePipeline:
                     )
 
                 # Mark task complete in the integration checkout.
-                with self.tasklist_lock:
-                    task_already_complete = False
-                    ok = self.tasklist_manager.mark_task_complete_by_id(task_id, taskmap)
-                    if not ok:
-                        completion_state = self.tasklist_manager.task_completion_by_id(
-                            task_id, taskmap
-                        )
-                        if completion_state is True:
-                            task_already_complete = True
-                        else:
-                            self._reset_hard(base_head)
-                            return IntegrationResult(
-                                success=False,
-                                status="land_fail",
-                                error="task_id_not_found_or_already_complete",
+                # Skipped for MCP providers — they handle completion externally.
+                if not self.skip_tasklist_mark:
+                    with self.tasklist_lock:
+                        task_already_complete = False
+                        ok = self.tasklist_manager.mark_task_complete_by_id(task_id, taskmap)
+                        if not ok:
+                            completion_state = self.tasklist_manager.task_completion_by_id(
+                                task_id, taskmap
                             )
-                    self._git("add", self.tasklist_manager.tasklist)
-                    has_staged_changes = (
-                        self._git("diff", "--cached", "--quiet", check=False).returncode != 0
-                    )
-                    if has_staged_changes:
-                        msg = f"millstone: mark task {task_id} complete"
-                        if task_already_complete:
-                            msg = f"millstone: sync task {task_id} tasklist updates"
-                        self._git(
-                            "commit",
-                            "-m",
-                            msg,
+                            if completion_state is True:
+                                task_already_complete = True
+                            else:
+                                self._reset_hard(base_head)
+                                return IntegrationResult(
+                                    success=False,
+                                    status="land_fail",
+                                    error="task_id_not_found_or_already_complete",
+                                )
+                        self._git("add", self.tasklist_manager.tasklist)
+                        has_staged_changes = (
+                            self._git("diff", "--cached", "--quiet", check=False).returncode != 0
                         )
+                        if has_staged_changes:
+                            msg = f"millstone: mark task {task_id} complete"
+                            if task_already_complete:
+                                msg = f"millstone: sync task {task_id} tasklist updates"
+                            self._git(
+                                "commit",
+                                "-m",
+                                msg,
+                            )
 
                 # Land: update base branch ref via local push.
                 push = subprocess.run(
