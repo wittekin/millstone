@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.4.2] - 2026-03-07
+
+### Fixed
+- Show MCP provider name and labels in startup header instead of local file path (#56).
+- `--status` now shows live open task count from remote provider (#57).
+- `--research` mode now closes remote tasks via MCP after completing research output (#58).
+- `tasklist_prompt.md` now explicitly forbids builder from committing during implementation (#60).
+- Orchestrator detects when builder commits early and uses committed diff for review (#60).
+
 ## [0.4.1] - 2026-03-07
 
 ### Added
