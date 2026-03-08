@@ -1052,13 +1052,13 @@ When addressing similar areas, try a different approach than what caused the reg
                 if log_callback:
                     log_callback(
                         "analyze_failed",
-                        reason="opportunities.md not created",
+                        reason="no opportunities created",
                         output=output[:2000],
                         hard_signals_count=str(hard_signals.get("total_signals", 0)),
                     )
                 print()
                 print("=== Analysis Failed ===")
-                print("The analysis agent did not create opportunities.md")
+                print("The analysis agent did not create any opportunities")
 
             return result
         finally:
@@ -2446,7 +2446,7 @@ When addressing similar areas, try a different approach than what caused the reg
             analyze_result = run_analyze_callback(None)
 
             if not analyze_result.get("success", False):
-                self._cycle_log("ANALYZE", "Failed - opportunities.md not created")
+                self._cycle_log("ANALYZE", "Failed - no opportunities created")
                 self._cycle_log_complete("FAILED")
                 progress("Analysis failed. Cannot continue cycle.")
                 return 1
@@ -2515,7 +2515,21 @@ When addressing similar areas, try a different approach than what caused the reg
             progress("")
             if selected is not None:
                 progress(f"Selected opportunity: {selected.opportunity_id} ({selected.title})")
-            progress("Review opportunities.md and re-run with:")
+            if analyze_result.get("staged"):
+                progress(
+                    f"Review the staged opportunities in: {analyze_result['staging_file']}"
+                    " and re-run with:"
+                )
+            else:
+                from millstone.artifact_providers.mcp import MCPOpportunityProvider
+
+                if isinstance(self.opportunity_provider, MCPOpportunityProvider):
+                    progress(
+                        f"Review the opportunities in: {self.opportunity_provider._mcp_server}"
+                        " and re-run with:"
+                    )
+                else:
+                    progress("Review opportunities.md and re-run with:")
             progress("  millstone --design '<opportunity description>'")
             progress("")
             progress("Or run with --no-approve for fully autonomous operation.")
@@ -2642,7 +2656,23 @@ When addressing similar areas, try a different approach than what caused the reg
             progress("APPROVAL GATE: Tasks added to tasklist")
             progress("=" * 60)
             progress("")
-            progress(f"Review the new tasks in: {self.tasklist}")
+            if plan_result.get("staged"):
+                progress(f"Review the staged tasks in: {plan_result['staging_file']}")
+            else:
+                from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+                if isinstance(self.tasklist_provider, MCPTasklistProvider):
+                    label_str = (
+                        ", ".join(self.tasklist_provider._labels)
+                        if self.tasklist_provider._labels
+                        else "none"
+                    )
+                    progress(
+                        f"Review the new tasks in: {self.tasklist_provider._mcp_server}"
+                        f" (labels: {label_str})"
+                    )
+                else:
+                    progress(f"Review the new tasks in: {self.tasklist}")
             progress("Then re-run to execute:")
             progress("  millstone")
             progress("")
