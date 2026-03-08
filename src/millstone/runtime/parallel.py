@@ -12,7 +12,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from millstone.artifact_providers.mcp import MCPTasklistProvider
 from millstone.artifacts.eval_manager import EvalManager
+from millstone.artifacts.models import TaskStatus
 from millstone.runtime.locks import AdvisoryLock
 from millstone.runtime.merge_pipeline import MergePipeline
 from millstone.runtime.parallel_state import ParallelState
@@ -361,6 +363,108 @@ class ParallelOrchestrator:
             merge_queue=saved_state.get("merge_queue", []) or [],
         )
 
+    def _is_mcp_provider(self) -> bool:
+        """Check whether the configured tasklist provider is MCP-backed."""
+        provider = self.orch._outer_loop_manager.tasklist_provider
+        return isinstance(provider, MCPTasklistProvider)
+
+    def _fetch_tasks_from_provider(self) -> list[dict]:
+        """Fetch tasks from the MCP provider, returning the scheduler-compatible format.
+
+        Returns the same ``{task_id, checked, title, raw_text, index}`` dicts that
+        ``TasklistManager.extract_all_task_ids()`` produces so that the rest of the
+        parallel pipeline works unchanged.
+        """
+        provider = self.orch._outer_loop_manager.tasklist_provider
+        if not isinstance(provider, MCPTasklistProvider):
+            raise TypeError("_fetch_tasks_from_provider requires an MCPTasklistProvider")
+        if provider._agent_callback is None:
+            provider.set_agent_callback(lambda p, **k: self.orch.run_agent(p, role="author", **k))
+        provider.invalidate_cache()
+        items = provider.list_tasks()
+        results: list[dict] = []
+        for index, item in enumerate(items):
+            checked = item.status not in (TaskStatus.todo, TaskStatus.in_progress)
+            results.append(
+                {
+                    "task_id": item.task_id,
+                    "checked": checked,
+                    "title": item.title,
+                    "raw_text": "",
+                    "index": index,
+                }
+            )
+        return results
+
+    def _fetch_task_body(self, task_id: str) -> str:
+        """Fetch full task body from MCP provider via get_task().
+
+        Returns a formatted text block with title, context, criteria, tests,
+        and risk — suitable for passing as ``--task`` to a worker subprocess.
+
+        Raises ``RuntimeError`` if the provider returns ``None`` so that callers
+        can surface the failure instead of silently falling back to title-only.
+        """
+        provider = self.orch._outer_loop_manager.tasklist_provider
+        if not isinstance(provider, MCPTasklistProvider):
+            return ""
+        item = provider.get_task(task_id)
+        if item is None:
+            raise RuntimeError(f"MCP get_task('{task_id}') returned None")
+        parts = [item.title]
+        if item.context:
+            parts.append(f"  - Context: {item.context}")
+        if item.criteria:
+            parts.append(f"  - Criteria: {item.criteria}")
+        if item.tests:
+            parts.append(f"  - Tests: {item.tests}")
+        if item.risk:
+            parts.append(f"  - Risk: {item.risk}")
+        return "\n".join(parts)
+
+    def _analyze_tasks_mcp(self, task_dicts: list[dict]) -> tuple[list[dict], list[dict]]:
+        """Build enriched-task list for MCP tasks (no dependency graph).
+
+        Fetches full task body from the MCP provider so that worker subprocesses
+        receive meaningful task descriptions via ``--task``.
+
+        Raises ``RuntimeError`` if any task body cannot be fetched.
+        """
+        enriched: list[dict] = []
+        for task in task_dicts:
+            task_id = task["task_id"]
+            body = self._fetch_task_body(task_id)
+            risk = None
+            if body:
+                # Extract risk from fetched body if present.
+                for line in body.splitlines():
+                    stripped = line.strip()
+                    if stripped.lower().startswith("- risk:"):
+                        risk = stripped.split(":", 1)[1].strip() or None
+                        break
+            enriched.append(
+                {
+                    "task_id": task_id,
+                    "title": task.get("title", ""),
+                    "group": None,
+                    "file_refs": [],
+                    "risk": risk,
+                    "raw_text": body or task.get("title", ""),
+                }
+            )
+        return enriched, []
+
+    def _mark_mcp_task_done(self, task_id: str) -> None:
+        """Mark a task as done via the MCP provider after a successful merge.
+
+        Raises on failure so the caller can treat it as a merge failure,
+        preventing the task from being silently left open on the remote.
+        """
+        provider = self.orch._outer_loop_manager.tasklist_provider
+        if not isinstance(provider, MCPTasklistProvider):
+            return
+        provider.update_task_status(task_id, TaskStatus.done)
+
     def _make_eval_manager(self, repo_dir: Path, work_dir: Path) -> EvalManager:
         work_dir.mkdir(parents=True, exist_ok=True)
         return EvalManager(
@@ -583,7 +687,10 @@ class ParallelOrchestrator:
         base_ref = self.orch.base_ref or base_branch
         base_ref_sha = self._rev_parse(base_ref)
 
-        tasks = self.orch._tasklist_manager.extract_all_task_ids()
+        if self._is_mcp_provider():
+            tasks = self._fetch_tasks_from_provider()
+        else:
+            tasks = self.orch._tasklist_manager.extract_all_task_ids()
         max_tasks = max(0, int(self.orch.max_tasks))
         pending = [t for t in tasks if not t["checked"]][:max_tasks]
 
@@ -622,6 +729,7 @@ class ParallelOrchestrator:
             self.orch.parallel_integration_branch,
             base_ref_sha,
         )
+        use_mcp = self._is_mcp_provider()
         merge_pipeline = MergePipeline(
             repo_dir=self.orch.repo_dir,
             integration_worktree=integration_wt,
@@ -634,9 +742,12 @@ class ParallelOrchestrator:
             loc_threshold=self.orch.loc_threshold,
             max_retries=self.orch.merge_max_retries,
             tasklist=self.orch.tasklist,
+            skip_tasklist_mark=use_mcp,
         )
-
-        tasks = self.orch._tasklist_manager.extract_all_task_ids()
+        if use_mcp:
+            tasks = self._fetch_tasks_from_provider()
+        else:
+            tasks = self.orch._tasklist_manager.extract_all_task_ids()
         taskmap = {t["task_id"]: {"index": t["index"]} for t in tasks}
         self.parallel_state.save_taskmap(taskmap)
 
@@ -652,7 +763,10 @@ class ParallelOrchestrator:
         poll_interval = 0.1
 
         try:
-            enriched_tasks, dependencies = self._analyze_tasks(pending)
+            if use_mcp:
+                enriched_tasks, dependencies = self._analyze_tasks_mcp(pending)
+            else:
+                enriched_tasks, dependencies = self._analyze_tasks(pending)
             scheduler = TaskScheduler(
                 concurrency=max(1, int(self.orch.parallel_concurrency)),
                 high_risk_concurrency=max(1, int(self.orch.high_risk_concurrency)),
@@ -790,6 +904,21 @@ class ParallelOrchestrator:
                         )
 
                         if merge_res.success:
+                            if use_mcp:
+                                try:
+                                    self._mark_mcp_task_done(task_id)
+                                except Exception as exc:
+                                    reason = f"mcp_status_update_failed: {exc}"
+                                    scheduler.mark_failed(task_id, reason)
+                                    task_records[task_id] = {
+                                        "status": "failed",
+                                        "error": reason,
+                                        "completed_at": time.time(),
+                                    }
+                                    failures = True
+                                    in_flight_worktrees.pop(task_id, None)
+                                    in_flight_started_at.pop(task_id, None)
+                                    continue
                             completed.add(task_id)
                             scheduler.mark_completed(task_id)
                             task_records[task_id] = {
@@ -846,7 +975,7 @@ class ParallelOrchestrator:
 
                 if scheduler.has_remaining() and in_flight:
                     time.sleep(poll_interval)
-        except ValueError as e:
+        except (ValueError, RuntimeError) as e:
             print(f"ERROR: {e}")
             failures = True
         finally:

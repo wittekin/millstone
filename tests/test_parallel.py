@@ -1446,3 +1446,356 @@ class TestParallelOrchestratorPhase2:
         assert state is not None
         assert state["task_records"]["t1"]["status"] == "failed"
         assert "worker failed" in state["task_records"]["t1"]["error"]
+
+
+class TestMCPProviderWorktrees:
+    """Tests for MCP provider compatibility with worktree parallel mode."""
+
+    def test_fetch_tasks_from_mcp_provider(self, temp_repo):
+        """_fetch_tasks_from_provider converts TasklistItems to scheduler format."""
+        from unittest.mock import MagicMock
+
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        orch = Orchestrator(
+            parallel_enabled=True,
+            base_branch=base_branch,
+            repo_dir=str(temp_repo),
+        )
+
+        mock_provider = MagicMock(spec=MCPTasklistProvider)
+        mock_provider._agent_callback = lambda p, **k: ""
+        mock_provider.list_tasks.return_value = [
+            TasklistItem(task_id="issue-1", title="First task", status=TaskStatus.todo),
+            TasklistItem(task_id="issue-2", title="Second task", status=TaskStatus.done),
+            TasklistItem(task_id="issue-3", title="Third task", status=TaskStatus.todo),
+        ]
+        orch._outer_loop_manager.tasklist_provider = mock_provider
+
+        po = ParallelOrchestrator(orch)
+        assert po._is_mcp_provider()
+
+        tasks = po._fetch_tasks_from_provider()
+        assert len(tasks) == 3
+        assert tasks[0] == {
+            "task_id": "issue-1",
+            "checked": False,
+            "title": "First task",
+            "raw_text": "",
+            "index": 0,
+        }
+        assert tasks[1]["checked"] is True  # done -> checked
+        assert tasks[2]["checked"] is False  # todo -> not checked
+
+    def test_analyze_tasks_mcp_returns_no_dependencies(self, temp_repo):
+        """_analyze_tasks_mcp fetches full task body and returns enriched tasks
+        with empty dependency list."""
+        from unittest.mock import MagicMock
+
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        orch = Orchestrator(
+            parallel_enabled=True,
+            base_branch=base_branch,
+            repo_dir=str(temp_repo),
+        )
+
+        mock_provider = MagicMock(spec=MCPTasklistProvider)
+        mock_provider.get_task.side_effect = [
+            TasklistItem(
+                task_id="t1",
+                title="Task one",
+                status=TaskStatus.todo,
+                context="Do thing one",
+                risk="high",
+            ),
+            TasklistItem(
+                task_id="t2",
+                title="Task two",
+                status=TaskStatus.todo,
+                criteria="Must work",
+            ),
+        ]
+        orch._outer_loop_manager.tasklist_provider = mock_provider
+
+        po = ParallelOrchestrator(orch)
+
+        task_dicts = [
+            {"task_id": "t1", "title": "Task one", "raw_text": "", "index": 0, "checked": False},
+            {"task_id": "t2", "title": "Task two", "raw_text": "", "index": 1, "checked": False},
+        ]
+        enriched, deps = po._analyze_tasks_mcp(task_dicts)
+        assert len(enriched) == 2
+        assert deps == []
+        assert enriched[0]["task_id"] == "t1"
+        assert enriched[0]["group"] is None
+        assert enriched[0]["file_refs"] == []
+        # raw_text now contains full task body from get_task()
+        assert "Task one" in enriched[0]["raw_text"]
+        assert "Do thing one" in enriched[0]["raw_text"]
+        assert enriched[0]["risk"] == "high"
+        # Second task has criteria but no risk
+        assert "Must work" in enriched[1]["raw_text"]
+        assert enriched[1]["risk"] is None
+        assert mock_provider.get_task.call_count == 2
+
+    def test_dry_run_with_mcp_provider(self, temp_repo, capsys):
+        """--dry-run with MCP provider fetches tasks from remote backend."""
+        from unittest.mock import MagicMock
+
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        orch = Orchestrator(
+            parallel_enabled=True,
+            dry_run=True,
+            base_branch=base_branch,
+            repo_dir=str(temp_repo),
+        )
+
+        mock_provider = MagicMock(spec=MCPTasklistProvider)
+        mock_provider._agent_callback = lambda p, **k: ""
+        mock_provider.list_tasks.return_value = [
+            TasklistItem(task_id="gh-10", title="MCP task A", status=TaskStatus.todo),
+            TasklistItem(task_id="gh-11", title="MCP task B", status=TaskStatus.todo),
+        ]
+        orch._outer_loop_manager.tasklist_provider = mock_provider
+
+        po = ParallelOrchestrator(orch)
+        rc = po.run()
+        assert rc == 0
+
+        captured = capsys.readouterr()
+        assert "tasks_pending: 2" in captured.out
+        assert "gh-10" in captured.out
+        assert "gh-11" in captured.out
+        mock_provider.list_tasks.assert_called_once()
+
+    def test_run_with_mcp_provider(self, temp_repo):
+        """Full run() with MCP provider: fetches task body, runs real merge pipeline,
+        and marks task done via MCP provider."""
+        from unittest.mock import MagicMock
+
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+
+        # Detach HEAD so base_branch is not checked out in a worktree.
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
+
+        mock_provider = MagicMock(spec=MCPTasklistProvider)
+        mock_provider._agent_callback = lambda p, **k: ""
+        mock_provider.list_tasks.return_value = [
+            TasklistItem(task_id="mcp-1", title="Remote task", status=TaskStatus.todo),
+        ]
+        # get_task() returns full task details for worker body
+        mock_provider.get_task.return_value = TasklistItem(
+            task_id="mcp-1",
+            title="Remote task",
+            status=TaskStatus.todo,
+            context="Implement the remote feature",
+            criteria="All tests pass",
+            tests="test_remote.py",
+            risk="low",
+        )
+
+        orch = Orchestrator(
+            parallel_enabled=True,
+            base_branch=base_branch,
+            repo_dir=str(temp_repo),
+            merge_strategy="cherry-pick",
+            worktree_cleanup="always",
+            loc_threshold=1000,
+        )
+        orch._outer_loop_manager.tasklist_provider = mock_provider
+
+        dispatched_tasks: list[str] = []
+        dispatched_texts: list[str] = []
+
+        def worker_runner(task_id: str, task_text: str, worktree_path: Path) -> dict:
+            dispatched_tasks.append(task_id)
+            dispatched_texts.append(task_text)
+            (worktree_path / "output.txt").write_text(f"{task_id}\n")
+            subprocess.run(["git", "add", "."], cwd=worktree_path, capture_output=True, check=True)
+            subprocess.run(
+                ["git", "commit", "-m", f"task {task_id}"],
+                cwd=worktree_path,
+                capture_output=True,
+                check=True,
+            )
+            return {
+                "status": "success",
+                "commit_sha": _rev_parse(worktree_path, "HEAD"),
+                "risk": "low",
+            }
+
+        po = ParallelOrchestrator(
+            orch,
+            worker_runner=worker_runner,
+            eval_manager_factory=_eval_factory(True),
+        )
+
+        rc = po.run()
+        assert rc == 0
+        assert dispatched_tasks == ["mcp-1"]
+        mock_provider.list_tasks.assert_called_once()
+
+        # Verify worker received full task body (not empty string)
+        assert len(dispatched_texts) == 1
+        task_text = dispatched_texts[0]
+        assert "Remote task" in task_text
+        assert "Implement the remote feature" in task_text
+        assert "All tests pass" in task_text
+        mock_provider.get_task.assert_called_once_with("mcp-1")
+
+        # Verify MCP provider was called to mark task done
+        mock_provider.update_task_status.assert_called_once_with("mcp-1", TaskStatus.done)
+
+    def test_run_mcp_status_update_failure(self, temp_repo):
+        """When update_task_status() fails after merge, run treats it as a failure
+        to prevent the task being left open remotely and re-executed."""
+        from unittest.mock import MagicMock
+
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
+
+        mock_provider = MagicMock(spec=MCPTasklistProvider)
+        mock_provider._agent_callback = lambda p, **k: ""
+        mock_provider.list_tasks.return_value = [
+            TasklistItem(task_id="mcp-1", title="Remote task", status=TaskStatus.todo),
+        ]
+        mock_provider.get_task.return_value = TasklistItem(
+            task_id="mcp-1",
+            title="Remote task",
+            status=TaskStatus.todo,
+            context="ctx",
+            criteria="crit",
+            tests="t.py",
+            risk="low",
+        )
+        mock_provider.update_task_status.side_effect = RuntimeError("MCP API unreachable")
+
+        orch = Orchestrator(
+            parallel_enabled=True,
+            base_branch=base_branch,
+            repo_dir=str(temp_repo),
+            merge_strategy="cherry-pick",
+            worktree_cleanup="always",
+            loc_threshold=1000,
+        )
+        orch._outer_loop_manager.tasklist_provider = mock_provider
+
+        def worker_runner(task_id: str, task_text: str, worktree_path: Path) -> dict:
+            (worktree_path / "output.txt").write_text(f"{task_id}\n")
+            subprocess.run(["git", "add", "."], cwd=worktree_path, capture_output=True, check=True)
+            subprocess.run(
+                ["git", "commit", "-m", f"task {task_id}"],
+                cwd=worktree_path,
+                capture_output=True,
+                check=True,
+            )
+            return {
+                "status": "success",
+                "commit_sha": _rev_parse(worktree_path, "HEAD"),
+                "risk": "low",
+            }
+
+        po = ParallelOrchestrator(
+            orch,
+            worker_runner=worker_runner,
+            eval_manager_factory=_eval_factory(True),
+        )
+
+        rc = po.run()
+        assert rc == 1, "Run must fail when MCP status update fails"
+        mock_provider.update_task_status.assert_called_once_with("mcp-1", TaskStatus.done)
+
+    def test_fetch_task_body_raises_on_none(self, temp_repo):
+        """_fetch_task_body raises RuntimeError when get_task() returns None."""
+        from unittest.mock import MagicMock
+
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        mock_provider = MagicMock(spec=MCPTasklistProvider)
+        mock_provider._agent_callback = lambda p, **k: ""
+        mock_provider.get_task.return_value = None
+
+        orch = Orchestrator(
+            parallel_enabled=True,
+            dry_run=True,
+            base_branch=base_branch,
+            repo_dir=str(temp_repo),
+        )
+        orch._outer_loop_manager.tasklist_provider = mock_provider
+        po = ParallelOrchestrator(orch)
+
+        with pytest.raises(RuntimeError, match="returned None"):
+            po._fetch_task_body("missing-task")
+
+    def test_run_mcp_get_task_failure_aborts(self, temp_repo):
+        """When get_task() returns None during analysis, run() fails
+        instead of silently falling back to title-only worker input."""
+        from unittest.mock import MagicMock
+
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        subprocess.run(
+            ["git", "checkout", "--detach"], cwd=temp_repo, capture_output=True, check=True
+        )
+
+        mock_provider = MagicMock(spec=MCPTasklistProvider)
+        mock_provider._agent_callback = lambda p, **k: ""
+        mock_provider.list_tasks.return_value = [
+            TasklistItem(task_id="mcp-1", title="Task one", status=TaskStatus.todo),
+        ]
+        mock_provider.get_task.return_value = None  # Simulates provider read failure
+
+        orch = Orchestrator(
+            parallel_enabled=True,
+            base_branch=base_branch,
+            repo_dir=str(temp_repo),
+            merge_strategy="cherry-pick",
+            worktree_cleanup="always",
+            loc_threshold=1000,
+        )
+        orch._outer_loop_manager.tasklist_provider = mock_provider
+
+        po = ParallelOrchestrator(
+            orch,
+            worker_runner=lambda *_: {"status": "success"},
+            eval_manager_factory=_eval_factory(True),
+        )
+
+        rc = po.run()
+        assert rc == 1, "Run must fail when get_task() returns None"
+
+    def test_file_provider_unchanged(self, temp_repo):
+        """File-based provider path is completely unaffected by MCP changes."""
+        base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        orch = Orchestrator(
+            parallel_enabled=True,
+            dry_run=True,
+            base_branch=base_branch,
+            repo_dir=str(temp_repo),
+        )
+        po = ParallelOrchestrator(orch)
+        assert not po._is_mcp_provider()
+        # Should still work with file-based extraction (dry run doesn't need tasks)
+        rc = po.run()
+        assert rc == 0
