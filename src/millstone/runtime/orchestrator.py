@@ -2892,6 +2892,7 @@ class Orchestrator:
         self._task_previous_diff = None
 
         # Determine task text and metadata
+        _mcp_task_item: Any = None  # Set when MCP provider supplies the current task
         if self.task:
             task_display = self.task[:50] + "..." if len(self.task) > 50 else self.task
             self.current_task_title = task_display
@@ -2901,23 +2902,52 @@ class Orchestrator:
             self.apply_risk_settings(task_metadata.get("risk"))
             self.current_task_group = None
         else:
-            self.current_task_title = self.extract_current_task_title() or "task"
-            task_text = self.current_task_title
-            self.apply_risk_settings(self.extract_current_task_risk())
-            self.current_task_group = self.extract_current_task_group()
+            # When the tasklist is MCP-backed, derive task title and ID from the
+            # remote provider's cached task list instead of reading a local file
+            # that may not exist or may be stale.
+            from millstone.artifact_providers.mcp import MCPTasklistProvider
+            from millstone.artifacts.models import TaskStatus
+
+            provider = self._outer_loop_manager.tasklist_provider
+            if isinstance(provider, MCPTasklistProvider):
+                cached = provider.list_tasks()
+                pending = [
+                    t for t in cached if t.status in (TaskStatus.todo, TaskStatus.in_progress)
+                ]
+                if pending:
+                    _mcp_task_item = pending[0]
+                    self.current_task_title = _mcp_task_item.title or "task"
+                    task_text = self.current_task_title
+                    self.apply_risk_settings(_mcp_task_item.risk)
+                    self.current_task_group = None
+                else:
+                    self.current_task_title = "task"
+                    task_text = self.current_task_title
+                    self.apply_risk_settings(None)
+                    self.current_task_group = None
+            else:
+                self.current_task_title = self.extract_current_task_title() or "task"
+                task_text = self.current_task_title
+                self.apply_risk_settings(self.extract_current_task_risk())
+                self.current_task_group = self.extract_current_task_group()
 
         self._current_task_text = task_text
         # Prefer canonical task_id from metadata (stable, ontology-compliant identity).
-        # In tasklist mode, use the raw block (title + indented metadata) so that
-        # "- ID: my-task" lines are visible to the parser.
-        # In --task mode, task_text already contains the full metadata block.
-        if self.task:
+        # When an MCP provider supplied the task, use its remote ID directly.
+        if _mcp_task_item is not None:
+            self._current_task_id = _mcp_task_item.task_id
+        elif self.task:
             _task_meta = self._tasklist_manager._parse_task_metadata(task_text)
+            self._current_task_id = _task_meta.get("task_id") or (
+                re.sub(r"[^a-z0-9]+", "-", task_text.lower()).strip("-")[:30] or None
+            )
         else:
+            # In tasklist mode, use the raw block (title + indented metadata) so that
+            # "- ID: my-task" lines are visible to the parser.
             _task_meta = self._tasklist_manager.extract_current_task_metadata()
-        self._current_task_id = _task_meta.get("task_id") or (
-            re.sub(r"[^a-z0-9]+", "-", task_text.lower()).strip("-")[:30] or None
-        )
+            self._current_task_id = _task_meta.get("task_id") or (
+                re.sub(r"[^a-z0-9]+", "-", task_text.lower()).strip("-")[:30] or None
+            )
 
         # Worker mode: when --shared-state-dir is set, emit result.json + heartbeats
         # for the worktree control plane to consume.
@@ -3032,6 +3062,15 @@ class Orchestrator:
             self.log("research_completed", task=task_text[:200], output_file=str(output_file))
             if not self.task:
                 self.mark_task_complete()
+                # Close remote task for MCP providers — mark_task_complete()
+                # only updates the local tasklist file, which is a no-op when
+                # the task lives on a remote backend (GitHub Issues, Linear, …).
+                from millstone.artifact_providers.mcp import MCPTasklistProvider
+                from millstone.artifacts.models import TaskStatus
+
+                provider = self._outer_loop_manager.tasklist_provider
+                if isinstance(provider, MCPTasklistProvider) and self._current_task_id:
+                    provider.update_task_status(self._current_task_id, TaskStatus.done)
             progress(f"{self._task_prefix()} Research completed -> {output_file}")
             _worker_finish("success", review_summary=builder_output[:4000])
             return True
