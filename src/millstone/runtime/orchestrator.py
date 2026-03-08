@@ -4711,7 +4711,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
         try:
             orchestrator.preflight_checks()
 
-            if orchestrator.has_remaining_tasks():
+            if not using_remote_provider and orchestrator.has_remaining_tasks():
                 print(
                     "Error: --deliver requires an empty pending tasklist so the new objective "
                     "does not mix with existing backlog tasks.",
