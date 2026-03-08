@@ -769,8 +769,12 @@ class EvalManager:
                     timeout=60,
                     cwd=self.repo_dir,
                 )
-                # For custom commands, count output lines as issues
-                error_count = len([line for line in result.stdout.split("\n") if line.strip()])
+                # Exit code 0 means the linter found no issues.
+                # For non-zero exit, count non-empty output lines as a proxy for issue count.
+                if result.returncode == 0:
+                    error_count = 0
+                else:
+                    error_count = len([line for line in result.stdout.split("\n") if line.strip()])
             else:
                 result = subprocess.run(
                     ["ruff", "check", ".", "--output-format=json"],
