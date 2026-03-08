@@ -2197,7 +2197,24 @@ class Orchestrator:
         changelog_content = changelog_path.read_text() if changelog_path.exists() else ""
 
         prompt = self.load_prompt("release_prompt.md")
-        prompt = prompt.replace("{{COMPLETED_TASKS}}", "All current completed tasks in tasklist.md")
+        # Build completed-tasks string from the actual tasklist or git log fallback.
+        tasklist_path = self.repo_dir / self.tasklist
+        if tasklist_path.exists():
+            content = tasklist_path.read_text()
+            completed_lines = [
+                line for line in content.splitlines() if line.strip().startswith("- [x]")
+            ]
+            completed_tasks_str = "\n".join(completed_lines) or "(no completed tasks)"
+        else:
+            # MCP provider or missing file: use git log since last tag.
+            try:
+                last_tag = self.git("describe", "--tags", "--abbrev=0").strip()
+                ref = last_tag if last_tag else "HEAD~20"
+                log_output = self.git("log", "--oneline", f"{ref}..HEAD")
+                completed_tasks_str = log_output.strip() or "(no recent commits)"
+            except Exception:
+                completed_tasks_str = "(could not determine completed tasks)"
+        prompt = prompt.replace("{{COMPLETED_TASKS}}", completed_tasks_str)
         prompt = prompt.replace("{{CHANGELOG_CONTENT}}", changelog_content)
 
         output = self.run_agent(prompt, role="release_eng")
