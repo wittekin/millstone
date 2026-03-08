@@ -1990,13 +1990,37 @@ class Orchestrator:
             label_str = ", ".join(provider._labels) if provider._labels else "none"
             print(f"Remote tasklist provider: {provider._mcp_server}")
             print(f"  Labels: {label_str}")
+
+            # Fetch live task counts from the remote provider
+            pending_count = 0
+            completed_count = 0
+            total_count = 0
+            try:
+                if provider._agent_callback is None:
+                    provider.set_agent_callback(
+                        lambda p, **k: self.run_agent(p, role="author", **k)
+                    )
+                provider.invalidate_cache()
+                tasks = provider.list_tasks()
+                from millstone.artifacts.models import TaskStatus
+
+                for t in tasks:
+                    if t.status == TaskStatus.done:
+                        completed_count += 1
+                    else:
+                        pending_count += 1
+                total_count = len(tasks)
+                print(f"  Open tasks: {pending_count}")
+            except Exception:
+                print("  Open tasks: unable to fetch task count")
+
             print()
-            print("Task analysis is not available for remote providers.")
+            print("Detailed task analysis is not available for remote providers.")
             print("Use --dry-run to inspect prompts that would be sent.")
             return {
-                "pending_count": 0,
-                "completed_count": 0,
-                "total_count": 0,
+                "pending_count": pending_count,
+                "completed_count": completed_count,
+                "total_count": total_count,
                 "tasks": [],
                 "dependencies": [],
                 "suggested_order": [],
