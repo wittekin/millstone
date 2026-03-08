@@ -11131,6 +11131,48 @@ class TestDeliverCLI:
 
         assert exc_info.value.code == 2
 
+    def test_deliver_skips_remaining_tasks_guard_for_mcp_provider(self, temp_repo):
+        """--deliver proceeds with MCP backend even when has_remaining_tasks is True."""
+        from millstone import orchestrate
+
+        # Write a config that selects a remote tasklist provider so
+        # using_remote_provider is True in main().
+        config_path = temp_repo / ".millstone" / "config.toml"
+        config_path.write_text(
+            'tasklist_provider = "mcp"\nmcp_server = "github"\nmcp_label = "millstone"\n'
+        )
+
+        with patch(
+            "sys.argv",
+            ["orchestrate.py", "--deliver", "Add retry logic"],
+        ):
+            with patch.object(Orchestrator, "__init__", return_value=None):
+                with patch.object(Orchestrator, "preflight_checks"):
+                    with patch.object(
+                        Orchestrator, "has_remaining_tasks", return_value=True
+                    ) as mock_hrt:
+                        with patch.object(Orchestrator, "run_design") as mock_design:
+                            mock_design.return_value = {
+                                "success": True,
+                                "design_file": "designs/add-retry-logic.md",
+                            }
+                            with patch.object(Orchestrator, "review_design") as mock_review:
+                                mock_review.return_value = {"approved": True}
+                                with patch.object(Orchestrator, "run_plan") as mock_plan:
+                                    mock_plan.return_value = {
+                                        "success": True,
+                                        "tasks_added": 3,
+                                    }
+                                    with patch.object(Orchestrator, "run", return_value=0):
+                                        with pytest.raises(SystemExit) as exc_info:
+                                            orchestrate.main()
+
+        assert exc_info.value.code == 0
+        # has_remaining_tasks should NOT have been called (guard skipped)
+        mock_hrt.assert_not_called()
+        # Design should proceed
+        mock_design.assert_called_once_with(opportunity="Add retry logic")
+
 
 class TestSelectOpportunity:
     """Tests for _select_opportunity helper method."""
