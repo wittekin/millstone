@@ -4325,6 +4325,17 @@ Remote backlog scoping (Jira / Linear / GitHub):
 
     # Handle --split-task: analyze a task and suggest subtasks
     if args.split_task is not None:
+        using_remote_provider = config.get("tasklist_provider", "file") != "file"
+        if using_remote_provider:
+            print(
+                "Task splitting is not supported for remote providers.",
+                file=sys.stderr,
+            )
+            print(
+                "Use your provider's native interface to manage tasks.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         orchestrator = Orchestrator(
             tasklist=args.tasklist,
             dry_run=False,
