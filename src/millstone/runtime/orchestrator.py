@@ -680,7 +680,14 @@ class Orchestrator:
             else:
                 if self.roadmap:
                     print(f"Roadmap: {self.roadmap}")
-                print(f"Tasklist: {self.tasklist}")
+                from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+                tl_provider = self._outer_loop_manager.tasklist_provider
+                if isinstance(tl_provider, MCPTasklistProvider):
+                    label_str = ", ".join(tl_provider._labels) if tl_provider._labels else "none"
+                    print(f"Tasklist: {tl_provider._mcp_server} (labels: {label_str})")
+                else:
+                    print(f"Tasklist: {self.tasklist}")
                 print(f"Max tasks: {self.max_tasks}")
                 if self.compact_threshold > 0:
                     print(f"Compact threshold: {self.compact_threshold}")
