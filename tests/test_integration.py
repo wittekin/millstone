@@ -426,6 +426,295 @@ class TestFullFlow:
         finally:
             orch.cleanup()
 
+    def test_builder_early_commit_detected(self, temp_repo, capsys):
+        """
+        Scenario: Builder commits its own changes (HEAD advances).
+        Expected: Orchestrator detects the early commit, uses the committed
+        diff for review, skips delegate_commit, and succeeds.
+        """
+
+        def make_change_and_commit(repo):
+            """Simulate builder creating a file AND committing it."""
+            (repo / "feature.py").write_text("def new_feature():\n    pass\n")
+            _original_subprocess_run(["git", "add", "."], cwd=repo, capture_output=True)
+            _original_subprocess_run(
+                ["git", "commit", "-m", "feat: builder committed early"],
+                cwd=repo,
+                capture_output=True,
+            )
+
+        # Builder commits directly; no commit delegation needed
+        responses = (
+            ResponseBuilder()
+            .on_builder(change_fn=make_change_and_commit, output="Implemented feature.")
+            .on_reviewer(approve=True)
+            .build()
+        )
+
+        orch = Orchestrator(max_tasks=1)
+        try:
+            with patch("subprocess.run", side_effect=make_mock_runner(temp_repo, responses)):
+                exit_code = orch.run()
+
+            assert exit_code == 0
+            captured = capsys.readouterr()
+            # Should detect the early commit
+            assert "Builder committed changes directly" in captured.out
+            # Should skip commit delegation
+            assert "Skipping commit delegation" in captured.out
+            assert orch.cycle == 1
+        finally:
+            orch.cleanup()
+
+    def test_builder_early_commit_auto_commits_tasklist(self, temp_repo, capsys):
+        """
+        Scenario: Builder commits code but leaves the tasklist checkbox unstaged.
+        Expected: Orchestrator detects the early commit, auto-commits the
+        tasklist tick so the task won't be re-selected on the next run.
+
+        Uses docs/tasklist.md (git-tracked) to exercise the fallback path.
+        """
+
+        def commit_code_but_leave_tasklist(repo):
+            """Builder commits code but modifies tasklist without staging it."""
+            (repo / "feature.py").write_text("def new_feature():\n    pass\n")
+            _original_subprocess_run(["git", "add", "feature.py"], cwd=repo, capture_output=True)
+            _original_subprocess_run(
+                ["git", "commit", "-m", "feat: builder committed early"],
+                cwd=repo,
+                capture_output=True,
+            )
+            # Modify tasklist (check off the task) but don't stage/commit it
+            tasklist = repo / "docs" / "tasklist.md"
+            tasklist.write_text(
+                "# Tasklist\n\n- [x] Task 1: Do something\n- [ ] Task 2: Do another thing\n"
+            )
+
+        responses = (
+            ResponseBuilder()
+            .on_builder(change_fn=commit_code_but_leave_tasklist, output="Implemented feature.")
+            .on_reviewer(approve=True)
+            .build()
+        )
+
+        orch = Orchestrator(max_tasks=1, tasklist="docs/tasklist.md")
+        try:
+            with patch("subprocess.run", side_effect=make_mock_runner(temp_repo, responses)):
+                exit_code = orch.run()
+
+            assert exit_code == 0
+            captured = capsys.readouterr()
+            assert "Builder committed changes directly" in captured.out
+            assert "Skipping commit delegation" in captured.out
+            # Should auto-commit the tasklist tick
+            assert "Auto-committed tasklist tick" in captured.out
+
+            # Verify no uncommitted changes remain
+            status = _original_subprocess_run(
+                ["git", "status", "--porcelain"],
+                cwd=temp_repo,
+                capture_output=True,
+                text=True,
+            )
+            assert status.stdout.strip() == ""
+
+            # Verify the tasklist was actually committed
+            log = _original_subprocess_run(
+                ["git", "log", "--oneline", "-3"],
+                cwd=temp_repo,
+                capture_output=True,
+                text=True,
+            )
+            assert "Mark task complete" in log.stdout
+        finally:
+            orch.cleanup()
+
+    def test_builder_early_commit_then_review_fix_uncommitted(self, temp_repo, capsys):
+        """
+        Scenario: Builder commits in cycle 1, reviewer rejects, builder fixes
+        in cycle 2 WITHOUT committing. The orchestrator must detect the dirty
+        worktree and delegate a commit for the remaining edits.
+
+        Regression test for: builder_on_success skipping delegate_commit when
+        builder_committed was True, leaving uncommitted changes.
+        """
+        cycle_count = [0]
+
+        def make_change_and_commit(repo):
+            """Cycle 1: builder creates file AND commits it."""
+            (repo / "feature.py").write_text("def new_feature():\n    return 1\n")
+            _original_subprocess_run(["git", "add", "."], cwd=repo, capture_output=True)
+            _original_subprocess_run(
+                ["git", "commit", "-m", "feat: builder committed early"],
+                cwd=repo,
+                capture_output=True,
+            )
+            cycle_count[0] += 1
+
+        def make_fix_without_commit(repo):
+            """Cycle 2: builder edits file but does NOT commit."""
+            (repo / "feature.py").write_text("def new_feature():\n    return 2  # fixed\n")
+            _original_subprocess_run(["git", "add", "."], cwd=repo, capture_output=True)
+            cycle_count[0] += 1
+
+        build_count = [0]
+
+        def responses(prompt, counts):
+            if is_builder_prompt(prompt) or "address this review feedback" in prompt.lower():
+                build_count[0] += 1
+                if build_count[0] == 1:
+                    return ("Implemented feature.", make_change_and_commit)
+                else:
+                    return ("Fixed review feedback.", make_fix_without_commit)
+            elif is_reviewer_prompt(prompt):
+                if build_count[0] <= 1:
+                    return (
+                        '{"status": "REQUEST_CHANGES", "review": "Return value should be 2", '
+                        '"summary": "Needs fix", "findings": ["Wrong return value"], '
+                        '"findings_by_severity": {"critical": [], "high": ["Wrong return value"], '
+                        '"medium": [], "low": [], "nit": []}}',
+                        None,
+                    )
+                return (
+                    '{"status": "APPROVED", "review": "Looks good", "summary": "LGTM", '
+                    '"findings": [], "findings_by_severity": {"critical": [], "high": [], '
+                    '"medium": [], "low": [], "nit": []}}',
+                    None,
+                )
+            elif is_commit_prompt(prompt):
+                return ("Committed changes.", lambda repo: do_commit(repo))
+            elif is_sanity_check(prompt):
+                return ('{"status": "OK"}', None)
+            return ('{"status": "OK"}', None)
+
+        orch = Orchestrator(max_tasks=1, max_cycles=3)
+        try:
+            with patch("subprocess.run", side_effect=make_mock_runner(temp_repo, responses)):
+                exit_code = orch.run()
+
+            assert exit_code == 0
+            captured = capsys.readouterr()
+            # Cycle 1 should detect early commit
+            assert "Builder committed changes directly" in captured.out
+            # Cycle 2: builder didn't commit, so normal delegate_commit runs
+            assert "Delegating commit to builder" in captured.out
+
+            # Verify no uncommitted changes remain
+            status = _original_subprocess_run(
+                ["git", "status", "--porcelain"],
+                cwd=temp_repo,
+                capture_output=True,
+                text=True,
+            )
+            assert status.stdout.strip() == "", (
+                "Working directory should be clean — all changes committed"
+            )
+        finally:
+            orch.cleanup()
+
+    def test_builder_early_commit_updates_loc_baseline(self, temp_repo, capsys):
+        """
+        Scenario: Builder commits directly (early commit) in a multi-task run.
+        Expected: loc_baseline_ref is updated after the early-commit path so the
+        next task's LoC measurement starts from the new HEAD, not the old baseline.
+
+        Regression test for: builder_on_success skipping _update_loc_baseline()
+        when builder_committed was True, causing stale baselines in multi-task runs.
+        """
+
+        def make_change_and_commit(repo):
+            (repo / "feature.py").write_text("def new_feature():\n    pass\n")
+            _original_subprocess_run(["git", "add", "."], cwd=repo, capture_output=True)
+            _original_subprocess_run(
+                ["git", "commit", "-m", "feat: builder committed early"],
+                cwd=repo,
+                capture_output=True,
+            )
+
+        responses = (
+            ResponseBuilder()
+            .on_builder(change_fn=make_change_and_commit, output="Implemented feature.")
+            .on_reviewer(approve=True)
+            .build()
+        )
+
+        orch = Orchestrator(max_tasks=1)
+        try:
+            with patch("subprocess.run", side_effect=make_mock_runner(temp_repo, responses)):
+                exit_code = orch.run()
+
+            assert exit_code == 0
+            # After the early-commit path, loc_baseline_ref should point to HEAD
+            current_head = _original_subprocess_run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=temp_repo,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            assert orch.loc_baseline_ref == current_head, (
+                f"loc_baseline_ref should be updated to HEAD ({current_head}) "
+                f"but was {orch.loc_baseline_ref}"
+            )
+        finally:
+            orch.cleanup()
+
+    def test_builder_early_commit_tasklist_autocommit_git_failure(self, temp_repo, capsys):
+        """
+        Scenario: Builder commits code early but the tasklist auto-commit fails.
+        Expected: A warning is printed and the failure is not silently swallowed.
+
+        Regression test for: _auto_commit_tasklist_if_needed ignoring git failures.
+        """
+
+        def commit_code_but_leave_tasklist(repo):
+            (repo / "feature.py").write_text("def new_feature():\n    pass\n")
+            _original_subprocess_run(["git", "add", "feature.py"], cwd=repo, capture_output=True)
+            _original_subprocess_run(
+                ["git", "commit", "-m", "feat: builder committed early"],
+                cwd=repo,
+                capture_output=True,
+            )
+            # Modify tasklist but don't stage it
+            tasklist = repo / "docs" / "tasklist.md"
+            tasklist.write_text(
+                "# Tasklist\n\n- [x] Task 1: Do something\n- [ ] Task 2: Do another thing\n"
+            )
+
+        responses = (
+            ResponseBuilder()
+            .on_builder(change_fn=commit_code_but_leave_tasklist, output="Implemented feature.")
+            .on_reviewer(approve=True)
+            .build()
+        )
+
+        orch = Orchestrator(max_tasks=1, tasklist="docs/tasklist.md")
+        try:
+            # Patch subprocess.run to fail on git commit for tasklist
+            real_mock = make_mock_runner(temp_repo, responses)
+
+            def mock_with_commit_failure(cmd, **kwargs):
+                # Intercept the tasklist auto-commit
+                if (
+                    cmd[0] == "git"
+                    and cmd[1] == "commit"
+                    and len(cmd) > 3
+                    and "Mark task complete" in cmd[3]
+                ):
+                    return MagicMock(returncode=1, stdout=b"", stderr=b"commit failed")
+                return real_mock(cmd, **kwargs)
+
+            with patch("subprocess.run", side_effect=mock_with_commit_failure):
+                exit_code = orch.run()
+
+            # Task must fail — tasklist not marked complete means task can be
+            # re-selected on the next run, breaking completion semantics.
+            assert exit_code == 1
+            captured = capsys.readouterr()
+            # Should report the failed tasklist commit
+            assert "ERROR: git commit for tasklist failed" in captured.out
+        finally:
+            orch.cleanup()
+
     def test_sensitive_file_no_longer_halts_flow(self, temp_repo, capsys):
         """
         Scenario: Builder modifies a sensitive file.

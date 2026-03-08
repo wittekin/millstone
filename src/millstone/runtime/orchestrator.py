@@ -79,6 +79,7 @@ class BuilderArtifact:
     output: str
     git_status: str
     git_diff: str
+    builder_committed: bool = False
 
 
 @dataclass
@@ -680,7 +681,14 @@ class Orchestrator:
             else:
                 if self.roadmap:
                     print(f"Roadmap: {self.roadmap}")
-                print(f"Tasklist: {self.tasklist}")
+                from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+                tl_provider = self._outer_loop_manager.tasklist_provider
+                if isinstance(tl_provider, MCPTasklistProvider):
+                    label_str = ", ".join(tl_provider._labels) if tl_provider._labels else "none"
+                    print(f"Tasklist: {tl_provider._mcp_server} (labels: {label_str})")
+                else:
+                    print(f"Tasklist: {self.tasklist}")
                 print(f"Max tasks: {self.max_tasks}")
                 if self.compact_threshold > 0:
                     print(f"Compact threshold: {self.compact_threshold}")
@@ -1682,6 +1690,71 @@ class Orchestrator:
             self.last_commit_failure = failure_info
         return success
 
+    def _auto_commit_tasklist_if_needed(self) -> bool:
+        """Auto-commit the tasklist checkbox if the builder left it unstaged.
+
+        When the builder commits code early but forgets to include the tasklist
+        tick, this ensures the task is still marked complete so it won't be
+        re-selected on the next run. Only applies to file-backed tasklists.
+
+        Returns True if no action was needed or the commit succeeded.
+        Returns False if the commit failed (task not fully completed).
+        """
+        import subprocess
+
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        provider = self._outer_loop_manager.tasklist_provider
+        if isinstance(provider, MCPTasklistProvider):
+            return True  # MCP tasks are marked done via API, not file commits
+
+        status = self.git("status", "--porcelain").strip()
+        if not status:
+            return True
+
+        remaining_files = [line.split()[-1] for line in status.split("\n") if line.strip()]
+        tasklist_path = str(self.tasklist)
+
+        if len(remaining_files) == 1 and remaining_files[0] == tasklist_path:
+            self.log(
+                "auto_commit_tasklist",
+                reason="builder_early_commit_forgot_tasklist",
+                file=tasklist_path,
+            )
+            add_result = subprocess.run(
+                ["git", "add", tasklist_path],
+                cwd=self.repo_dir,
+                capture_output=True,
+            )
+            if add_result.returncode != 0:
+                progress(
+                    f"{self._task_prefix()} ERROR: git add for tasklist failed "
+                    f"(rc={add_result.returncode})"
+                )
+                return False
+            commit_result = subprocess.run(
+                [
+                    "git",
+                    "commit",
+                    "-m",
+                    "Mark task complete in tasklist\n\nGenerated with millstone orchestrator",
+                ],
+                cwd=self.repo_dir,
+                capture_output=True,
+            )
+            if commit_result.returncode != 0:
+                progress(
+                    f"{self._task_prefix()} ERROR: git commit for tasklist failed "
+                    f"(rc={commit_result.returncode})"
+                )
+                return False
+            progress(
+                f"{self._task_prefix()} Auto-committed tasklist tick "
+                "(builder committed code but forgot to stage tasklist)"
+            )
+
+        return True
+
     def load_prompt(self, name: str) -> str:
         """Load a prompt file from custom dir or package resources."""
         if self._custom_prompts_dir:
@@ -1983,13 +2056,37 @@ class Orchestrator:
             label_str = ", ".join(provider._labels) if provider._labels else "none"
             print(f"Remote tasklist provider: {provider._mcp_server}")
             print(f"  Labels: {label_str}")
+
+            # Fetch live task counts from the remote provider
+            pending_count = 0
+            completed_count = 0
+            total_count = 0
+            try:
+                if provider._agent_callback is None:
+                    provider.set_agent_callback(
+                        lambda p, **k: self.run_agent(p, role="author", **k)
+                    )
+                provider.invalidate_cache()
+                tasks = provider.list_tasks()
+                from millstone.artifacts.models import TaskStatus
+
+                for t in tasks:
+                    if t.status == TaskStatus.done:
+                        completed_count += 1
+                    else:
+                        pending_count += 1
+                total_count = len(tasks)
+                print(f"  Open tasks: {pending_count}")
+            except Exception:
+                print("  Open tasks: unable to fetch task count")
+
             print()
-            print("Task analysis is not available for remote providers.")
+            print("Detailed task analysis is not available for remote providers.")
             print("Use --dry-run to inspect prompts that would be sent.")
             return {
-                "pending_count": 0,
-                "completed_count": 0,
-                "total_count": 0,
+                "pending_count": pending_count,
+                "completed_count": completed_count,
+                "total_count": total_count,
                 "tasks": [],
                 "dependencies": [],
                 "suggested_order": [],
@@ -2861,6 +2958,7 @@ class Orchestrator:
         self._task_previous_diff = None
 
         # Determine task text and metadata
+        _mcp_task_item: Any = None  # Set when MCP provider supplies the current task
         if self.task:
             task_display = self.task[:50] + "..." if len(self.task) > 50 else self.task
             self.current_task_title = task_display
@@ -2870,23 +2968,52 @@ class Orchestrator:
             self.apply_risk_settings(task_metadata.get("risk"))
             self.current_task_group = None
         else:
-            self.current_task_title = self.extract_current_task_title() or "task"
-            task_text = self.current_task_title
-            self.apply_risk_settings(self.extract_current_task_risk())
-            self.current_task_group = self.extract_current_task_group()
+            # When the tasklist is MCP-backed, derive task title and ID from the
+            # remote provider's cached task list instead of reading a local file
+            # that may not exist or may be stale.
+            from millstone.artifact_providers.mcp import MCPTasklistProvider
+            from millstone.artifacts.models import TaskStatus
+
+            provider = self._outer_loop_manager.tasklist_provider
+            if isinstance(provider, MCPTasklistProvider):
+                cached = provider.list_tasks()
+                pending = [
+                    t for t in cached if t.status in (TaskStatus.todo, TaskStatus.in_progress)
+                ]
+                if pending:
+                    _mcp_task_item = pending[0]
+                    self.current_task_title = _mcp_task_item.title or "task"
+                    task_text = self.current_task_title
+                    self.apply_risk_settings(_mcp_task_item.risk)
+                    self.current_task_group = None
+                else:
+                    self.current_task_title = "task"
+                    task_text = self.current_task_title
+                    self.apply_risk_settings(None)
+                    self.current_task_group = None
+            else:
+                self.current_task_title = self.extract_current_task_title() or "task"
+                task_text = self.current_task_title
+                self.apply_risk_settings(self.extract_current_task_risk())
+                self.current_task_group = self.extract_current_task_group()
 
         self._current_task_text = task_text
         # Prefer canonical task_id from metadata (stable, ontology-compliant identity).
-        # In tasklist mode, use the raw block (title + indented metadata) so that
-        # "- ID: my-task" lines are visible to the parser.
-        # In --task mode, task_text already contains the full metadata block.
-        if self.task:
+        # When an MCP provider supplied the task, use its remote ID directly.
+        if _mcp_task_item is not None:
+            self._current_task_id = _mcp_task_item.task_id
+        elif self.task:
             _task_meta = self._tasklist_manager._parse_task_metadata(task_text)
+            self._current_task_id = _task_meta.get("task_id") or (
+                re.sub(r"[^a-z0-9]+", "-", task_text.lower()).strip("-")[:30] or None
+            )
         else:
+            # In tasklist mode, use the raw block (title + indented metadata) so that
+            # "- ID: my-task" lines are visible to the parser.
             _task_meta = self._tasklist_manager.extract_current_task_metadata()
-        self._current_task_id = _task_meta.get("task_id") or (
-            re.sub(r"[^a-z0-9]+", "-", task_text.lower()).strip("-")[:30] or None
-        )
+            self._current_task_id = _task_meta.get("task_id") or (
+                re.sub(r"[^a-z0-9]+", "-", task_text.lower()).strip("-")[:30] or None
+            )
 
         # Worker mode: when --shared-state-dir is set, emit result.json + heartbeats
         # for the worktree control plane to consume.
@@ -3001,6 +3128,15 @@ class Orchestrator:
             self.log("research_completed", task=task_text[:200], output_file=str(output_file))
             if not self.task:
                 self.mark_task_complete()
+                # Close remote task for MCP providers — mark_task_complete()
+                # only updates the local tasklist file, which is a no-op when
+                # the task lives on a remote backend (GitHub Issues, Linear, …).
+                from millstone.artifact_providers.mcp import MCPTasklistProvider
+                from millstone.artifacts.models import TaskStatus
+
+                provider = self._outer_loop_manager.tasklist_provider
+                if isinstance(provider, MCPTasklistProvider) and self._current_task_id:
+                    provider.update_task_status(self._current_task_id, TaskStatus.done)
             progress(f"{self._task_prefix()} Research completed -> {output_file}")
             _worker_finish("success", review_summary=builder_output[:4000])
             return True
@@ -3011,6 +3147,9 @@ class Orchestrator:
 
         # Track empty-diff retry state
         empty_diff_retried = False
+
+        # Record HEAD before builder runs so we can detect early commits
+        pre_build_head = self.git("rev-parse", "HEAD").strip()
 
         # Define Loop components
         def builder_producer(feedback: str | None = None) -> BuilderArtifact:
@@ -3034,7 +3173,38 @@ class Orchestrator:
             # Ensure untracked files are included in diff (for reviewer visibility)
             self._stage_untracked_files()
 
-            return BuilderArtifact(output, self.git("status", "--short"), self.git("diff", "HEAD"))
+            # Detect if builder committed its own changes (HEAD advanced)
+            nonlocal pre_build_head
+            current_head = self.git("rev-parse", "HEAD").strip()
+            builder_committed = current_head != pre_build_head
+
+            if builder_committed:
+                progress(
+                    f"{self._task_prefix()} Builder committed changes directly "
+                    f"(HEAD advanced from {pre_build_head[:8]} to {current_head[:8]}). "
+                    "Using committed diff for review."
+                )
+                self.log(
+                    "builder_early_commit",
+                    old_head=pre_build_head,
+                    new_head=current_head,
+                )
+                # Use the diff from the builder's commit(s) for review.
+                # Also include any uncommitted changes on top of the builder's commits.
+                git_diff = self.git("diff", pre_build_head)
+                git_status = self.git("diff", "--stat", pre_build_head)
+            else:
+                git_diff = self.git("diff", "HEAD")
+                git_status = self.git("status", "--short")
+
+            # Update pre_build_head so the next cycle (if reviewer rejects)
+            # correctly detects whether the builder commits again.
+            if builder_committed:
+                pre_build_head = current_head
+
+            return BuilderArtifact(
+                output, git_status, git_diff, builder_committed=builder_committed
+            )
 
         def builder_validator(artifact: BuilderArtifact) -> tuple[bool, str | None]:
             nonlocal empty_diff_retried
@@ -3051,7 +3221,12 @@ class Orchestrator:
 
             # Retry once on empty diff before sanity check fails
             # This catches cases where the builder didn't make changes but should have
-            if not artifact.git_status.strip() and not empty_diff_retried:
+            # Skip nudge if builder already committed (diff extracted from commits)
+            if (
+                not artifact.git_status.strip()
+                and not empty_diff_retried
+                and not artifact.builder_committed
+            ):
                 empty_diff_retried = True
                 progress(f"{self._task_prefix()} No changes detected, nudging builder to retry...")
                 nudge_msg = (
@@ -3155,6 +3330,48 @@ class Orchestrator:
                 if not gate_passed:
                     loop_state["failure_reason"] = "eval_gate_failed"
                     return False
+
+            if artifact.builder_committed:
+                # Builder committed during this cycle. Check if there are
+                # remaining uncommitted changes (e.g. from a review-fix cycle
+                # where the builder edited files without committing again).
+                worktree_status = self.git("status", "--porcelain").strip()
+                tasklist_path = str(self.tasklist)
+                non_tasklist_dirty = any(
+                    line.split()[-1] != tasklist_path
+                    for line in worktree_status.split("\n")
+                    if line.strip()
+                )
+
+                if non_tasklist_dirty:
+                    # There are uncommitted changes beyond the tasklist —
+                    # delegate a commit for the remaining edits.
+                    progress(
+                        f"{self._task_prefix()} Builder committed earlier but "
+                        "uncommitted changes remain — delegating commit."
+                    )
+                    if not self.delegate_commit():
+                        loop_state["failure_reason"] = "commit_failed"
+                        return False
+                else:
+                    progress(
+                        f"{self._task_prefix()} Skipping commit delegation (builder already committed)."
+                    )
+                    # Auto-commit the tasklist checkbox if it's the only
+                    # remaining dirty file (file-backed tasklist only).
+                    if not self._auto_commit_tasklist_if_needed():
+                        loop_state["failure_reason"] = "tasklist_commit_failed"
+                        return False
+
+                # Update baseline so next task measures LoC from this commit
+                self._update_loc_baseline()
+
+                if self.eval_on_commit and not self._run_eval_on_commit(task_text=task_text):
+                    loop_state["failure_reason"] = "eval_regression"
+                    return False
+
+                self.accumulate_group_context(task_text, git_diff=artifact.git_diff)
+                return True
 
             if self.delegate_commit():
                 if self.eval_on_commit and not self._run_eval_on_commit(task_text=task_text):

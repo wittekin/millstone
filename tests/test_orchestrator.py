@@ -1869,6 +1869,72 @@ All done."""
             finally:
                 orch.cleanup()
 
+    def test_run_single_task_research_mode_closes_mcp_task(self, temp_repo):
+        """Research mode closes remote task via update_task_status for MCP providers.
+
+        Verifies that the real remote task ID (not a local-file-derived fallback)
+        is passed to update_task_status.
+        """
+        from unittest.mock import MagicMock, patch
+
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        tasklist = temp_repo / "docs" / "tasklist.md"
+        tasklist.write_text("# Tasks\n\n- [ ] Investigate auth flow\n")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout="## FINDINGS\n\nAuth uses OAuth2\n",
+                stderr="",
+            )
+
+            orch = Orchestrator(tasklist="docs/tasklist.md", research=True, cli="claude")
+            try:
+                # Inject a mock MCP tasklist provider with a known remote task ID
+                mock_mcp = MagicMock(spec=MCPTasklistProvider)
+                mock_mcp.get_prompt_placeholders.return_value = {}
+                mock_mcp.list_tasks.return_value = [
+                    TasklistItem(
+                        task_id="GH-42",
+                        title="Investigate auth flow",
+                        status=TaskStatus.todo,
+                    ),
+                ]
+                orch._outer_loop_manager.tasklist_provider = mock_mcp
+
+                result = orch.run_single_task()
+                assert result is True
+
+                # MCP provider should have been asked to close the exact remote task
+                mock_mcp.update_task_status.assert_called_once_with("GH-42", TaskStatus.done)
+            finally:
+                orch.cleanup()
+
+    def test_run_single_task_research_mode_direct_task_skips_mcp_close(self, temp_repo):
+        """Research mode with --task (direct task) does NOT attempt MCP close."""
+        from unittest.mock import MagicMock, patch
+
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="Research output", stderr="")
+
+            orch = Orchestrator(task="Check perf", research=True, cli="claude")
+            try:
+                mock_mcp = MagicMock(spec=MCPTasklistProvider)
+                mock_mcp.get_prompt_placeholders.return_value = {}
+                orch._outer_loop_manager.tasklist_provider = mock_mcp
+
+                result = orch.run_single_task()
+                assert result is True
+
+                # With --task, mark_task_complete + MCP close should be skipped
+                mock_mcp.update_task_status.assert_not_called()
+            finally:
+                orch.cleanup()
+
 
 class TestIsApproved:
     """Tests for approval detection."""
@@ -15631,18 +15697,77 @@ class TestAnalyzeTasklist:
 
     def test_analyze_tasklist_with_mcp_provider(self, temp_repo, capsys):
         """--analyze-tasklist with MCP provider shows remote info, not file error."""
+        from unittest.mock import patch
+
         from millstone.artifact_providers.mcp import MCPTasklistProvider
 
         orch = Orchestrator(dry_run=False, quiet=True)
         try:
             provider = MCPTasklistProvider("github", labels=["millstone"])
             orch._outer_loop_manager.tasklist_provider = provider
-            result = orch.analyze_tasklist()
+            with patch.object(provider, "list_tasks", return_value=[]):
+                with patch.object(provider, "invalidate_cache"):
+                    result = orch.analyze_tasklist()
 
             captured = capsys.readouterr()
             assert "Remote tasklist provider: github" in captured.out
             assert "Labels: millstone" in captured.out
             assert "Tasklist not found" not in captured.out
+            assert "Open tasks: 0" in captured.out
+            assert result["pending_count"] == 0
+            assert result["total_count"] == 0
+        finally:
+            orch.cleanup()
+
+    def test_analyze_tasklist_with_mcp_provider_shows_open_count(self, temp_repo, capsys):
+        """--analyze-tasklist with MCP provider fetches and displays live task counts."""
+        from unittest.mock import patch
+
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        orch = Orchestrator(dry_run=False, quiet=True)
+        try:
+            provider = MCPTasklistProvider("github", labels=["millstone"])
+            mock_tasks = [
+                TasklistItem(task_id="1", title="Open task A", status=TaskStatus.todo),
+                TasklistItem(task_id="2", title="Open task B", status=TaskStatus.in_progress),
+                TasklistItem(task_id="3", title="Done task", status=TaskStatus.done),
+                TasklistItem(task_id="4", title="Blocked task", status=TaskStatus.blocked),
+            ]
+            orch._outer_loop_manager.tasklist_provider = provider
+            with patch.object(provider, "list_tasks", return_value=mock_tasks):
+                with patch.object(provider, "invalidate_cache"):
+                    result = orch.analyze_tasklist()
+
+            captured = capsys.readouterr()
+            assert "Remote tasklist provider: github" in captured.out
+            assert "Open tasks: 3" in captured.out
+            assert result["pending_count"] == 3
+            assert result["completed_count"] == 1
+            assert result["total_count"] == 4
+        finally:
+            orch.cleanup()
+
+    def test_analyze_tasklist_with_mcp_provider_fetch_error(self, temp_repo, capsys):
+        """--analyze-tasklist degrades gracefully when MCP fetch fails."""
+        from unittest.mock import patch
+
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        orch = Orchestrator(dry_run=False, quiet=True)
+        try:
+            provider = MCPTasklistProvider("github", labels=["millstone"])
+            orch._outer_loop_manager.tasklist_provider = provider
+            with patch.object(
+                provider, "list_tasks", side_effect=RuntimeError("connection failed")
+            ):
+                with patch.object(provider, "invalidate_cache"):
+                    result = orch.analyze_tasklist()
+
+            captured = capsys.readouterr()
+            assert "Remote tasklist provider: github" in captured.out
+            assert "unable to fetch task count" in captured.out
             assert result["pending_count"] == 0
             assert result["total_count"] == 0
         finally:

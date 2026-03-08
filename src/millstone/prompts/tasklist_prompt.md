@@ -20,6 +20,7 @@ You are an autonomous developer working in: {{WORKING_DIRECTORY}}
 - Allowed edits:
   - Code/tests needed for the chosen task.
   - The tasklist only to (a) check off the chosen task and (b) text-only coherence updates to future tasks if strictly necessary.
+- **DO NOT COMMIT**: Do not run `git commit` or `git push`. Leave changes staged or unstaged — the orchestrator commits after review.
 - **FORBIDDEN**:
   - Completing, partially completing, or reordering any other tasks.
   - Implementing future tasks.
