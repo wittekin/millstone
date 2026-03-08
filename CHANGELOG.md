@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.4.1] - 2026-03-07
+
+### Added
+- `--worktrees` support for MCP tasklist providers (GitHub Issues, Linear, Jira backends) (#46).
+
+### Fixed
+- Show provider info in `--dry-run` and `--status` with remote backends instead of missing file path (#44).
+- Populate `{{COMPLETED_TASKS}}` with real content in `--prepare-release` instead of literal placeholder (#48).
+- Exclude `build/` and `tests/` from mypy to eliminate false-positive duplicate-module errors in `--eval` (#50).
+- Use exit code to determine lint error count in `--eval`, reporting correct `lint: 1.00 (errors=0)` on clean codebase (#51).
+- Graceful error for `--split-task` with remote MCP providers instead of crashing (#53).
+
 ## [0.4.0] - 2026-03-07
 
 ### Added
