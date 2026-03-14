@@ -35,31 +35,54 @@ pip install -e .[release]
 
 ## Basic usage
 
-Choose the workflow that matches what you have:
+The most common workflow: write a short list of features and let millstone design, plan, and implement each one.
+
+```markdown
+<!-- docs/roadmap.md -->
+- [ ] Add a logout button to the header
+- [ ] Show toast notifications on form errors
+- [ ] Rate-limit the /api/search endpoint
+```
 
 ```bash
-# 1) One task now (no tasklist setup)
+# Local roadmap file
+millstone --cycle --roadmap docs/roadmap.md
+
+# Remote issue tracker (GitHub Issues, Linear, Jira) — configure MCP backend
+# in .millstone/config.toml, then create issues with your tracker's UI
+millstone --cycle
+```
+
+For each goal, millstone designs a solution, breaks it into atomic tasks, and implements them through a build-review loop. Approval gates pause between stages; add `--no-approve` for fully autonomous operation.
+
+Other starting points:
+
+```bash
+# One task now (no setup required)
 millstone --task "add retry logic"
 
-# 2) Existing local backlog file -> migrate once
-millstone --migrate-tasklist backlog.md
-millstone
-
-# 3) Design -> plan -> execute one objective (skips analyze)
+# Design, plan, and execute one objective end-to-end
 millstone --deliver "Add retry logic"
 
-# 4) New app / fresh repo
+# Full autonomous loop — analyze codebase for improvements, then implement
+millstone --cycle
+
+# New app / fresh repo
 millstone --init
 millstone --deliver "Build a CLI app for release note generation"
-
-# 5) Full autonomous improvement loop
-millstone --cycle
 ```
 
 Roadmap-driven flow (no analyze step):
 
 ```bash
 millstone --cycle --roadmap docs/roadmap.md
+```
+
+Partial pipelines — `--through` controls how far `--analyze`, `--design`, or `--plan` chains forward:
+
+```bash
+millstone --analyze --through plan              # Analyze → design → plan, stop
+millstone --design "Add caching" --through execute  # Design → plan → execute
 ```
 
 Run from tasklist directly:

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from millstone.artifacts.models import Opportunity, OpportunityStatus
 from millstone.config import DEFAULT_CONFIG
 
 
@@ -19,9 +20,29 @@ def _base_config(**overrides) -> dict:
 
 
 def _make_opportunity(title="Add caching"):
-    opp = MagicMock()
-    opp.title = title
-    return opp
+    return Opportunity(
+        opportunity_id="add-caching",
+        title=title,
+        status=OpportunityStatus.identified,
+        description="Add caching to improve performance",
+        roi_score=5.0,
+    )
+
+
+def _setup_tmp_repo(tmp_path):
+    """Create minimal repo structure so Orchestrator can initialize."""
+    ms_dir = tmp_path / ".millstone"
+    ms_dir.mkdir(parents=True, exist_ok=True)
+    (ms_dir / "tasklist.md").write_text("# Tasklist\n")
+    # Create opportunities file so FileOpportunityProvider.update_opportunity_status
+    # doesn't fail when the pipeline's SelectionStrategy adopt callback runs.
+    (ms_dir / "opportunities.md").write_text(
+        "- [ ] **Add caching**\n"
+        "  - ID: add-caching\n"
+        "  - Status: identified\n"
+        "  - ROI Score: 5.0\n"
+        "  - Description: Add caching to improve performance\n"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -32,18 +53,21 @@ def _make_opportunity(title="Add caching"):
 class TestPlanCompleteFlag:
     """--plan ... --complete execution paths."""
 
-    def test_halts_at_plans_gate_by_default(self, capsys):
+    def test_halts_at_plans_gate_by_default(self, tmp_path, capsys, monkeypatch):
         """--plan --complete exits 0 at plans gate when approve_plans defaults to True."""
         from millstone import orchestrate
+
+        _setup_tmp_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
 
         mock_run = MagicMock(return_value=0)
         with (
             patch("sys.argv", ["millstone", "--plan", "designs/foo.md", "--complete"]),
             patch(
                 "millstone.runtime.orchestrator.load_config",
-                return_value=_base_config(tasklist_provider="mcp"),
+                return_value=_base_config(),
             ),
-            patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "preflight_checks"),
             patch.object(orchestrate.Orchestrator, "save_outer_loop_checkpoint"),
             patch.object(
                 orchestrate.Orchestrator,
@@ -60,9 +84,12 @@ class TestPlanCompleteFlag:
         captured = capsys.readouterr()
         assert "APPROVAL GATE: Tasks added to tasklist" in captured.out
 
-    def test_no_approve_skips_gate_and_runs(self):
+    def test_no_approve_skips_gate_and_runs(self, tmp_path, monkeypatch):
         """--plan --complete --no-approve skips the plans gate and executes tasks."""
         from millstone import orchestrate
+
+        _setup_tmp_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
 
         call_order: list[str] = []
 
@@ -73,9 +100,9 @@ class TestPlanCompleteFlag:
             ),
             patch(
                 "millstone.runtime.orchestrator.load_config",
-                return_value=_base_config(tasklist_provider="mcp", approve_plans=True),
+                return_value=_base_config(approve_plans=True),
             ),
-            patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "preflight_checks"),
         ):
             mock_run_plan = MagicMock(
                 side_effect=lambda *_args, **_kw: (
@@ -95,9 +122,12 @@ class TestPlanCompleteFlag:
         mock_run.assert_called_once()
         assert call_order == ["run_plan", "run"], f"Expected run_plan then run, got {call_order}"
 
-    def test_config_approve_plans_false_skips_gate(self):
+    def test_config_approve_plans_false_skips_gate(self, tmp_path, monkeypatch):
         """--plan --complete with approve_plans=False in config runs tasks immediately."""
         from millstone import orchestrate
+
+        _setup_tmp_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
 
         call_order: list[str] = []
         mock_run_plan = MagicMock(
@@ -111,9 +141,9 @@ class TestPlanCompleteFlag:
             patch("sys.argv", ["millstone", "--plan", "designs/foo.md", "--complete"]),
             patch(
                 "millstone.runtime.orchestrator.load_config",
-                return_value=_base_config(tasklist_provider="mcp", approve_plans=False),
+                return_value=_base_config(approve_plans=False),
             ),
-            patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "preflight_checks"),
             patch.object(orchestrate.Orchestrator, "run_plan", mock_run_plan),
             patch.object(orchestrate.Orchestrator, "run", mock_run),
             pytest.raises(SystemExit) as exc_info,
@@ -124,36 +154,37 @@ class TestPlanCompleteFlag:
         mock_run.assert_called_once()
         assert call_order == ["run_plan", "run"], f"Expected run_plan then run, got {call_order}"
 
-    def test_without_complete_flag_exits_after_plan(self):
+    def test_without_complete_flag_exits_after_plan(self, tmp_path, monkeypatch):
         """--plan without --complete exits 0 after planning without running tasks."""
         from millstone import orchestrate
 
+        monkeypatch.chdir(tmp_path)
+        _setup_tmp_repo(tmp_path)
+
+        mock_run = MagicMock(return_value=0)
         with (
             patch("sys.argv", ["millstone", "--plan", "designs/foo.md"]),
-            patch(
-                "millstone.runtime.orchestrator.load_config",
-                return_value=_base_config(tasklist_provider="mcp"),
-            ),
-            patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch("millstone.runtime.orchestrator.load_config", return_value=_base_config()),
+            patch.object(orchestrate.Orchestrator, "preflight_checks"),
             patch.object(
                 orchestrate.Orchestrator,
                 "run_plan",
                 return_value={"success": True, "tasks_added": 2},
             ),
+            patch.object(orchestrate.Orchestrator, "run", mock_run),
+            pytest.raises(SystemExit) as exc_info,
         ):
-            mock_run = MagicMock(return_value=0)
-            with (
-                patch.object(orchestrate.Orchestrator, "run", mock_run),
-                pytest.raises(SystemExit) as exc_info,
-            ):
-                orchestrate.main()
+            orchestrate.main()
 
         assert exc_info.value.code == 0
         mock_run.assert_not_called()
 
-    def test_run_plan_failure_exits_nonzero_without_running(self):
+    def test_run_plan_failure_exits_nonzero_without_running(self, tmp_path, monkeypatch):
         """--plan --complete exits nonzero when run_plan() fails, without calling run()."""
         from millstone import orchestrate
+
+        _setup_tmp_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
 
         with (
             patch(
@@ -162,9 +193,9 @@ class TestPlanCompleteFlag:
             ),
             patch(
                 "millstone.runtime.orchestrator.load_config",
-                return_value=_base_config(tasklist_provider="mcp", approve_plans=False),
+                return_value=_base_config(approve_plans=False),
             ),
-            patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "preflight_checks"),
             patch.object(
                 orchestrate.Orchestrator,
                 "run_plan",
@@ -190,18 +221,21 @@ class TestPlanCompleteFlag:
 class TestDesignCompleteFlag:
     """--design ... --complete execution paths."""
 
-    def test_halts_at_designs_gate_by_default(self, capsys):
+    def test_halts_at_designs_gate_by_default(self, tmp_path, capsys, monkeypatch):
         """--design --complete exits 0 at designs gate when approve_designs defaults to True."""
         from millstone import orchestrate
+
+        _setup_tmp_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
 
         mock_plan = MagicMock(return_value={"success": True, "tasks_added": 2})
         with (
             patch("sys.argv", ["millstone", "--design", "Add caching", "--complete"]),
             patch(
                 "millstone.runtime.orchestrator.load_config",
-                return_value=_base_config(tasklist_provider="mcp", review_designs=False),
+                return_value=_base_config(review_designs=False),
             ),
-            patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "preflight_checks"),
             patch.object(orchestrate.Orchestrator, "save_outer_loop_checkpoint"),
             patch.object(
                 orchestrate.Orchestrator,
@@ -218,9 +252,12 @@ class TestDesignCompleteFlag:
         captured = capsys.readouterr()
         assert "APPROVAL GATE: Design created" in captured.out
 
-    def test_skips_designs_gate_halts_at_plans_gate(self, capsys):
+    def test_skips_designs_gate_halts_at_plans_gate(self, tmp_path, capsys, monkeypatch):
         """With approve_designs=False, chains to plan then halts at plans gate."""
         from millstone import orchestrate
+
+        _setup_tmp_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
 
         mock_plan = MagicMock(return_value={"success": True, "tasks_added": 2})
         mock_run = MagicMock(return_value=0)
@@ -229,13 +266,12 @@ class TestDesignCompleteFlag:
             patch(
                 "millstone.runtime.orchestrator.load_config",
                 return_value=_base_config(
-                    tasklist_provider="mcp",
                     review_designs=False,
                     approve_designs=False,
                     approve_plans=True,
                 ),
             ),
-            patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "preflight_checks"),
             patch.object(orchestrate.Orchestrator, "save_outer_loop_checkpoint"),
             patch.object(
                 orchestrate.Orchestrator,
@@ -262,7 +298,7 @@ class TestDesignCompleteFlag:
             patch("sys.argv", ["millstone", "--design", "Add caching"]),
             patch(
                 "millstone.runtime.orchestrator.load_config",
-                return_value=_base_config(tasklist_provider="mcp", review_designs=False),
+                return_value=_base_config(review_designs=False),
             ),
             patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
             patch.object(
@@ -281,9 +317,12 @@ class TestDesignCompleteFlag:
         assert exc_info.value.code == 0
         mock_plan.assert_not_called()
 
-    def test_no_approve_runs_full_chain(self):
-        """--design --complete --no-approve runs design → plan → execute in order."""
+    def test_no_approve_runs_full_chain(self, tmp_path, monkeypatch):
+        """--design --complete --no-approve runs design -> plan -> execute in order."""
         from millstone import orchestrate
+
+        _setup_tmp_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
 
         call_order: list[str] = []
 
@@ -295,13 +334,12 @@ class TestDesignCompleteFlag:
             patch(
                 "millstone.runtime.orchestrator.load_config",
                 return_value=_base_config(
-                    tasklist_provider="mcp",
                     review_designs=False,
                     approve_designs=True,
                     approve_plans=True,
                 ),
             ),
-            patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "preflight_checks"),
         ):
             mock_design = MagicMock(
                 side_effect=lambda *_args, **_kw: (
@@ -328,7 +366,7 @@ class TestDesignCompleteFlag:
         mock_plan.assert_called_once()
         mock_run.assert_called_once()
         assert call_order == ["run_design", "run_plan", "run"], (
-            f"Expected run_design → run_plan → run, got {call_order}"
+            f"Expected run_design -> run_plan -> run, got {call_order}"
         )
 
 
@@ -340,27 +378,28 @@ class TestDesignCompleteFlag:
 class TestAnalyzeCompleteFlag:
     """--analyze --complete execution paths."""
 
-    def test_halts_at_opportunities_gate_by_default(self, capsys):
+    def test_halts_at_opportunities_gate_by_default(self, tmp_path, capsys, monkeypatch):
         """--analyze --complete exits 0 at opportunities gate when approve_opportunities=True."""
         from millstone import orchestrate
+        from millstone.loops.pipeline.stages import AnalyzeStage
+
+        _setup_tmp_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
 
         mock_design = MagicMock(return_value={"success": True, "design_file": "designs/foo.md"})
-        # create=True: _select_opportunity is delegated via __getattr__ to
-        # _outer_loop_manager at runtime, so it is not in the class dict.
         with (
             patch("sys.argv", ["millstone", "--analyze", "--complete"]),
             patch(
                 "millstone.runtime.orchestrator.load_config",
-                return_value=_base_config(tasklist_provider="mcp"),
+                return_value=_base_config(),
             ),
-            patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "preflight_checks"),
             patch.object(orchestrate.Orchestrator, "save_outer_loop_checkpoint"),
             patch.object(orchestrate.Orchestrator, "run_analyze", return_value={"success": True}),
             patch.object(
-                orchestrate.Orchestrator,
-                "_select_opportunity",
-                create=True,
-                return_value=_make_opportunity(),
+                AnalyzeStage,
+                "_load_opportunities",
+                return_value=[_make_opportunity()],
             ),
             patch.object(orchestrate.Orchestrator, "run_design", mock_design),
             pytest.raises(SystemExit) as exc_info,
@@ -375,6 +414,7 @@ class TestAnalyzeCompleteFlag:
     def test_without_complete_flag_exits_after_analyze(self):
         """--analyze without --complete exits 0 after analysis without chaining to design."""
         from millstone import orchestrate
+        from millstone.loops.pipeline.stages import AnalyzeStage
 
         mock_design = MagicMock(return_value={"success": True, "design_file": "designs/foo.md"})
         with (
@@ -385,6 +425,7 @@ class TestAnalyzeCompleteFlag:
             ),
             patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
             patch.object(orchestrate.Orchestrator, "run_analyze", return_value={"success": True}),
+            patch.object(AnalyzeStage, "_load_opportunities", return_value=[]),
             patch.object(orchestrate.Orchestrator, "run_design", mock_design),
             pytest.raises(SystemExit) as exc_info,
         ):
@@ -393,26 +434,27 @@ class TestAnalyzeCompleteFlag:
         assert exc_info.value.code == 0
         mock_design.assert_not_called()
 
-    def test_no_opportunities_exits_zero_without_chaining(self):
+    def test_no_opportunities_exits_zero_without_chaining(self, tmp_path, monkeypatch):
         """--analyze --complete with no opportunities exits 0 without chaining."""
         from millstone import orchestrate
+        from millstone.loops.pipeline.stages import AnalyzeStage
+
+        _setup_tmp_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
 
         mock_design = MagicMock(return_value={"success": True, "design_file": "designs/foo.md"})
-        # create=True: _select_opportunity is delegated via __getattr__ to
-        # _outer_loop_manager at runtime, so it is not in the class dict.
         with (
             patch("sys.argv", ["millstone", "--analyze", "--complete"]),
             patch(
                 "millstone.runtime.orchestrator.load_config",
-                return_value=_base_config(tasklist_provider="mcp"),
+                return_value=_base_config(),
             ),
-            patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "preflight_checks"),
             patch.object(orchestrate.Orchestrator, "run_analyze", return_value={"success": True}),
             patch.object(
-                orchestrate.Orchestrator,
-                "_select_opportunity",
-                create=True,
-                return_value=None,
+                AnalyzeStage,
+                "_load_opportunities",
+                return_value=[],
             ),
             patch.object(orchestrate.Orchestrator, "run_design", mock_design),
             pytest.raises(SystemExit) as exc_info,
@@ -422,33 +464,33 @@ class TestAnalyzeCompleteFlag:
         assert exc_info.value.code == 0
         mock_design.assert_not_called()
 
-    def test_skips_opps_gate_halts_at_designs_gate(self, capsys):
+    def test_skips_opps_gate_halts_at_designs_gate(self, tmp_path, capsys, monkeypatch):
         """With approve_opportunities=False, chains to design then halts at designs gate."""
         from millstone import orchestrate
+        from millstone.loops.pipeline.stages import AnalyzeStage
+
+        _setup_tmp_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
 
         mock_design = MagicMock(return_value={"success": True, "design_file": "designs/foo.md"})
         mock_plan = MagicMock(return_value={"success": True})
-        # create=True: _select_opportunity is delegated via __getattr__ to
-        # _outer_loop_manager at runtime, so it is not in the class dict.
         with (
             patch("sys.argv", ["millstone", "--analyze", "--complete"]),
             patch(
                 "millstone.runtime.orchestrator.load_config",
                 return_value=_base_config(
-                    tasklist_provider="mcp",
                     review_designs=False,
                     approve_opportunities=False,
                     approve_designs=True,
                 ),
             ),
-            patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "preflight_checks"),
             patch.object(orchestrate.Orchestrator, "save_outer_loop_checkpoint"),
             patch.object(orchestrate.Orchestrator, "run_analyze", return_value={"success": True}),
             patch.object(
-                orchestrate.Orchestrator,
-                "_select_opportunity",
-                create=True,
-                return_value=_make_opportunity(),
+                AnalyzeStage,
+                "_load_opportunities",
+                return_value=[_make_opportunity()],
             ),
             patch.object(orchestrate.Orchestrator, "run_design", mock_design),
             patch.object(orchestrate.Orchestrator, "run_plan", mock_plan),
@@ -462,9 +504,13 @@ class TestAnalyzeCompleteFlag:
         captured = capsys.readouterr()
         assert "APPROVAL GATE: Design created" in captured.out
 
-    def test_no_approve_runs_full_chain(self):
-        """--analyze --complete --no-approve runs analyze → design → plan → execute in order."""
+    def test_no_approve_runs_full_chain(self, tmp_path, monkeypatch):
+        """--analyze --complete --no-approve runs analyze -> design -> plan -> execute in order."""
         from millstone import orchestrate
+        from millstone.loops.pipeline.stages import AnalyzeStage
+
+        _setup_tmp_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
 
         call_order: list[str] = []
 
@@ -476,14 +522,13 @@ class TestAnalyzeCompleteFlag:
             patch(
                 "millstone.runtime.orchestrator.load_config",
                 return_value=_base_config(
-                    tasklist_provider="mcp",
                     review_designs=False,
                     approve_opportunities=True,
                     approve_designs=True,
                     approve_plans=True,
                 ),
             ),
-            patch.object(orchestrate.Orchestrator, "__init__", return_value=None),
+            patch.object(orchestrate.Orchestrator, "preflight_checks"),
         ):
             mock_analyze = MagicMock(
                 side_effect=lambda *_args, **_kw: (
@@ -504,17 +549,12 @@ class TestAnalyzeCompleteFlag:
                 )[1]
             )
             mock_run = MagicMock(side_effect=lambda *_args, **_kw: (call_order.append("run"), 0)[1])
-            # create=True is required because _select_opportunity is not a direct
-            # class attribute on Orchestrator — it is accessible at runtime via
-            # __getattr__ delegation to _outer_loop_manager, but patch.object
-            # inspects the class dict, so create=True is needed to install the patch.
             with (
                 patch.object(orchestrate.Orchestrator, "run_analyze", mock_analyze),
                 patch.object(
-                    orchestrate.Orchestrator,
-                    "_select_opportunity",
-                    create=True,
-                    return_value=_make_opportunity(),
+                    AnalyzeStage,
+                    "_load_opportunities",
+                    return_value=[_make_opportunity()],
                 ),
                 patch.object(orchestrate.Orchestrator, "run_design", mock_design),
                 patch.object(orchestrate.Orchestrator, "run_plan", mock_plan),
@@ -529,7 +569,7 @@ class TestAnalyzeCompleteFlag:
         mock_plan.assert_called_once()
         mock_run.assert_called_once()
         assert call_order == ["run_analyze", "run_design", "run_plan", "run"], (
-            f"Expected run_analyze → run_design → run_plan → run, got {call_order}"
+            f"Expected run_analyze -> run_design -> run_plan -> run, got {call_order}"
         )
 
 

@@ -1080,7 +1080,8 @@ When addressing similar areas, try a different approach than what caused the reg
         """Run design agent to create an implementation spec for an opportunity.
 
         Invokes the design agent with the design prompt. The agent analyzes the
-        opportunity and writes a design document to `designs/<slug>.md`.
+        opportunity and writes a design document to `.millstone/designs/<slug>.md`
+        by default (or `designs/<slug>.md` when `commit_designs = true`).
 
         Args:
             opportunity: Description of the opportunity to design a solution for.

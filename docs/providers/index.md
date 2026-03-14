@@ -51,7 +51,7 @@ Credentials are managed entirely by the agent's MCP configuration — never stor
 | Backend | Description | Guide |
 |---------|-------------|-------|
 | `mcp` | Agent MCP tools for all reads and writes | [MCP](mcp.md) |
-| `file` | Local `designs/*.md` files | — |
+| `file` | Local `.millstone/designs/*.md` files by default (`designs/*.md` when `commit_designs = true`) | — |
 
 ## Narrowing the working task set
 

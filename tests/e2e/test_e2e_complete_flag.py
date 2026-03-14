@@ -389,11 +389,11 @@ class TestApprovalGateCheckpoints:
     def test_plan_complete_gate_writes_checkpoint_and_continue_message(
         self, temp_repo: Path, capsys
     ) -> None:
-        """--plan --complete with approve_plans=True writes plan_complete checkpoint.
+        """--plan --complete with approve_plans=True writes plan checkpoint.
 
         Verifies:
-          (a) state.json written with outer_loop.stage == "plan_complete"
-          (b) outer_loop.design_path in state.json
+          (a) state.json written with outer_loop.stage == "plan"
+          (b) pipeline_checkpoint present with pipeline_stages
           (c) stdout contains "millstone --continue"
           (d) exit 0 (gate halt is not an error)
         """
@@ -419,15 +419,15 @@ class TestApprovalGateCheckpoints:
 
         assert exc_info.value.code == 0, f"Expected exit 0, got {exc_info.value.code}"
 
-        # (a)+(b) state.json has plan_complete checkpoint with design_path
+        # (a)+(b) state.json has pipeline checkpoint
         state_file = temp_repo / ".millstone" / "state.json"
         assert state_file.exists(), "Expected state.json to be written at gate halt"
         state = json.loads(state_file.read_text())
         outer = state.get("outer_loop", {})
-        assert outer.get("stage") == "plan_complete", (
-            f"Expected outer_loop.stage == 'plan_complete', got: {outer}"
-        )
-        assert outer.get("design_path"), "Expected outer_loop.design_path to be set"
+        assert outer.get("stage") == "plan", f"Expected outer_loop.stage == 'plan', got: {outer}"
+        assert "pipeline_checkpoint" in outer, "Expected pipeline_checkpoint in state"
+        cp = outer["pipeline_checkpoint"]
+        assert "plan" in cp.get("pipeline_stages", [])
 
         # (c) stdout contains "millstone --continue"
         captured = capsys.readouterr()
@@ -438,11 +438,11 @@ class TestApprovalGateCheckpoints:
     def test_design_complete_gate_writes_checkpoint_and_continue_message(
         self, temp_repo: Path, capsys
     ) -> None:
-        """--design --complete with approve_designs=True writes design_complete checkpoint.
+        """--design --complete with approve_designs=True writes design checkpoint.
 
         Verifies:
-          (a) state.json has outer_loop.stage == "design_complete"
-          (b) outer_loop.design_path and outer_loop.opportunity set
+          (a) state.json has outer_loop.stage == "design"
+          (b) pipeline_checkpoint present with items
           (c) stdout contains "millstone --continue"
           (d) exit 0
         """
@@ -472,18 +472,15 @@ class TestApprovalGateCheckpoints:
         assert exc_info.value.code == 0, f"Expected exit 0, got {exc_info.value.code}"
         mock_plan.assert_not_called()
 
-        # (a)+(b) checkpoint written
+        # (a)+(b) checkpoint written with pipeline format
         state_file = temp_repo / ".millstone" / "state.json"
         assert state_file.exists(), "Expected state.json written at design gate"
         state = json.loads(state_file.read_text())
         outer = state.get("outer_loop", {})
-        assert outer.get("stage") == "design_complete", (
-            f"Expected stage 'design_complete', got: {outer}"
-        )
-        assert outer.get("design_path"), "Expected outer_loop.design_path"
-        assert outer.get("opportunity") == "Add caching", (
-            f"Expected outer_loop.opportunity == 'Add caching', got: {outer}"
-        )
+        assert outer.get("stage") == "design", f"Expected stage 'design', got: {outer}"
+        assert "pipeline_checkpoint" in outer, "Expected pipeline_checkpoint"
+        cp = outer["pipeline_checkpoint"]
+        assert len(cp.get("items", [])) > 0, "Expected design items in checkpoint"
 
         # (c) resume instruction
         captured = capsys.readouterr()
@@ -494,17 +491,26 @@ class TestApprovalGateCheckpoints:
     def test_analyze_complete_gate_writes_checkpoint_and_continue_message(
         self, temp_repo: Path, capsys
     ) -> None:
-        """--analyze --complete with approve_opportunities=True writes analyze_complete checkpoint.
+        """--analyze --complete with approve_opportunities=True writes analyze checkpoint.
 
         Verifies:
-          (a) state.json has outer_loop.stage == "analyze_complete"
-          (b) outer_loop.opportunity set
+          (a) state.json has outer_loop.stage == "analyze"
+          (b) pipeline_checkpoint present
           (c) stdout contains "millstone --continue"
           (d) exit 0
         """
-        mock_opportunity = MagicMock()
-        mock_opportunity.title = "Add caching layer"
+        # AnalyzeStage calls run_analyze() then reads opportunities from the
+        # provider. Write a mock opportunities file so the provider can read it.
         mock_design = MagicMock(return_value={"success": True, "design_file": "d.md"})
+
+        # Write opportunities file for the FileOpportunityProvider
+        opps_file = temp_repo / ".millstone" / "opportunities.md"
+        opps_file.write_text(
+            "- [ ] **Add caching layer**\n"
+            "  - ID: add-caching\n"
+            "  - ROI: 5.0\n"
+            "  - Description: Add caching\n"
+        )
 
         with (
             patch("sys.argv", ["millstone", "--analyze", "--complete"]),
@@ -517,12 +523,6 @@ class TestApprovalGateCheckpoints:
                 ),
             ),
             patch.object(orchestrate.Orchestrator, "run_analyze", return_value={"success": True}),
-            patch.object(
-                orchestrate.Orchestrator,
-                "_select_opportunity",
-                create=True,
-                return_value=mock_opportunity,
-            ),
             patch.object(orchestrate.Orchestrator, "run_design", mock_design),
             pytest.raises(SystemExit) as exc_info,
         ):
@@ -536,12 +536,8 @@ class TestApprovalGateCheckpoints:
         assert state_file.exists(), "Expected state.json written at opportunities gate"
         state = json.loads(state_file.read_text())
         outer = state.get("outer_loop", {})
-        assert outer.get("stage") == "analyze_complete", (
-            f"Expected stage 'analyze_complete', got: {outer}"
-        )
-        assert outer.get("opportunity") == "Add caching layer", (
-            f"Expected outer_loop.opportunity == 'Add caching layer', got: {outer}"
-        )
+        assert outer.get("stage") == "analyze", f"Expected stage 'analyze', got: {outer}"
+        assert "pipeline_checkpoint" in outer, "Expected pipeline_checkpoint"
 
         # (c) resume instruction
         captured = capsys.readouterr()
@@ -550,10 +546,10 @@ class TestApprovalGateCheckpoints:
         )
 
     def test_design_complete_plans_gate_writes_checkpoint(self, temp_repo: Path, capsys) -> None:
-        """--design --complete with approve_plans=True (no designs gate) writes plan_complete.
+        """--design --complete with approve_plans=True (no designs gate) writes plan checkpoint.
 
         Design gate skipped (approve_designs=False). After planning succeeds,
-        plans gate fires and writes plan_complete checkpoint.
+        plans gate fires and writes plan checkpoint.
         """
         design_file = _write_design_file(temp_repo)
 
@@ -586,9 +582,8 @@ class TestApprovalGateCheckpoints:
         assert state_file.exists(), "Expected state.json written at plans gate"
         state = json.loads(state_file.read_text())
         outer = state.get("outer_loop", {})
-        assert outer.get("stage") == "plan_complete", (
-            f"Expected stage 'plan_complete', got: {outer}"
-        )
+        assert outer.get("stage") == "plan", f"Expected stage 'plan', got: {outer}"
+        assert "pipeline_checkpoint" in outer, "Expected pipeline_checkpoint"
         captured = capsys.readouterr()
         assert "millstone --continue" in captured.out
 

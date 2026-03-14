@@ -380,7 +380,7 @@ class FileOpportunityProvider(OpportunityProviderBase):
 
 
 class FileDesignProvider(DesignProviderBase):
-    """File-backed DesignProvider reading/writing files under a designs/ directory.
+    """File-backed DesignProvider reading/writing files under a configured directory.
 
     Supports dual-format parsing:
     - Primary: canonical metadata block (- **field**: value lines before ---).
