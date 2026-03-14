@@ -4282,7 +4282,8 @@ Remote backlog scoping (Jira / Linear / GitHub):
         metavar="OPPORTUNITY",
         help="Run the design agent to create an implementation spec for an opportunity. "
         "The agent analyzes the opportunity, explores options, and writes a design document "
-        "to designs/<slug>.md. The slug is a kebab-case version of the opportunity title. "
+        "to .millstone/designs/<slug>.md by default (or designs/<slug>.md when commit_designs = true). "
+        "The slug is a kebab-case version of the opportunity title. "
         "The output is gated through an iterative write/review/fix loop: a reviewer checks "
         "the design and requests revisions until it approves or --max-cycles is exhausted. "
         "Example: --design 'Add retry logic to API calls'",
@@ -4297,7 +4298,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
         "completeness, alternatives considered, and appropriate scoping. "
         "Uses the haiku model for cost efficiency. "
         "Exits 0 if APPROVED, 1 if NEEDS_REVISION. "
-        "Example: --review-design designs/add-retry-logic.md",
+        "Example: --review-design .millstone/designs/add-retry-logic.md",
     )
     parser.add_argument(
         "--plan",
@@ -4311,7 +4312,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
         "The output is gated through an iterative write/review/fix loop: a reviewer checks "
         "the task breakdown and requests revisions until it approves or --max-cycles is exhausted. "
         "Exits 0 if tasks were added, 1 if no tasks were added. "
-        "Example: --plan designs/add-retry-logic.md",
+        "Example: --plan .millstone/designs/add-retry-logic.md",
     )
     parser.add_argument(
         "--deliver",
