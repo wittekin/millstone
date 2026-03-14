@@ -4721,9 +4721,6 @@ Remote backlog scoping (Jira / Linear / GitHub):
             )
 
         try:
-            if needs_full:
-                orchestrator.preflight_checks()
-
             if args.cycle:
                 pipeline, items = resolve_cycle_pipeline(
                     orchestrator,
