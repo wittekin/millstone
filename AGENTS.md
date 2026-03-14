@@ -42,7 +42,9 @@ millstone --eval-compare            # Compare two most recent eval runs
 millstone --analyze                 # Scan codebase for improvement opportunities
 millstone --design "opportunity"    # Create design doc for an opportunity
 millstone --plan .millstone/designs/foo.md  # Break design into tasklist tasks
-millstone --cycle                   # Full autonomous loop (analyze → design → plan → build → eval)
+millstone --analyze --through plan  # Analyze -> design -> plan, then stop
+millstone --design "objective" --through execute  # Design -> plan -> execute
+millstone --cycle                   # Full autonomous loop with triage (pending tasks, roadmap, or fresh analysis)
 ```
 
 ## Practical Note
@@ -65,14 +67,14 @@ Builder → Sanity ✓ → Reviewer → Sanity ✓ → [Fix Loop] → Commit
 ### Outer Loops (Self-Direction)
 
 ```
-Analyze → Design → Plan → [Inner Loop] → Eval → (loop back)
+Analyze → Design → Plan → [Inner Loop]
 ```
 
 1. **Analyze** (`run_analyze()`): Agent scans codebase for opportunities (default file backend writes `.millstone/opportunities.md`; provider backends may store elsewhere)
 2. **Design** (`run_design()`): Agent creates implementation spec → `.millstone/designs/<slug>.md`
 3. **Plan** (`run_plan()`): Agent breaks design into atomic tasks → appends to tasklist
 4. **Eval** (`run_eval()`): Run tests, capture results → `.millstone/evals/<timestamp>.json`
-5. **Cycle** (`run_cycle()`): Chains all loops together for autonomous operation
+5. **Cycle** (`run_cycle()`): Resolves a pipeline from pending tasks, roadmap goals, or fresh analysis, then chains forward with approval gates
 
 ### Key Methods
 
@@ -90,7 +92,7 @@ Analyze → Design → Plan → [Inner Loop] → Eval → (loop back)
 - `run_design()` - Invoke design agent, create design doc
 - `review_design()` - Review design for completeness
 - `run_plan()` - Invoke planning agent, append tasks to tasklist
-- `run_cycle()` - Full autonomous cycle with approval gates
+- `run_cycle()` - Legacy cycle entry point; CLI outer-loop chaining now goes through the pipeline executor
 
 **State management**:
 - `save_state()` / `load_state()` - State persistence for --continue

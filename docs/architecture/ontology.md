@@ -66,6 +66,8 @@ Canonical handoff chain in `millstone`:
 - design -> `.millstone/designs/<slug>.md` -> planning loop
 - planning -> tasklist artifact (default `.millstone/tasklist.md`) -> execution loop
 
+At runtime, this chain is implemented by the pipeline module (`loops/pipeline/`). Each link is a `Stage` with typed `input_kind` / `output_kind` edges using `HandoffKind` (`OPPORTUNITY`, `DESIGN`, `WORKLIST`). `PipelineDefinition.validate()` ensures adjacent stages have compatible handoff kinds. `--through` controls how far `--analyze`, `--design`, or `--plan` chains forward (e.g. `--analyze --through plan` stops before execution); `--cycle` resolves which pipeline shape to build based on triage (pending tasks, roadmap goals, or fresh analysis).
+
 ## Artifact Contract Model
 
 `millstone` treats the handoff chain as three canonical artifact contracts, each with provider-backed identity and references:

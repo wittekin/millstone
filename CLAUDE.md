@@ -35,10 +35,15 @@ millstone --eval-compare            # Compare two most recent eval runs
 millstone --analyze                 # Scan codebase for improvement opportunities
 millstone --design "opportunity"    # Create design doc for an opportunity
 millstone --plan .millstone/designs/foo.md  # Break design into tasklist tasks
-millstone --plan .millstone/designs/foo.md --complete  # Plan then execute all resulting tasks
-millstone --design "opportunity" --complete  # Design → plan → execute
+millstone --deliver "objective"     # Design → plan → execute (no gates, no analyze)
 millstone --cycle                   # Full autonomous loop (analyze → design → plan → build → eval)
 millstone --continue                # Resume an interrupted run from last checkpoint
+
+# Pipeline chaining: --through controls how far --analyze/--design/--plan chains forward
+millstone --analyze --through plan              # Analyze → design → plan, stop before execute
+millstone --analyze --through execute           # Full forward chain (= --analyze --complete)
+millstone --design "opportunity" --through execute  # Design → plan → execute (= --design --complete)
+millstone --plan .millstone/designs/foo.md --through execute  # Plan → execute (= --plan --complete)
 ```
 
 ## Practical Note
@@ -47,9 +52,9 @@ If you reply back to the user, you are handing control back to them which means 
 
 ## Architecture
 
-**Single-file orchestrator**: All orchestration logic lives in `orchestrate.py` (~2600 lines). The `Orchestrator` class manages both inner and outer loops.
-
 ### Inner Loop (Task Execution)
+
+`src/millstone/runtime/orchestrator.py` — `Orchestrator` class.
 
 ```
 Builder → Sanity ✓ → Reviewer → Sanity ✓ → [Fix Loop] → Commit
@@ -62,39 +67,60 @@ Builder → Sanity ✓ → Reviewer → Sanity ✓ → [Fix Loop] → Commit
 5. Sanity check on review (haiku model)
 6. If approved: delegate commit to builder; else: loop back with feedback (up to max-cycles)
 
-### Outer Loops (Self-Direction)
+### Outer Loop Pipeline
 
-```
-Analyze → Design → Plan → [Inner Loop] → Eval → (loop back)
-```
+`src/millstone/loops/pipeline/` — composable stage pipeline.
 
-1. **Analyze** (`run_analyze()`): Agent scans codebase for improvement opportunities → `.millstone/opportunities.md`
-2. **Design** (`run_design()`): Agent creates implementation spec → `.millstone/designs/<slug>.md`
-3. **Plan** (`run_plan()`): Agent breaks design into atomic tasks → appends to tasklist
-4. **Eval** (`run_eval()`): Run tests, capture results → `.millstone/evals/<timestamp>.json`
-5. **Cycle** (`run_cycle()`): Chains all loops together for autonomous operation
+Each CLI invocation (`--analyze`, `--design`, `--plan`, `--deliver`, `--cycle`) builds a `PipelineDefinition` from typed stages, then `PipelineExecutor` runs them in order with approval gates and checkpointing.
+
+**Stages** (each wraps an existing Orchestrator method):
+
+| Stage | Input → Output | Wraps |
+|-------|---------------|-------|
+| `AnalyzeStage` | ∅ → Opportunity[] | `run_analyze()` |
+| `DesignStage` | Opportunity → Design | `run_design()` |
+| `ReviewDesignStage` | Design → Design | `review_design()` |
+| `PlanStage` | Design → Worklist | `run_plan()` |
+| `ExecuteStage` | Worklist → ∅ | `run()` (inner loop) |
+
+**`HandoffKind`** (`OPPORTUNITY`, `DESIGN`, `WORKLIST`) types the edges between stages. `PipelineDefinition.validate()` checks that adjacent stages have compatible kinds.
+
+**`--through STAGE`** is the general mechanism for "start here, stop there":
+- `--analyze --through plan` builds `[Analyze, Design, Plan]`
+- `--design "obj" --through execute` builds `[Design, Plan, Execute]`
+- `--complete` is an alias for `--through execute`
+
+**`--cycle`** uses `resolve_cycle_pipeline()` — triage logic that checks pending tasks / roadmap / analysis, then builds the appropriate pipeline. This is pipeline *selection*, not a stage.
+
+**`SelectionStrategy`** controls which items flow between stages (top-N, filter, all). `on_select` callback handles side effects like marking opportunities as adopted.
+
+**`PipelineCheckpoint`** saves full pipeline shape, items (with injected text), and MCP sync state. `--continue` resumes from checkpoints, including mid-batch failures.
+
+**Extensibility**: `register_stage(name, cls)` adds new stages. Third-party stages implement the `Stage` protocol (`name`, `input_kind`, `output_kind`, `execute()`).
 
 ### Key Methods
 
-**Inner loop**:
+**Inner loop** (`runtime/orchestrator.py`):
 - `run()` - Main entry point, handles --continue and task loop
 - `run_single_task()` - One task through build-review cycle
 - `mechanical_checks()` - LoC threshold, sensitive file detection
-- `sanity_check_impl()` / `sanity_check_review()` - LLM-based validation
 - `delegate_commit()` - Has builder commit its own changes
 
-**Outer loops**:
-- `run_eval()` - Run tests, store JSON results
-- `compare_evals()` - Diff two eval results, detect regressions
-- `run_analyze()` - Invoke analysis agent, create `.millstone/opportunities.md`
-- `run_design()` - Invoke design agent, create design doc
-- `review_design()` - Review design for completeness
-- `run_plan()` - Invoke planning agent, append tasks to tasklist
-- `run_cycle()` - Full autonomous cycle with approval gates
+**Outer loop stages** (`loops/outer.py` — wrapped by pipeline stages):
+- `run_analyze()` - Invoke analysis agent
+- `run_design()` - Invoke design agent
+- `run_plan()` - Invoke planning agent
+- `run_eval()` / `compare_evals()` - Test suite evaluation
+
+**Pipeline** (`loops/pipeline/`):
+- `build_pipeline_from_args()` - CLI flags → PipelineDefinition
+- `resolve_cycle_pipeline()` - Triage for --cycle
+- `PipelineExecutor.run()` - Execute stages, manage gates/checkpoints
+- `inject_opportunity()` / `inject_design()` / `inject_worklist()` - Onboard unstructured content
 
 **State management**:
 - `save_state()` / `load_state()` - State persistence for --continue
-- `save_outer_loop_checkpoint()` - Persist outer-loop stage (analyze/design/plan complete) for --continue resumption
+- `save_outer_loop_checkpoint()` - Persist pipeline checkpoint for resumption
 - `clear_state()` - Remove state file after clean completion
 
 ## Prompts
@@ -140,7 +166,7 @@ Key config options:
 
 ## Testing
 
-Tests are in `tests/` using pytest (~300 tests). Key fixtures in `conftest.py`:
+Tests are in `tests/` using pytest (~1900 tests). Key fixtures in `conftest.py`:
 - `temp_repo` - Creates temporary git repo with tasklist
 - `mock_claude` - Patches subprocess.run for claude CLI
 

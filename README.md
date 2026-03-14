@@ -32,31 +32,42 @@ cd /path/to/your/project
 # @docs/prompts/design.md   (design + plan a new feature)
 ```
 
-Pick the path that matches your intent:
+Common pattern: hand millstone a short list of features and let it design, plan, and implement each one. Write them as a roadmap:
 
-```bash
-# 1) One task now (no tasklist setup required)
-millstone --task "add retry logic to API client"
-
-# 2) Existing local backlog -> migrate once, then execute
-millstone --migrate-tasklist backlog.md
-millstone
-
-# 3) Design -> plan -> execute one objective (skips analyze)
-millstone --deliver "Add retry logic to API client"
-
-# 4) New app / fresh repo
-millstone --init
-millstone --deliver "Build a CLI app for release note generation"
-
-# 5) Full autonomous loop on an existing project
-millstone --cycle
+```markdown
+<!-- docs/roadmap.md -->
+- [ ] Add a logout button to the header
+- [ ] Show toast notifications on form errors
+- [ ] Rate-limit the /api/search endpoint
 ```
 
-For a series of human-written goals with no analyze step, use roadmap + cycle:
+Then run:
 
 ```bash
+# Local roadmap file
 millstone --cycle --roadmap docs/roadmap.md
+```
+
+For each goal, millstone designs a solution, breaks it into atomic tasks, implements them through a build-review loop, and commits. The local roadmap path reads goals directly from the file; the remote path runs analysis to discover and select from provider-backed opportunities. Approval gates pause between stages for human review; add `--no-approve` for fully autonomous operation.
+
+Other starting points:
+
+```bash
+# One task now (no setup required)
+millstone --task "add retry logic to API client"
+
+# Design, plan, and execute one objective end-to-end
+millstone --deliver "Add retry logic to API client"
+
+# Full autonomous loop — analyze codebase for improvements, then implement
+millstone --cycle
+
+# Existing local backlog file -> migrate once, then execute
+millstone --migrate-tasklist backlog.md && millstone
+
+# New app / fresh repo
+millstone --init
+millstone --deliver "Build a CLI app for release note generation"
 ```
 
 `millstone` reads from `.millstone/tasklist.md` by default.
@@ -82,13 +93,15 @@ millstone --cycle --roadmap docs/roadmap.md
 | Run custom one-off task | `millstone --task "..."` |
 | Migrate an existing local backlog to tasklist format | `millstone --migrate-tasklist backlog.md` |
 | Design, plan, and execute one scoped objective | `millstone --deliver "..."` |
-| Claude code as author, codex as reviewer, one task, max of 6 write/review cycles task | `millstone --cli claude --cli-reviewer codex -n 1 --max-cycles 6` |
+| Claude code as author, codex as reviewer, one task, max of 6 write/review cycles | `millstone --cli claude --cli-reviewer codex -n 1 --max-cycles 6` |
 | Run 4 tasks in parallel (worktree mode) | `millstone --worktrees --concurrency 4` |
 | Dry-run prompt flow without invoking agents | `millstone --dry-run` |
 | Scan codebase for opportunities | `millstone --analyze` |
 | Generate a design doc | `millstone --design "Add caching layer"` |
-| Turn design into atomic tasks | `millstone --plan .millstone/designs/add-caching-layer.md` |
-| Plan and execute from existing design | `millstone --plan .millstone/designs/foo.md --complete` |
+| Turn design into atomic tasks | `millstone --plan .millstone/designs/foo.md` |
+| Analyze through planning, stop before execute | `millstone --analyze --through plan` |
+| Design, plan, and execute from text | `millstone --design "Add caching" --through execute` |
+| Plan and execute from existing design | `millstone --plan .millstone/designs/foo.md --through execute` |
 | Execute roadmap goals without analyze | `millstone --cycle --roadmap docs/roadmap.md` |
 | Run autonomous cycle end-to-end | `millstone --cycle` |
 | Resume an interrupted run | `millstone --continue` |
@@ -101,19 +114,19 @@ Inner loop (delivery):
 Builder -> Sanity Check -> Reviewer -> Sanity Check -> Fix Loop -> Commit
 ```
 
-Outer loop (self-direction):
+Outer loop (self-direction) — a composable pipeline of typed stages:
 
 ```text
 Analyze -> Design -> Plan -> [Inner Loop] -> Eval -> (repeat)
 ```
 
-Every authoring step in the outer loop (analyze, design, plan) is write/review gated: a
-reviewer agent checks the output and requests revisions until it approves or `--max-cycles`
-is exhausted. This is the same iterative loop that governs inner-loop code changes.
+Each stage transforms one artifact type into another (`Opportunity → Design → Worklist`).
+`--through` controls where the pipeline stops: `--analyze --through plan` runs analysis,
+design, and planning but skips execution. `--cycle` resolves which pipeline to build based
+on pending tasks, roadmap goals, or analysis results.
 
-> **Supersedes prior behavior**: `--analyze` previously ran the analysis agent once with no
-> review step. All outer-loop authoring steps (analyze, design, plan) now run an iterative
-> write/review/fix loop identical in structure to the inner build-review loop.
+Every authoring step (analyze, design, plan) is write/review gated: a reviewer agent checks
+the output and requests revisions until it approves or `--max-cycles` is exhausted.
 
 ## Installation Options
 

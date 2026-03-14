@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.5.0] - 2026-03-14
+
+### Added
+- Introduced a composable outer-loop pipeline with typed handoff edges, checkpointed resume, and extensible stage registration.
+- Added `--through` to chain `--analyze`, `--design`, or `--plan` forward through `design`, `plan`, or `execute`.
+- Added batch outer-loop execution, injected artifact entry points, and pipeline-aware `--continue` resume support.
+
+### Changed
+- Replaced duplicated CLI outer-loop chaining logic with a single pipeline dispatcher.
+- Preserved `--cycle` triage semantics and `--deliver` backlog protections while routing both through the new pipeline architecture.
+- Updated user and maintainer docs to describe the pipeline-based outer loop and `--through` workflows.
+
 ## [0.4.2] - 2026-03-07
 
 ### Fixed

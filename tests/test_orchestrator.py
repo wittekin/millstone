@@ -11884,9 +11884,10 @@ class TestRunCycle:
 class TestCycleCLI:
     """Tests for --cycle CLI flag."""
 
-    def test_cycle_flag_runs_cycle(self, temp_repo):
-        """--cycle flag invokes run_cycle and exits 0 on success."""
+    def test_cycle_flag_runs_pipeline(self, temp_repo):
+        """--cycle flag runs pipeline executor and exits 0 on success."""
         from millstone import orchestrate
+        from millstone.loops.pipeline.executor import PipelineExecutor
 
         tasklist = temp_repo / ".millstone" / "tasklist.md"
         tasklist.parent.mkdir(exist_ok=True)
@@ -11894,17 +11895,18 @@ class TestCycleCLI:
 
         with patch("sys.argv", ["orchestrate.py", "--cycle"]):
             with patch.object(Orchestrator, "preflight_checks"):
-                with patch.object(Orchestrator, "run_cycle") as mock_cycle:
-                    mock_cycle.return_value = 0
+                with patch.object(PipelineExecutor, "run") as mock_run:
+                    mock_run.return_value = 0
                     with pytest.raises(SystemExit) as exc_info:
                         orchestrate.main()
 
-                    mock_cycle.assert_called_once()
+                    mock_run.assert_called_once()
                     assert exc_info.value.code == 0
 
     def test_cycle_flag_exits_1_on_failure(self, temp_repo):
-        """--cycle flag exits 1 when run_cycle fails."""
+        """--cycle flag exits 1 when pipeline fails."""
         from millstone import orchestrate
+        from millstone.loops.pipeline.executor import PipelineExecutor
 
         tasklist = temp_repo / ".millstone" / "tasklist.md"
         tasklist.parent.mkdir(exist_ok=True)
@@ -11912,8 +11914,8 @@ class TestCycleCLI:
 
         with patch("sys.argv", ["orchestrate.py", "--cycle"]):
             with patch.object(Orchestrator, "preflight_checks"):
-                with patch.object(Orchestrator, "run_cycle") as mock_cycle:
-                    mock_cycle.return_value = 1
+                with patch.object(PipelineExecutor, "run") as mock_run:
+                    mock_run.return_value = 1
                     with pytest.raises(SystemExit) as exc_info:
                         orchestrate.main()
 
@@ -11922,6 +11924,7 @@ class TestCycleCLI:
     def test_cycle_flag_exits_1_on_exception(self, temp_repo):
         """--cycle flag exits 1 on exception."""
         from millstone import orchestrate
+        from millstone.loops.pipeline.executor import PipelineExecutor
 
         tasklist = temp_repo / ".millstone" / "tasklist.md"
         tasklist.parent.mkdir(exist_ok=True)
@@ -11929,8 +11932,8 @@ class TestCycleCLI:
 
         with patch("sys.argv", ["orchestrate.py", "--cycle"]):
             with patch.object(Orchestrator, "preflight_checks"):
-                with patch.object(Orchestrator, "run_cycle") as mock_cycle:
-                    mock_cycle.side_effect = Exception("Test error")
+                with patch.object(PipelineExecutor, "run") as mock_run:
+                    mock_run.side_effect = Exception("Test error")
                     with pytest.raises(SystemExit) as exc_info:
                         orchestrate.main()
 
@@ -11939,6 +11942,7 @@ class TestCycleCLI:
     def test_cycle_flag_passes_config_options(self, temp_repo):
         """--cycle respects config options like max_cycles and loc_threshold."""
         from millstone import orchestrate
+        from millstone.loops.pipeline.executor import PipelineExecutor
 
         tasklist = temp_repo / ".millstone" / "tasklist.md"
         tasklist.parent.mkdir(exist_ok=True)
@@ -11949,12 +11953,12 @@ class TestCycleCLI:
             ["orchestrate.py", "--cycle", "--max-cycles", "5", "--loc-threshold", "1000"],
         ):
             with patch.object(Orchestrator, "preflight_checks"):
-                with patch.object(Orchestrator, "run_cycle") as mock_cycle:
-                    mock_cycle.return_value = 0
+                with patch.object(PipelineExecutor, "run") as mock_run:
+                    mock_run.return_value = 0
                     with pytest.raises(SystemExit):
                         orchestrate.main()
 
-                    mock_cycle.assert_called_once()
+                    mock_run.assert_called_once()
 
 
 class TestApprovalGates:
@@ -12122,8 +12126,9 @@ class TestApprovalGates:
             orch.cleanup()
 
     def test_no_approve_flag_disables_gates(self, temp_repo):
-        """--no-approve CLI flag sets all approval gates to False."""
+        """--no-approve CLI flag disables gate enforcement in pipeline executor."""
         from millstone import orchestrate
+        from millstone.loops.pipeline.executor import PipelineExecutor
 
         tasklist = temp_repo / ".millstone" / "tasklist.md"
         tasklist.parent.mkdir(exist_ok=True)
@@ -12131,20 +12136,19 @@ class TestApprovalGates:
 
         with patch("sys.argv", ["orchestrate.py", "--cycle", "--no-approve"]):
             with patch.object(Orchestrator, "preflight_checks"):
-                with patch.object(Orchestrator, "__init__", return_value=None) as mock_init:
-                    with patch.object(Orchestrator, "run_cycle", return_value=0):
+                with patch.object(PipelineExecutor, "run", return_value=0):
+                    with patch.object(PipelineExecutor, "__init__", return_value=None) as mock_init:
                         with pytest.raises(SystemExit):
                             orchestrate.main()
 
-                        # Verify approval gates were set to False
+                        # Verify enforce_gates=False when --no-approve
                         call_kwargs = mock_init.call_args[1]
-                        assert call_kwargs.get("approve_opportunities") is False
-                        assert call_kwargs.get("approve_designs") is False
-                        assert call_kwargs.get("approve_plans") is False
+                        assert call_kwargs.get("enforce_gates") is False
 
     def test_default_approval_gates_from_config(self, temp_repo):
-        """Without --no-approve, approval gates use config values (default True)."""
+        """Without --no-approve, gate enforcement is enabled in pipeline executor."""
         from millstone import orchestrate
+        from millstone.loops.pipeline.executor import PipelineExecutor
 
         tasklist = temp_repo / ".millstone" / "tasklist.md"
         tasklist.parent.mkdir(exist_ok=True)
@@ -12152,16 +12156,14 @@ class TestApprovalGates:
 
         with patch("sys.argv", ["orchestrate.py", "--cycle"]):
             with patch.object(Orchestrator, "preflight_checks"):
-                with patch.object(Orchestrator, "__init__", return_value=None) as mock_init:
-                    with patch.object(Orchestrator, "run_cycle", return_value=0):
+                with patch.object(PipelineExecutor, "run", return_value=0):
+                    with patch.object(PipelineExecutor, "__init__", return_value=None) as mock_init:
                         with pytest.raises(SystemExit):
                             orchestrate.main()
 
-                        # Verify approval gates use default (True)
+                        # Verify enforce_gates=True by default
                         call_kwargs = mock_init.call_args[1]
-                        assert call_kwargs.get("approve_opportunities") is True
-                        assert call_kwargs.get("approve_designs") is True
-                        assert call_kwargs.get("approve_plans") is True
+                        assert call_kwargs.get("enforce_gates") is True
 
 
 class TestCycleLogging:
