@@ -59,10 +59,18 @@ class InnerLoopManager:
         self.loop_sensitive_patterns = loop_sensitive_patterns
 
     def git(self, *args) -> str:
-        """Run git command and return output."""
+        """Run git command and return output.
+
+        Raises subprocess.CalledProcessError on nonzero exit code so that
+        a failed ``git diff`` is never silently treated as "no changes".
+        """
         import subprocess
 
         result = subprocess.run(["git", *args], capture_output=True, text=True, cwd=self.repo_dir)
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(
+                result.returncode, result.args, result.stdout, result.stderr
+            )
         return result.stdout
 
     # =========================================================================

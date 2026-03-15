@@ -73,8 +73,16 @@ class EvalManager:
         self.last_rollback_context: dict | None = None
 
     def git(self, *args) -> str:
-        """Run git command and return output."""
+        """Run git command and return output.
+
+        Raises subprocess.CalledProcessError on nonzero exit code so that
+        a failed ``git rev-parse`` is never silently treated as empty output.
+        """
         result = subprocess.run(["git", *args], capture_output=True, text=True, cwd=self.repo_dir)
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(
+                result.returncode, result.args, result.stdout, result.stderr
+            )
         return result.stdout
 
     # =========================================================================
