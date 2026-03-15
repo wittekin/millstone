@@ -250,8 +250,13 @@ class EvalManager:
         previous_eval_file = None
         if json_files:
             previous_eval_file = json_files[-1]
-            previous_eval = json.loads(previous_eval_file.read_text())
-            eval_result["previous_eval"] = previous_eval_file.name
+            try:
+                previous_eval = json.loads(previous_eval_file.read_text())
+            except json.JSONDecodeError:
+                progress(f"Warning: corrupt eval file {previous_eval_file.name}, skipping delta")
+                previous_eval = None
+            if previous_eval:
+                eval_result["previous_eval"] = previous_eval_file.name
 
         # Compute delta from previous eval
         if previous_eval:
@@ -328,12 +333,27 @@ class EvalManager:
                 "Run --eval multiple times first."
             )
 
-        # Get the two most recent
-        older_file = json_files[-2]
-        newer_file = json_files[-1]
+        # Load valid eval files newest-first, skipping corrupt ones
+        valid_files: list[tuple[Path, dict]] = []
+        for f in reversed(json_files):
+            try:
+                data = json.loads(f.read_text())
+                valid_files.append((f, data))
+            except json.JSONDecodeError:
+                progress(f"Warning: skipping corrupt eval file {f.name}")
+                continue
+            if len(valid_files) == 2:
+                break
 
-        older_data = json.loads(older_file.read_text())
-        newer_data = json.loads(newer_file.read_text())
+        if len(valid_files) < 2:
+            raise FileNotFoundError(
+                f"Need at least 2 valid eval files to compare, found {len(valid_files)}. "
+                "Some eval files may be corrupt."
+            )
+
+        # valid_files is newest-first; reverse for older/newer
+        newer_file, newer_data = valid_files[0]
+        older_file, older_data = valid_files[1]
 
         # Extract test data
         older_tests = older_data.get("tests", {})
@@ -1181,7 +1201,38 @@ class EvalManager:
         summary_file = evals_dir / "summary.json"
 
         # Load existing summary or create new one
-        summary = json.loads(summary_file.read_text()) if summary_file.exists() else {"evals": []}
+        summary: dict = {"evals": []}
+        if summary_file.exists():
+            try:
+                summary = json.loads(summary_file.read_text())
+            except json.JSONDecodeError:
+                # Rename corrupt file and reconstruct from individual eval files
+                progress(
+                    "Warning: corrupt summary.json, renaming and reconstructing from eval files"
+                )
+                summary_file.rename(evals_dir / "summary.json.corrupt")
+                current_filename = f"{timestamp_str}.json"
+                summary = {"evals": []}
+                for eval_file in sorted(evals_dir.glob("*.json")):
+                    if eval_file.name in ("summary.json", "summary.json.corrupt", current_filename):
+                        continue
+                    try:
+                        eval_data = json.loads(eval_file.read_text())
+                    except json.JSONDecodeError:
+                        progress(f"Warning: skipping corrupt eval file {eval_file.name}")
+                        continue
+                    summary["evals"].append(
+                        {
+                            "timestamp": eval_data.get("timestamp"),
+                            "file": eval_file.name,
+                            "git_head": eval_data.get("git_head", "")[:8],
+                            "composite_score": eval_data.get("composite_score"),
+                            "tests": {
+                                "passed": eval_data.get("tests", {}).get("passed", 0),
+                                "failed": eval_data.get("tests", {}).get("failed", 0),
+                            },
+                        }
+                    )
 
         # Extract key metrics for the time series
         entry = {
@@ -1234,7 +1285,11 @@ class EvalManager:
         if not json_files:
             return None
 
-        return json.loads(json_files[-1].read_text())
+        try:
+            return json.loads(json_files[-1].read_text())
+        except json.JSONDecodeError:
+            progress(f"Warning: corrupt eval file {json_files[-1].name}, returning None")
+            return None
 
     def _get_eval_before_task(self) -> dict | None:
         """Get the eval result from before the current task started.
