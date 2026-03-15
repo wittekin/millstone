@@ -5347,11 +5347,13 @@ FAILED tests/test_baz.py::test_qux - ValueError
         orch = Orchestrator()
         try:
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    stdout="3 passed, 2 failed in 0.50s",
-                    stderr="",
-                    returncode=1,
-                )
+
+                def _side_effect(cmd, *args, **kwargs):
+                    if cmd[0] == "git":
+                        return MagicMock(returncode=0, stdout="abc123\n", stderr="")
+                    return MagicMock(stdout="3 passed, 2 failed in 0.50s", stderr="", returncode=1)
+
+                mock_run.side_effect = _side_effect
                 result = orch.run_eval()
 
             assert result["_passed"] is False
@@ -5363,11 +5365,13 @@ FAILED tests/test_baz.py::test_qux - ValueError
         orch = Orchestrator()
         try:
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    stdout="3 passed, 1 error in 0.50s",
-                    stderr="",
-                    returncode=1,
-                )
+
+                def _side_effect(cmd, *args, **kwargs):
+                    if cmd[0] == "git":
+                        return MagicMock(returncode=0, stdout="abc123\n", stderr="")
+                    return MagicMock(stdout="3 passed, 1 error in 0.50s", stderr="", returncode=1)
+
+                mock_run.side_effect = _side_effect
                 result = orch.run_eval()
 
             assert result["_passed"] is False
@@ -5379,14 +5383,20 @@ FAILED tests/test_baz.py::test_qux - ValueError
         orch = Orchestrator()
         try:
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    stdout="""
+
+                def _side_effect(cmd, *args, **kwargs):
+                    if cmd[0] == "git":
+                        return MagicMock(returncode=0, stdout="abc123\n", stderr="")
+                    return MagicMock(
+                        stdout="""
 FAILED tests/test_foo.py::test_bar - AssertionError
 2 passed, 1 failed in 0.50s
 """,
-                    stderr="",
-                    returncode=1,
-                )
+                        stderr="",
+                        returncode=1,
+                    )
+
+                mock_run.side_effect = _side_effect
                 result = orch.run_eval()
 
             assert "tests/test_foo.py::test_bar" in result["failed_tests"]
@@ -5435,14 +5445,20 @@ FAILED tests/test_foo.py::test_bar - AssertionError
         orch = Orchestrator()
         try:
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    stdout="""
+
+                def _side_effect(cmd, *args, **kwargs):
+                    if cmd[0] == "git":
+                        return MagicMock(returncode=0, stdout="abc123\n", stderr="")
+                    return MagicMock(
+                        stdout="""
 FAILED tests/test_foo.py::test_bar - AssertionError
 2 passed, 1 failed in 0.50s
 """,
-                    stderr="",
-                    returncode=1,
-                )
+                        stderr="",
+                        returncode=1,
+                    )
+
+                mock_run.side_effect = _side_effect
                 orch.run_eval()
 
             captured = capsys.readouterr()
@@ -6504,12 +6520,17 @@ class TestEvalTrendTracking:
             )
 
             with patch("subprocess.run") as mock_run:
-                # Now run eval with failures
-                mock_run.return_value = MagicMock(
-                    stdout="8 passed, 2 failed in 1.00s\nFAILED test_foo\nFAILED test_bar",
-                    stderr="",
-                    returncode=1,
-                )
+
+                def _side_effect(cmd, *args, **kwargs):
+                    if cmd[0] == "git":
+                        return MagicMock(returncode=0, stdout="abc123\n", stderr="")
+                    return MagicMock(
+                        stdout="8 passed, 2 failed in 1.00s\nFAILED test_foo\nFAILED test_bar",
+                        stderr="",
+                        returncode=1,
+                    )
+
+                mock_run.side_effect = _side_effect
                 orch.run_eval()
 
             captured = capsys.readouterr()
@@ -6522,9 +6543,17 @@ class TestEvalTrendTracking:
         orch = Orchestrator()
         try:
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    stdout="5 passed, 1 failed in 1.00s\nFAILED test_foo", stderr="", returncode=1
-                )
+
+                def _side_effect(cmd, *args, **kwargs):
+                    if cmd[0] == "git":
+                        return MagicMock(returncode=0, stdout="abc123\n", stderr="")
+                    return MagicMock(
+                        stdout="5 passed, 1 failed in 1.00s\nFAILED test_foo",
+                        stderr="",
+                        returncode=1,
+                    )
+
+                mock_run.side_effect = _side_effect
                 orch.run_eval()
 
             captured = capsys.readouterr()

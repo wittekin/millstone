@@ -73,8 +73,16 @@ class EvalManager:
         self.last_rollback_context: dict | None = None
 
     def git(self, *args) -> str:
-        """Run git command and return output."""
+        """Run git command and return output.
+
+        Raises subprocess.CalledProcessError on nonzero exit code so that
+        a failed ``git rev-parse`` is never silently treated as empty output.
+        """
         result = subprocess.run(["git", *args], capture_output=True, text=True, cwd=self.repo_dir)
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(
+                result.returncode, result.args, result.stdout, result.stderr
+            )
         return result.stdout
 
     # =========================================================================
@@ -113,37 +121,40 @@ class EvalManager:
         # Capture git HEAD
         git_head = self.git("rev-parse", "HEAD").strip()
 
-        # Determine test command based on mode
+        # Determine test command based on mode.
+        # Internal commands use a list (shell=False) for safety;
+        # config-provided commands use a string (shell=True) to allow shell syntax.
         tests_config = self.project_config.get("tests", {})
-        test_cmd_str = ""
+        test_cmd_str = ""  # config-provided command (shell=True)
+        test_cmd: list[str] | None = None  # internally-built command (shell=False)
 
         if mode == "smoke":
             # Smoke mode: use smoke_command from config, or fast pytest subset
             test_cmd_str = tests_config.get("smoke_command", "")
             if not test_cmd_str:
                 # Default smoke: run with -x (fail fast) and no coverage
-                test_cmd_str = "pytest tests/ --tb=short -q -x"
+                test_cmd = ["pytest", "tests/", "--tb=short", "-q", "-x"]
             coverage = False  # Smoke mode never runs coverage
         elif mode == "full":
             # Full mode: run with coverage
             test_cmd_str = tests_config.get("coverage_command", "")
             if not test_cmd_str:
-                test_cmd_str = "pytest tests/ --cov=. --cov-report=json --tb=short -q"
+                test_cmd = ["pytest", "tests/", "--cov=.", "--cov-report=json", "--tb=short", "-q"]
             coverage = True
         elif mode and mode not in ("none", "smoke", "full"):
             # Custom path mode: treat mode as a path to custom test suite/script
             custom_path = Path(mode)
             if custom_path.suffix in (".sh", ".bash"):
                 # Shell script
-                test_cmd_str = f"bash {mode}"
+                test_cmd = ["bash", mode]
             elif custom_path.suffix == ".py":
                 # Python script
-                test_cmd_str = f"python {mode}"
+                test_cmd = ["python", mode]
             elif custom_path.is_dir() or "/" in mode:
                 # Directory path - run pytest on it
-                test_cmd_str = f"pytest {mode} --tb=short -q"
+                test_cmd = ["pytest", mode, "--tb=short", "-q"]
             else:
-                # Assume it's a command
+                # Assume it's an opaque command string
                 test_cmd_str = mode
         else:
             # Standard mode (None or legacy)
@@ -154,19 +165,38 @@ class EvalManager:
 
             # Fall back to hardcoded pytest if no command configured
             if not test_cmd_str:
-                test_cmd_str = "pytest tests/ --tb=short -q"
                 if coverage:
-                    test_cmd_str = "pytest tests/ --cov=. --cov-report=json --tb=short -q"
+                    test_cmd = [
+                        "pytest",
+                        "tests/",
+                        "--cov=.",
+                        "--cov-report=json",
+                        "--tb=short",
+                        "-q",
+                    ]
+                else:
+                    test_cmd = ["pytest", "tests/", "--tb=short", "-q"]
 
-        # Run test command and capture timing
+        # Run test command and capture timing.
+        # Use shell=False (list) for internally-built commands,
+        # shell=True (string) for config-provided commands.
         start_time = time.time()
-        result = subprocess.run(
-            test_cmd_str,
-            shell=True,
-            capture_output=True,
-            text=True,
-            cwd=self.repo_dir,
-        )
+        if test_cmd is not None:
+            result = subprocess.run(
+                test_cmd,
+                shell=False,
+                capture_output=True,
+                text=True,
+                cwd=self.repo_dir,
+            )
+        else:
+            result = subprocess.run(
+                test_cmd_str,
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=self.repo_dir,
+            )
         duration = time.time() - start_time
 
         # Parse output to extract test counts (works for pytest-style output)
@@ -220,8 +250,13 @@ class EvalManager:
         previous_eval_file = None
         if json_files:
             previous_eval_file = json_files[-1]
-            previous_eval = json.loads(previous_eval_file.read_text())
-            eval_result["previous_eval"] = previous_eval_file.name
+            try:
+                previous_eval = json.loads(previous_eval_file.read_text())
+            except json.JSONDecodeError:
+                progress(f"Warning: corrupt eval file {previous_eval_file.name}, skipping delta")
+                previous_eval = None
+            if previous_eval:
+                eval_result["previous_eval"] = previous_eval_file.name
 
         # Compute delta from previous eval
         if previous_eval:
@@ -298,12 +333,27 @@ class EvalManager:
                 "Run --eval multiple times first."
             )
 
-        # Get the two most recent
-        older_file = json_files[-2]
-        newer_file = json_files[-1]
+        # Load valid eval files newest-first, skipping corrupt ones
+        valid_files: list[tuple[Path, dict]] = []
+        for f in reversed(json_files):
+            try:
+                data = json.loads(f.read_text())
+                valid_files.append((f, data))
+            except json.JSONDecodeError:
+                progress(f"Warning: skipping corrupt eval file {f.name}")
+                continue
+            if len(valid_files) == 2:
+                break
 
-        older_data = json.loads(older_file.read_text())
-        newer_data = json.loads(newer_file.read_text())
+        if len(valid_files) < 2:
+            raise FileNotFoundError(
+                f"Need at least 2 valid eval files to compare, found {len(valid_files)}. "
+                "Some eval files may be corrupt."
+            )
+
+        # valid_files is newest-first; reverse for older/newer
+        newer_file, newer_data = valid_files[0]
+        older_file, older_data = valid_files[1]
 
         # Extract test data
         older_tests = older_data.get("tests", {})
@@ -1151,7 +1201,38 @@ class EvalManager:
         summary_file = evals_dir / "summary.json"
 
         # Load existing summary or create new one
-        summary = json.loads(summary_file.read_text()) if summary_file.exists() else {"evals": []}
+        summary: dict = {"evals": []}
+        if summary_file.exists():
+            try:
+                summary = json.loads(summary_file.read_text())
+            except json.JSONDecodeError:
+                # Rename corrupt file and reconstruct from individual eval files
+                progress(
+                    "Warning: corrupt summary.json, renaming and reconstructing from eval files"
+                )
+                summary_file.rename(evals_dir / "summary.json.corrupt")
+                current_filename = f"{timestamp_str}.json"
+                summary = {"evals": []}
+                for eval_file in sorted(evals_dir.glob("*.json")):
+                    if eval_file.name in ("summary.json", "summary.json.corrupt", current_filename):
+                        continue
+                    try:
+                        eval_data = json.loads(eval_file.read_text())
+                    except json.JSONDecodeError:
+                        progress(f"Warning: skipping corrupt eval file {eval_file.name}")
+                        continue
+                    summary["evals"].append(
+                        {
+                            "timestamp": eval_data.get("timestamp"),
+                            "file": eval_file.name,
+                            "git_head": eval_data.get("git_head", "")[:8],
+                            "composite_score": eval_data.get("composite_score"),
+                            "tests": {
+                                "passed": eval_data.get("tests", {}).get("passed", 0),
+                                "failed": eval_data.get("tests", {}).get("failed", 0),
+                            },
+                        }
+                    )
 
         # Extract key metrics for the time series
         entry = {
@@ -1204,7 +1285,11 @@ class EvalManager:
         if not json_files:
             return None
 
-        return json.loads(json_files[-1].read_text())
+        try:
+            return json.loads(json_files[-1].read_text())
+        except json.JSONDecodeError:
+            progress(f"Warning: corrupt eval file {json_files[-1].name}, returning None")
+            return None
 
     def _get_eval_before_task(self) -> dict | None:
         """Get the eval result from before the current task started.

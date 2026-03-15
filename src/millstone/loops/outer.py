@@ -455,9 +455,15 @@ class OuterLoopManager:
         json_files = []
         if evals_dir.exists():
             json_files = sorted(f for f in evals_dir.glob("*.json") if f.name != "summary.json")
-            if json_files:
-                last_eval = json.loads(json_files[-1].read_text())
-                signals["test_failures"] = last_eval.get("failed_tests", [])
+            # Iterate newest-first, skip corrupt files, use first valid eval
+            for eval_file in reversed(json_files):
+                try:
+                    last_eval = json.loads(eval_file.read_text())
+                    signals["test_failures"] = last_eval.get("failed_tests", [])
+                    break
+                except json.JSONDecodeError:
+                    progress(f"Warning: skipping corrupt eval file {eval_file.name}")
+                    continue
 
                 # Extract slow tests if duration info available
                 # Note: pytest --durations output is not in JSON, so we skip this for now

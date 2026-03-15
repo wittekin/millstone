@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.5.1] - 2026-03-14
+
+### Fixed
+- MCP sync now raises on missing staging files instead of silently skipping (previously lost pending writes).
+- MCP sync now raises on corrupt staging files that parse to zero items instead of silently archiving them.
+- `run_eval()` internal commands (pytest fallback, python/pytest mode paths) now use `shell=False` with argument lists.
+- `git()` helpers in inner loop and eval manager now raise on failed git operations instead of returning silent empty strings.
+- `json.loads` calls in eval comparison, eval summary, and hard signal collection are now guarded against corrupt JSON with safe fallbacks.
+
+### Added
+- Unit tests for `summarize_diff()` and `progress()` in utils.py.
+- Contract tests for MCP staging file corruption/missing edge cases.
+- Unit tests for git helper error handling and JSON parse guards.
+
 ## [0.5.0] - 2026-03-14
 
 ### Added
