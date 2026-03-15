@@ -13,6 +13,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from millstone.artifact_providers.mcp import (
     MCPDesignProvider,
     MCPOpportunityProvider,
@@ -924,3 +926,104 @@ class TestPlanStaging:
         # Staging file should be archived
         assert not staging_path.exists()
         assert Path(str(staging_path) + ".synced").exists()
+
+
+# ===========================================================================
+# Corrupt / missing staging file tests
+# ===========================================================================
+
+
+class TestSyncCorruptOrMissingStagingFile:
+    """Tests that _sync_pending_mcp_writes fails loudly on missing or corrupt staging files.
+
+    The safety contract:
+    - Missing staging file → error (not silent skip)
+    - Unparseable staging file (zero opportunities parsed) → error (not silent archive)
+    """
+
+    def test_missing_staging_file_raises_error(self, temp_repo: Path) -> None:
+        """If the staging file referenced by a pending sync entry is missing,
+        _sync_pending_mcp_writes should fail with a clear error rather than
+        silently skipping the entry and clearing it from state."""
+        orch = _make_orchestrator(temp_repo, approve_opportunities=True)
+        opp_provider = orch._outer_loop_manager.opportunity_provider
+        assert isinstance(opp_provider, MCPOpportunityProvider)
+        opp_provider.set_agent_callback(lambda p, **k: "ok")
+
+        # Reference a staging file that does NOT exist
+        nonexistent_path = str(temp_repo / ".millstone" / "opportunities-gone.md")
+
+        # Set up state.json with pending sync pointing at missing file
+        state_file = temp_repo / ".millstone" / "state.json"
+        state_file.write_text(
+            json.dumps(
+                {
+                    "outer_loop": {
+                        "stage": "analyze_complete",
+                        "pending_mcp_syncs": [
+                            {
+                                "type": "opportunities",
+                                "staging_file": nonexistent_path,
+                                "last_synced_index": 0,
+                            }
+                        ],
+                    }
+                }
+            )
+        )
+
+        pending_syncs = [
+            {
+                "type": "opportunities",
+                "staging_file": nonexistent_path,
+                "last_synced_index": 0,
+            }
+        ]
+
+        # The method should raise an error, not silently skip
+        with pytest.raises((FileNotFoundError, RuntimeError, OSError)):
+            orch._sync_pending_mcp_writes(pending_syncs)
+
+    def test_corrupt_staging_file_zero_opportunities_raises_error(self, temp_repo: Path) -> None:
+        """If the staging file contains unparseable content (malformed markdown
+        yielding zero opportunities), _sync_pending_mcp_writes should fail
+        loudly rather than silently archiving an empty result."""
+        orch = _make_orchestrator(temp_repo, approve_opportunities=True)
+        opp_provider = orch._outer_loop_manager.opportunity_provider
+        assert isinstance(opp_provider, MCPOpportunityProvider)
+        opp_provider.set_agent_callback(lambda p, **k: "ok")
+        opp_provider.write_opportunity = lambda opp: None  # should never be called
+
+        # Write a staging file with garbage content that won't parse as opportunities
+        staging_path = temp_repo / ".millstone" / "opportunities.md"
+        staging_path.write_text("This is not valid opportunity markdown at all.\nJust junk.\n")
+
+        state_file = temp_repo / ".millstone" / "state.json"
+        state_file.write_text(
+            json.dumps(
+                {
+                    "outer_loop": {
+                        "stage": "analyze_complete",
+                        "pending_mcp_syncs": [
+                            {
+                                "type": "opportunities",
+                                "staging_file": str(staging_path),
+                                "last_synced_index": 0,
+                            }
+                        ],
+                    }
+                }
+            )
+        )
+
+        pending_syncs = [
+            {
+                "type": "opportunities",
+                "staging_file": str(staging_path),
+                "last_synced_index": 0,
+            }
+        ]
+
+        # The method should raise an error when zero items are parsed
+        with pytest.raises((ValueError, RuntimeError)):
+            orch._sync_pending_mcp_writes(pending_syncs)
