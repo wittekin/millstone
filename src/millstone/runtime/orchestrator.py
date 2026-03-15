@@ -2438,8 +2438,12 @@ class Orchestrator:
             if not staging_path.is_absolute():
                 staging_path = self.repo_dir / staging_file
             if not staging_path.exists():
-                print(f"[staging] Skipping sync: staging file not found: {staging_path}")
-                continue
+                raise FileNotFoundError(
+                    f"Staging file not found: {staging_path}. "
+                    "Cannot sync pending MCP writes. The file may have been "
+                    "manually deleted — check .millstone/state.json and clear "
+                    "pending_mcp_syncs if the sync is no longer needed."
+                )
 
             # Stale sync warning (>24h)
             created_at = entry.get("created_at", "")
@@ -2471,6 +2475,13 @@ class Orchestrator:
 
                 file_prov = FileOpportunityProvider(staging_path)
                 opportunities = file_prov.list_opportunities()
+                if not opportunities and staging_path.stat().st_size > 0:
+                    raise ValueError(
+                        f"Staging file {staging_path} has content but parsed to "
+                        "zero opportunities. The file may be corrupt — inspect "
+                        "it manually and clear pending_mcp_syncs from "
+                        ".millstone/state.json when resolved."
+                    )
                 last_synced = entry.get("last_synced_index", 0)
                 synced_count = 0
 
@@ -2511,6 +2522,13 @@ class Orchestrator:
 
                 file_design_prov = FileDesignProvider(staging_path)
                 designs = file_design_prov.list_designs()
+                if not designs and staging_path.stat().st_size > 0:
+                    raise ValueError(
+                        f"Staging file {staging_path} has content but parsed to "
+                        "zero designs. The file may be corrupt — inspect it "
+                        "manually and clear pending_mcp_syncs from "
+                        ".millstone/state.json when resolved."
+                    )
                 last_synced = entry.get("last_synced_index", 0)
                 synced_count = 0
 
@@ -2548,6 +2566,13 @@ class Orchestrator:
 
                 file_task_prov = FileTasklistProvider(staging_path)
                 tasks = file_task_prov.list_tasks()
+                if not tasks and staging_path.stat().st_size > 0:
+                    raise ValueError(
+                        f"Staging file {staging_path} has content but parsed to "
+                        "zero tasks. The file may be corrupt — inspect it "
+                        "manually and clear pending_mcp_syncs from "
+                        ".millstone/state.json when resolved."
+                    )
                 last_synced = entry.get("last_synced_index", 0)
                 synced_count = 0
 
