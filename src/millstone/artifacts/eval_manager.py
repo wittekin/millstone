@@ -113,37 +113,40 @@ class EvalManager:
         # Capture git HEAD
         git_head = self.git("rev-parse", "HEAD").strip()
 
-        # Determine test command based on mode
+        # Determine test command based on mode.
+        # Internal commands use a list (shell=False) for safety;
+        # config-provided commands use a string (shell=True) to allow shell syntax.
         tests_config = self.project_config.get("tests", {})
-        test_cmd_str = ""
+        test_cmd_str = ""  # config-provided command (shell=True)
+        test_cmd: list[str] | None = None  # internally-built command (shell=False)
 
         if mode == "smoke":
             # Smoke mode: use smoke_command from config, or fast pytest subset
             test_cmd_str = tests_config.get("smoke_command", "")
             if not test_cmd_str:
                 # Default smoke: run with -x (fail fast) and no coverage
-                test_cmd_str = "pytest tests/ --tb=short -q -x"
+                test_cmd = ["pytest", "tests/", "--tb=short", "-q", "-x"]
             coverage = False  # Smoke mode never runs coverage
         elif mode == "full":
             # Full mode: run with coverage
             test_cmd_str = tests_config.get("coverage_command", "")
             if not test_cmd_str:
-                test_cmd_str = "pytest tests/ --cov=. --cov-report=json --tb=short -q"
+                test_cmd = ["pytest", "tests/", "--cov=.", "--cov-report=json", "--tb=short", "-q"]
             coverage = True
         elif mode and mode not in ("none", "smoke", "full"):
             # Custom path mode: treat mode as a path to custom test suite/script
             custom_path = Path(mode)
             if custom_path.suffix in (".sh", ".bash"):
                 # Shell script
-                test_cmd_str = f"bash {mode}"
+                test_cmd = ["bash", mode]
             elif custom_path.suffix == ".py":
                 # Python script
-                test_cmd_str = f"python {mode}"
+                test_cmd = ["python", mode]
             elif custom_path.is_dir() or "/" in mode:
                 # Directory path - run pytest on it
-                test_cmd_str = f"pytest {mode} --tb=short -q"
+                test_cmd = ["pytest", mode, "--tb=short", "-q"]
             else:
-                # Assume it's a command
+                # Assume it's an opaque command string
                 test_cmd_str = mode
         else:
             # Standard mode (None or legacy)
@@ -154,19 +157,38 @@ class EvalManager:
 
             # Fall back to hardcoded pytest if no command configured
             if not test_cmd_str:
-                test_cmd_str = "pytest tests/ --tb=short -q"
                 if coverage:
-                    test_cmd_str = "pytest tests/ --cov=. --cov-report=json --tb=short -q"
+                    test_cmd = [
+                        "pytest",
+                        "tests/",
+                        "--cov=.",
+                        "--cov-report=json",
+                        "--tb=short",
+                        "-q",
+                    ]
+                else:
+                    test_cmd = ["pytest", "tests/", "--tb=short", "-q"]
 
-        # Run test command and capture timing
+        # Run test command and capture timing.
+        # Use shell=False (list) for internally-built commands,
+        # shell=True (string) for config-provided commands.
         start_time = time.time()
-        result = subprocess.run(
-            test_cmd_str,
-            shell=True,
-            capture_output=True,
-            text=True,
-            cwd=self.repo_dir,
-        )
+        if test_cmd is not None:
+            result = subprocess.run(
+                test_cmd,
+                shell=False,
+                capture_output=True,
+                text=True,
+                cwd=self.repo_dir,
+            )
+        else:
+            result = subprocess.run(
+                test_cmd_str,
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=self.repo_dir,
+            )
         duration = time.time() - start_time
 
         # Parse output to extract test counts (works for pytest-style output)
