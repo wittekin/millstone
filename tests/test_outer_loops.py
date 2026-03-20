@@ -1990,3 +1990,55 @@ def test_run_plan_impl_legacy_tasklist_path_resolved_in_fix_prompt(temp_repo):
     assert fix_dispatched, "fix prompt was never dispatched"
     assert "{{TASKLIST_PATH}}" not in fix_dispatched[0]
     assert ".millstone/tasklist.md" in fix_dispatched[0]
+
+
+def test_run_plan_review_prompt_uses_tasklist_read_instructions_and_task_ids(temp_repo):
+    manager = _make_outer_manager(
+        temp_repo,
+        tasklist_provider=MockTasklistProviderWithPlaceholders(""),
+        design_provider=InMemoryDesignProvider(),
+    )
+    manager.design_provider.write_design(
+        Design(
+            design_id="review-plan-test",
+            title="Review Plan Test",
+            status=DesignStatus.draft,
+            body="Design body",
+        )
+    )
+
+    captured_review_prompts: list[str] = []
+
+    def load_prompt(name: str) -> str:
+        if name == "plan_review_prompt.md":
+            return (
+                "prompt_name: plan_review_prompt.md\n"
+                "{{TASKLIST_READ_INSTRUCTIONS}}\n"
+                "{{PROPOSED_TASK_IDS}}\n"
+                "{{PROPOSED_PLAN}}"
+            )
+        return f"prompt_name: {name}"
+
+    def run_agent(prompt: str) -> str:
+        if "prompt_name: plan_prompt.md" in prompt:
+            manager.tasklist_provider.restore_snapshot(
+                "- [ ] **New Task**\n  - ID: new-task\n  - Context: none\n"
+            )
+            return "planned"
+        if "prompt_name: plan_review_prompt.md" in prompt:
+            captured_review_prompts.append(prompt)
+            return '{"verdict": "APPROVED", "score": 10}'
+        return "ok"
+
+    result = manager._run_plan_impl(
+        design_path=str(temp_repo / ".millstone" / "designs" / "review-plan-test.md"),
+        load_prompt_callback=load_prompt,
+        run_agent_callback=run_agent,
+    )
+
+    assert result["success"] is True
+    assert captured_review_prompts
+    review_prompt = captured_review_prompts[0]
+    assert "Read tasks from /mock/tasklist.md." in review_prompt
+    assert "new-task" in review_prompt
+    assert "- [ ] New Task" in review_prompt
