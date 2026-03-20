@@ -4,7 +4,20 @@ Your goal is to ensure the plan is robust, clear, and executable by a stateless 
 ## The Design
 {{DESIGN_CONTENT}}
 
-## The Proposed Plan
+## How To Access The Proposed Plan
+
+{{TASKLIST_READ_INSTRUCTIONS}}
+
+Review only the tasks created or updated for this planning run. Their IDs are:
+
+{{PROPOSED_TASK_IDS}}
+
+Fetch those task records from the tasklist backend and review their full task blocks, not just their titles.
+Do not review unrelated backlog items.
+
+## Planner Summary
+This summary may be incomplete and is provided only as a quick index:
+
 {{PROPOSED_PLAN}}
 
 ## Review Guidelines

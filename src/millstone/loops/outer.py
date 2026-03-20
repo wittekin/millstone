@@ -1670,6 +1670,8 @@ When addressing similar areas, try a different approach than what caused the reg
         self,
         design_path: str,
         plan_content: str,
+        proposed_task_ids: list[str] | None = None,
+        tasklist_placeholders: dict[str, str] | None = None,
         load_prompt_callback: Callable[[str], str] | None = None,
         run_agent_callback: Callable[..., str] | None = None,
         log_callback: Callable[..., None] | None = None,
@@ -1715,6 +1717,13 @@ When addressing similar areas, try a different approach than what caused the reg
         review_prompt = load_prompt_callback("plan_review_prompt.md")
         review_prompt = review_prompt.replace("{{DESIGN_CONTENT}}", design_content)
         review_prompt = review_prompt.replace("{{PROPOSED_PLAN}}", plan_content)
+        review_prompt = review_prompt.replace(
+            "{{PROPOSED_TASK_IDS}}",
+            ", ".join(proposed_task_ids or []) or "No task IDs were captured for this plan.",
+        )
+        review_prompt = apply_provider_placeholders(review_prompt, tasklist_placeholders or {})
+        # Backward-compat: custom --prompts-dir templates may still use {{TASKLIST_PATH}}
+        review_prompt = review_prompt.replace("{{TASKLIST_PATH}}", self.tasklist)
 
         output = run_agent_callback(review_prompt)
 
@@ -2255,6 +2264,8 @@ When addressing similar areas, try a different approach than what caused the reg
             return self.review_plan(
                 design_path=design_path,
                 plan_content=added_content,
+                proposed_task_ids=sorted(planner_task_ids),
+                tasklist_placeholders=tasklist_placeholders,
                 load_prompt_callback=load_prompt_callback,
                 run_agent_callback=run_agent_callback,
                 log_callback=log_callback,
