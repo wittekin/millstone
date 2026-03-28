@@ -142,7 +142,7 @@ pipx install millstone
 pipx install git+https://github.com/wittekin/millstone.git
 
 # Contributor install
-pip install -e .
+pip install -e .[dev]
 ```
 
 Optional extras:
@@ -152,7 +152,30 @@ pip install -e .[test]      # pytest + coverage
 pip install -e .[quality]   # ruff + mypy
 pip install -e .[security]  # pip-audit
 pip install -e .[release]   # build + twine
+pip install -e .[docs]      # mkdocs
+pip install -e .[dev]       # contributor setup: tests, quality, docs, build, pre-commit
 ```
+
+## Local CI Before Push
+
+Install the repo hooks once:
+
+```bash
+pre-commit install --hook-type pre-commit --hook-type pre-push
+```
+
+The pre-push hook runs a local CI subset that mirrors the most failure-prone required checks:
+lint, format, type check, dead-code scan, unit tests, coverage, package build, docs build,
+and an isolated wheel smoke test.
+
+You can run the same gate manually:
+
+```bash
+python -m millstone.devtools.local_ci
+```
+
+It does not try to reproduce GitHub-only checks such as CodeQL, dependency review, or the
+macOS runner itself, but it catches most avoidable CI failures before you push.
 
 ## Minimal Tasklist Format
 

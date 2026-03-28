@@ -16,7 +16,8 @@ Canonical ontology (roles/artifacts/providers/profiles) for generalized loops:
 
 ```bash
 # Install in development mode
-pip install -e .
+pip install -e .[dev]
+pre-commit install --hook-type pre-commit --hook-type pre-push
 
 # Run tests
 pytest
@@ -26,6 +27,9 @@ pytest tests/test_orchestrator.py::test_function_name -v
 
 # Run tests with coverage
 pytest --cov=. --cov-report=term-missing
+
+# Run the local pre-push CI subset
+python -m millstone.devtools.local_ci
 
 # Run the orchestrator (requires at least one supported CLI installed:
 # claude, codex, gemini, or opencode)

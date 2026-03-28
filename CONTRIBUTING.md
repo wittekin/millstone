@@ -16,6 +16,7 @@ Thanks for contributing to millstone.
 
 ```bash
 pip install -e .[dev]
+pre-commit install --hook-type pre-commit --hook-type pre-push
 ```
 
 ## Running Tests
@@ -37,6 +38,15 @@ Run with coverage:
 ```bash
 pytest --cov=. --cov-report=term-missing
 ```
+
+Run the local pre-push CI subset manually:
+
+```bash
+python -m millstone.devtools.local_ci
+```
+
+This mirrors the highest-signal required CI checks locally: quality gates, unit tests,
+coverage, package build, docs build, and an isolated install smoke test.
 
 Run dependency security checks:
 

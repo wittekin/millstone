@@ -76,6 +76,11 @@ dev = [
     "mypy>=1.10.0",
     "types-requests>=2.31.0",
     "vulture>=2.11",
+    "build>=1.2.0",
+    "twine>=5.1.0",
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+    "pre-commit>=3.7.0",
 ]
 docs = [
     "mkdocs>=1.6.0",
