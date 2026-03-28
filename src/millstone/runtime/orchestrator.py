@@ -1352,6 +1352,9 @@ class Orchestrator:
         # Also preserve a non-default tasklist name when it lives inside work_dir
         if Path(self.tasklist).parts[0] == WORK_DIR_NAME:
             persistent.add(Path(self.tasklist).name)
+        # Preserve a configured roadmap when it lives inside work_dir.
+        if self.roadmap and Path(self.roadmap).parts[0] == WORK_DIR_NAME:
+            persistent.add(Path(self.roadmap).name)
         if self.work_dir.exists():
             for item in self.work_dir.iterdir():
                 if item.name in persistent:
@@ -3869,6 +3872,7 @@ Configuration:
     max_cycles = 5
     loc_threshold = 1000
     tasklist = "TODO.md"
+    roadmap = "docs/roadmap.md"
     max_tasks = 10
     prompts_dir = "my_prompts"
 

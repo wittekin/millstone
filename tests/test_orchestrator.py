@@ -528,6 +528,20 @@ class TestCleanup:
         finally:
             orch.cleanup()
 
+    def test_cleanup_preserves_configured_roadmap_inside_work_dir(self, temp_repo):
+        """cleanup() should not delete a roadmap stored under .millstone when configured."""
+        orch = Orchestrator(roadmap=".millstone/roadmap.md")
+        work_dir = orch.work_dir
+        roadmap = work_dir / "roadmap.md"
+        roadmap.write_text("# Roadmap\n\n- [ ] Keep me\n")
+
+        try:
+            orch.cleanup()
+            assert roadmap.exists()
+            assert "- [ ] Keep me" in roadmap.read_text()
+        finally:
+            orch.cleanup()
+
     def test_cleanup_still_removes_other_dirs(self, temp_repo):
         """cleanup() still removes non-whitelisted work_dir contents."""
         orch = Orchestrator()
@@ -2631,7 +2645,7 @@ class TestDryRun:
             orch.run()
             captured = capsys.readouterr()
             assert "Builder Prompt" in captured.out
-            assert "COMPLETE EXACTLY ONE TASK" in captured.out
+            assert "Complete exactly one task" in captured.out
         finally:
             orch.cleanup()
 
@@ -2642,7 +2656,7 @@ class TestDryRun:
             orch.run()
             captured = capsys.readouterr()
             assert "Review Prompt" in captured.out
-            assert "review of local, uncommitted changes" in captured.out
+            assert "correctness, completeness, and merge safety" in captured.out
         finally:
             orch.cleanup()
 
@@ -7520,7 +7534,7 @@ class TestAnalyzeInfrastructure:
                 # First call must be the analyze prompt
                 assert mock_claude.call_count >= 2
                 prompt = mock_claude.call_args_list[0][0][0]
-                assert "senior software architect" in prompt
+                assert "identify concrete improvement opportunities" in prompt.lower()
                 assert "improvement opportunities" in prompt
         finally:
             orch.cleanup()
@@ -8489,7 +8503,7 @@ class TestDesignInfrastructure:
                 # Verify run_claude was called with design prompt content on first call
                 assert mock_claude.call_count >= 1
                 first_prompt = mock_claude.call_args_list[0][0][0]
-                assert "software architect" in first_prompt
+                assert "create a concrete design" in first_prompt.lower()
                 assert "Test opportunity description" in first_prompt
                 assert "{{OPPORTUNITY}}" not in first_prompt
                 assert "{{OPPORTUNITY_ID}}" not in first_prompt
@@ -8952,7 +8966,7 @@ class TestReviewDesign:
             # Verify run_claude was called with review design prompt content
             mock_claude.assert_called_once()
             prompt = mock_claude.call_args[0][0]
-            assert "reviewing a design document" in prompt
+            assert "correctness, completeness, and execution readiness" in prompt.lower()
             assert "Test design content" in prompt
             assert "{{DESIGN_CONTENT}}" not in prompt
 
@@ -9712,7 +9726,7 @@ class TestPlanInfrastructure:
                 assert mock_claude.call_count == 2
                 # Check first call (plan)
                 prompt = mock_claude.call_args_list[0][0][0]
-                assert "technical lead" in prompt
+                assert "ordered, atomic tasks" in prompt.lower()
                 assert "Test design content" in prompt
                 assert "Existing task" in prompt
                 assert "{{DESIGN_CONTENT}}" not in prompt

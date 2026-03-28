@@ -156,7 +156,7 @@ Templates in `prompts/` with `{{PLACEHOLDER}}` substitution. Loaded via `load_pr
 Defaults in `DEFAULT_CONFIG` dict, overridden by `.millstone/config.toml`, then CLI args.
 
 Key config options:
-- `max_cycles`, `loc_threshold`, `tasklist`, `max_tasks`
+- `max_cycles`, `loc_threshold`, `tasklist`, `roadmap`, `max_tasks`
 - `eval_on_commit` - Run tests after each commit
 - `eval_scripts` - Custom scripts to run during eval
 - `approve_opportunities`, `approve_designs`, `approve_plans` - Human-in-loop gates
