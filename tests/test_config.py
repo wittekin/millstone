@@ -38,6 +38,16 @@ def test_parallel_config_from_toml(temp_repo):
     assert cfg["parallel_merge_strategy"] == "cherry-pick"
 
 
+def test_roadmap_config_from_toml(temp_repo):
+    """roadmap should be a first-class config key like tasklist."""
+    config_dir = temp_repo / ".millstone"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "config.toml").write_text('roadmap = ".millstone/roadmap.md"\n')
+
+    cfg = load_config(temp_repo)
+    assert cfg["roadmap"] == ".millstone/roadmap.md"
+
+
 # ---------------------------------------------------------------------------
 # tasklist_filter schema
 # ---------------------------------------------------------------------------

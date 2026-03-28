@@ -385,9 +385,13 @@ class Orchestrator:
         worktree_cleanup: str | None = None,
         no_tasklist_edits: bool = False,
         high_risk_concurrency: int = 1,
+        max_cycles_locked: bool = False,
     ):
         self.max_cycles = max_cycles
         self.base_max_cycles = max_cycles  # Store original for risk-based adjustments
+        # Preserve explicit/non-default cycle budgets instead of silently replacing
+        # them with risk-profile defaults during task execution.
+        self._max_cycles_locked = max_cycles_locked or max_cycles != DEFAULT_CONFIG["max_cycles"]
         self.loc_threshold = loc_threshold
         self.cycle = 0
         # Session IDs for builder and reviewer agents (tracked separately for session continuity)
@@ -1348,6 +1352,9 @@ class Orchestrator:
         # Also preserve a non-default tasklist name when it lives inside work_dir
         if Path(self.tasklist).parts[0] == WORK_DIR_NAME:
             persistent.add(Path(self.tasklist).name)
+        # Preserve a configured roadmap when it lives inside work_dir.
+        if self.roadmap and Path(self.roadmap).parts[0] == WORK_DIR_NAME:
+            persistent.add(Path(self.roadmap).name)
         if self.work_dir.exists():
             for item in self.work_dir.iterdir():
                 if item.name in persistent:
@@ -1854,13 +1861,19 @@ class Orchestrator:
     def apply_risk_settings(self, risk_level: str | None) -> None:
         """Apply risk-based settings for the current task.
 
-        Adjusts max_cycles and stores the risk level for later use in
-        approval gates and verification requirements.
+        Stores the task risk and adjusts max_cycles when the run is using the
+        default cycle budget. Explicit or non-default configured max_cycles
+        remain authoritative so CLI/config overrides propagate to the builder
+        loop unchanged.
 
         Args:
             risk_level: The risk level ('low', 'medium', 'high') or None for default.
         """
         self.current_task_risk = risk_level
+
+        if self._max_cycles_locked:
+            self.max_cycles = self.base_max_cycles
+            return
 
         if risk_level and risk_level in self.risk_settings:
             settings = self.risk_settings[risk_level]
@@ -3816,6 +3829,9 @@ class Orchestrator:
 def main():
     # Load config file first (if it exists) to use as defaults
     config = load_config()
+    max_cycles_flag_provided = any(
+        arg == "--max-cycles" or arg.startswith("--max-cycles=") for arg in sys.argv[1:]
+    )
     # commit_tasklist=True provides the legacy tracked path as the default,
     # but only when the user has not explicitly configured a tasklist path.
     if (
@@ -3856,6 +3872,7 @@ Configuration:
     max_cycles = 5
     loc_threshold = 1000
     tasklist = "TODO.md"
+    roadmap = "docs/roadmap.md"
     max_tasks = 10
     prompts_dir = "my_prompts"
 
@@ -4702,6 +4719,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
             review_designs = config.get("review_designs", True)
             orchestrator = Orchestrator(
                 max_cycles=args.max_cycles,
+                max_cycles_locked=max_cycles_flag_provided,
                 loc_threshold=args.loc_threshold,
                 tasklist=args.tasklist,
                 roadmap=args.roadmap,
@@ -4733,6 +4751,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 task=args.analyze and "analyze" or "design",
                 dry_run=False,
                 max_cycles=args.max_cycles,
+                max_cycles_locked=max_cycles_flag_provided,
                 review_designs=config.get("review_designs", True),
                 approve_opportunities=_approve_opportunities,
                 approve_designs=_approve_designs,
@@ -4807,6 +4826,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
 
     orchestrator = Orchestrator(
         max_cycles=args.max_cycles,
+        max_cycles_locked=max_cycles_flag_provided,
         loc_threshold=args.loc_threshold,
         repo_dir=args.repo_dir,
         task=args.task,

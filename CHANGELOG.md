@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.5.3] - 2026-03-27
+
+### Fixed
+- Preserve explicit `--max-cycles` and configured `max_cycles` values when risk settings are applied, so the inner builder-reviewer loop honors the requested cycle budget.
+- Treat `roadmap` as a first-class configured artifact alongside `tasklist`, including config loading, cleanup preservation for `.millstone/roadmap.md`, and CLI/config parity.
+- Keep no-code verification test harnesses aligned with the current prompt contracts so read-only task coverage stays stable.
+
+### Changed
+- Simplified built-in prompts to be shorter, more general-purpose, and less role-specific.
+- Shifted prompt emphasis toward correctness, completeness, verification quality, and concrete output contracts, leaving repo-specific guidance to `AGENTS.md`, user input, and local context.
+
 ## [0.5.1] - 2026-03-14
 
 ### Fixed

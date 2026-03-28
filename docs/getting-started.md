@@ -55,6 +55,12 @@ millstone --cycle
 
 For each goal, millstone designs a solution, breaks it into atomic tasks, and implements them through a build-review loop. Approval gates pause between stages; add `--no-approve` for fully autonomous operation.
 
+If you use the same roadmap path repeatedly, persist it in `.millstone/config.toml`:
+
+```toml
+roadmap = "docs/roadmap.md"
+```
+
 Other starting points:
 
 ```bash

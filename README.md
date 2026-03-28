@@ -170,6 +170,7 @@ Create `.millstone/config.toml` in the target repo:
 max_cycles = 3
 max_tasks = 5
 tasklist = ".millstone/tasklist.md"
+roadmap = "docs/roadmap.md" # optional: used by `--cycle` when tasklist is empty
 
 cli = "claude"
 cli_builder = "codex"

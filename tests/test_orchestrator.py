@@ -390,6 +390,7 @@ class TestCapabilityProfileCliPlumbing:
 
         _, kwargs = mock_init.call_args
         assert kwargs["max_cycles"] == 7
+        assert kwargs["max_cycles_locked"] is True
 
     def test_deliver_branch_passes_profile_and_max_cycles(self, temp_repo):
         """--deliver passes profile and max_cycles into Orchestrator."""
@@ -436,6 +437,21 @@ class TestCapabilityProfileCliPlumbing:
         _, kwargs = mock_init.call_args
         assert kwargs["profile"] == "dev_implementation"
         assert kwargs["max_cycles"] == 7
+        assert kwargs["max_cycles_locked"] is True
+
+    def test_task_cli_locks_default_max_cycles_when_flag_is_explicit(self, temp_repo):
+        """An explicit --max-cycles flag stays authoritative even when it matches the default."""
+        from millstone import orchestrate
+
+        with patch("sys.argv", ["orchestrate.py", "--task", "Add retries", "--max-cycles", "3"]):
+            with patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(orchestrate.Orchestrator, "run", return_value=0):
+                    with pytest.raises(SystemExit):
+                        orchestrate.main()
+
+        _, kwargs = mock_init.call_args
+        assert kwargs["max_cycles"] == 3
+        assert kwargs["max_cycles_locked"] is True
 
 
 class TestOuterLoopManagerMaxCyclesPlumbing:
@@ -509,6 +525,20 @@ class TestCleanup:
             assert (work_dir / "locks" / "keep.txt").exists()
             assert (work_dir / "worktrees" / "keep.txt").exists()
             assert not (work_dir / "tmp").exists()
+        finally:
+            orch.cleanup()
+
+    def test_cleanup_preserves_configured_roadmap_inside_work_dir(self, temp_repo):
+        """cleanup() should not delete a roadmap stored under .millstone when configured."""
+        orch = Orchestrator(roadmap=".millstone/roadmap.md")
+        work_dir = orch.work_dir
+        roadmap = work_dir / "roadmap.md"
+        roadmap.write_text("# Roadmap\n\n- [ ] Keep me\n")
+
+        try:
+            orch.cleanup()
+            assert roadmap.exists()
+            assert "- [ ] Keep me" in roadmap.read_text()
         finally:
             orch.cleanup()
 
@@ -2615,7 +2645,7 @@ class TestDryRun:
             orch.run()
             captured = capsys.readouterr()
             assert "Builder Prompt" in captured.out
-            assert "COMPLETE EXACTLY ONE TASK" in captured.out
+            assert "Complete exactly one task" in captured.out
         finally:
             orch.cleanup()
 
@@ -2626,7 +2656,7 @@ class TestDryRun:
             orch.run()
             captured = capsys.readouterr()
             assert "Review Prompt" in captured.out
-            assert "review of local, uncommitted changes" in captured.out
+            assert "correctness, completeness, and merge safety" in captured.out
         finally:
             orch.cleanup()
 
@@ -2885,6 +2915,40 @@ class TestTaskModeRiskParsing:
             assert orch.run_single_task() is True
             assert orch.current_task_risk is None
             assert orch.max_cycles == orch.base_max_cycles
+        finally:
+            orch.cleanup()
+
+    def test_run_single_task_preserves_configured_max_cycles_over_medium_risk_default(
+        self, temp_repo
+    ):
+        """Explicit max_cycles should reach the builder loop even when risk metadata is present."""
+        import millstone.runtime.orchestrator as orchestrator_module
+        from millstone.loops.engine import LoopResult
+
+        orch = Orchestrator(task="**Foo**: bar\n  - Risk: medium\n", max_cycles=10, quiet=True)
+        captured_max_cycles: list[int] = []
+        original_loop = orchestrator_module.ArtifactReviewLoop
+
+        class CapturingLoop(original_loop):  # type: ignore[misc]
+            def __init__(self, *args, **kwargs):
+                captured_max_cycles.append(kwargs.get("max_cycles", -1))
+                super().__init__(*args, **kwargs)
+
+            def run(self):
+                return LoopResult(
+                    success=False,
+                    cycles=1,
+                    artifact=None,
+                    verdict=None,
+                    error="synthetic failure",
+                )
+
+        try:
+            with patch.object(orchestrator_module, "ArtifactReviewLoop", CapturingLoop):
+                assert orch.run_single_task() is False
+
+            assert orch.current_task_risk == "medium"
+            assert captured_max_cycles == [10]
         finally:
             orch.cleanup()
 
@@ -7470,7 +7534,7 @@ class TestAnalyzeInfrastructure:
                 # First call must be the analyze prompt
                 assert mock_claude.call_count >= 2
                 prompt = mock_claude.call_args_list[0][0][0]
-                assert "senior software architect" in prompt
+                assert "identify concrete improvement opportunities" in prompt.lower()
                 assert "improvement opportunities" in prompt
         finally:
             orch.cleanup()
@@ -8439,7 +8503,7 @@ class TestDesignInfrastructure:
                 # Verify run_claude was called with design prompt content on first call
                 assert mock_claude.call_count >= 1
                 first_prompt = mock_claude.call_args_list[0][0][0]
-                assert "software architect" in first_prompt
+                assert "create a concrete design" in first_prompt.lower()
                 assert "Test opportunity description" in first_prompt
                 assert "{{OPPORTUNITY}}" not in first_prompt
                 assert "{{OPPORTUNITY_ID}}" not in first_prompt
@@ -8902,7 +8966,7 @@ class TestReviewDesign:
             # Verify run_claude was called with review design prompt content
             mock_claude.assert_called_once()
             prompt = mock_claude.call_args[0][0]
-            assert "reviewing a design document" in prompt
+            assert "correctness, completeness, and execution readiness" in prompt.lower()
             assert "Test design content" in prompt
             assert "{{DESIGN_CONTENT}}" not in prompt
 
@@ -9662,7 +9726,7 @@ class TestPlanInfrastructure:
                 assert mock_claude.call_count == 2
                 # Check first call (plan)
                 prompt = mock_claude.call_args_list[0][0][0]
-                assert "technical lead" in prompt
+                assert "ordered, atomic tasks" in prompt.lower()
                 assert "Test design content" in prompt
                 assert "Existing task" in prompt
                 assert "{{DESIGN_CONTENT}}" not in prompt

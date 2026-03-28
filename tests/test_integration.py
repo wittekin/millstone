@@ -49,7 +49,7 @@ def is_builder_prompt(prompt: str) -> bool:
 
 def is_reviewer_prompt(prompt: str) -> bool:
     """Check if this is the code review prompt (not sanity check)."""
-    return "review of local, uncommitted changes" in prompt.lower()
+    return "review the local uncommitted changes" in prompt.lower()
 
 
 def is_sanity_check(prompt: str) -> bool:
@@ -59,7 +59,13 @@ def is_sanity_check(prompt: str) -> bool:
 
 def is_commit_prompt(prompt: str) -> bool:
     """Check if this is the commit delegation prompt."""
-    return "commit your changes" in prompt.lower() or "commit the changes" in prompt.lower()
+    lower = prompt.lower()
+    return (
+        "commit your changes" in lower
+        or "commit the changes" in lower
+        or "commit it now" in lower
+        or "stage all changes with `git add -a`" in lower
+    )
 
 
 def do_commit(repo):

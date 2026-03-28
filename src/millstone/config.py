@@ -93,6 +93,7 @@ DEFAULT_CONFIG = {
     "max_cycles": 3,
     "loc_threshold": 1_000_000,
     "tasklist": ".millstone/tasklist.md",
+    "roadmap": None,
     "max_tasks": 5,
     "opportunity_provider": "file",
     "design_provider": "file",

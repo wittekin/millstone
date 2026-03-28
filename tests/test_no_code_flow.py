@@ -29,6 +29,45 @@ def make_mock_runner(temp_repo, claude_responses):
     return mock_run
 
 
+def is_builder_prompt(prompt: str) -> bool:
+    """Check if this is the builder/task prompt."""
+    lower = prompt.lower()
+    return "complete exactly one task" in lower or "you are the author for this task" in lower
+
+
+def is_fix_prompt(prompt: str) -> bool:
+    """Check if this is the builder fix/retry prompt."""
+    lower = prompt.lower()
+    return "address this review feedback" in lower or "feedback to address" in lower
+
+
+def is_read_only_retry_prompt(prompt: str) -> bool:
+    """Check if this is the no-diff nudge for a read-only task."""
+    lower = prompt.lower()
+    return "no file changes were detected" in lower and "truly read-only" in lower
+
+
+def is_reviewer_prompt(prompt: str) -> bool:
+    """Check if this is the code review prompt (not sanity check)."""
+    return "review the local uncommitted changes" in prompt.lower()
+
+
+def is_sanity_check(prompt: str) -> bool:
+    """Check if this is a sanity check prompt."""
+    return "sanity check" in prompt.lower()
+
+
+def is_commit_prompt(prompt: str) -> bool:
+    """Check if this is the commit delegation prompt."""
+    lower = prompt.lower()
+    return (
+        "commit your changes" in lower
+        or "commit the changes" in lower
+        or "commit it now" in lower
+        or "stage all changes with `git add -a`" in lower
+    )
+
+
 class ResponseBuilder:
     """Response builder (simplified from test_integration.py)."""
 
@@ -54,14 +93,17 @@ class ResponseBuilder:
 
     def build(self):
         def responses(prompt, counts):
-            prompt_lower = prompt.lower()
-            if "sanity check" in prompt_lower:
-                return self._sanity_check_response
-            elif "review" in prompt_lower and "code" in prompt_lower:
-                return self._reviewer_response
-            elif "complete exactly one task" in prompt_lower or "task:" in prompt_lower:
+            if (
+                is_builder_prompt(prompt)
+                or is_fix_prompt(prompt)
+                or is_read_only_retry_prompt(prompt)
+            ):
                 return (self._builder_output, None)
-            elif "commit" in prompt_lower:
+            elif is_reviewer_prompt(prompt):
+                return self._reviewer_response
+            elif is_sanity_check(prompt):
+                return self._sanity_check_response
+            elif is_commit_prompt(prompt):
                 return ("Nothing to commit.", None)
             else:
                 return ('{"status": "OK"}', None)

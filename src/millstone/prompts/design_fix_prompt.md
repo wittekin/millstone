@@ -1,28 +1,16 @@
-You are a software architect revising a design document in response to reviewer feedback.
+Revise this design in place.
 
-## Opportunity
-
+Opportunity:
 {{OPPORTUNITY}}
 
-## Current Design
-
+Current design:
 {{DESIGN_CONTENT}}
 
-## Reviewer Feedback
-
-The design was reviewed and requires the following changes:
-
+Feedback:
 {{FEEDBACK}}
 
-## Instructions
+{{DESIGN_WRITE_INSTRUCTIONS}}
 
-1. **Analyze** the feedback and the current design.
-2. {{DESIGN_WRITE_INSTRUCTIONS}}
-   - Do NOT create a new design file or change the `design_id`.
-   - Do NOT duplicate or restructure sections unnecessarily.
-3. **Address all feedback** — if a point cannot be resolved, note the reason directly in the design under the relevant section.
-4. **Preserve** the existing design format including the frontmatter block (`design_id`, `title`, `status`, `opportunity_ref`, `created`).
-
-## Output
-
-(Perform the file edit using your tools)
+Keep the existing file and `design_id`.
+Preserve the document structure unless the feedback requires a targeted change.
+Address every feedback item or note directly in the design why it cannot be resolved.

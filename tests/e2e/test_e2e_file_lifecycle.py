@@ -252,7 +252,7 @@ def _commit_docs_tasklist_tick(repo: Path) -> None:
 # Routes responses based on CLI flags and prompt content.
 #   --json-schema with "HALT" enum  → sanity check OK JSON
 #   --json-schema without "HALT"    → reviewer APPROVED JSON
-#   prompt starts with commit trigger → commit staged changes only (no git add -A)
+#   prompt matches commit trigger     → commit staged changes only (no git add -A)
 #   otherwise                         → builder: tick docs/tasklist.md (tracked,
 #                                       hardcoded), create + stage impl.py only;
 #                                       leave the tick unstaged
@@ -293,7 +293,12 @@ _STUB_CLAUDE_SCRIPT = textwrap.dedent("""\
             print('{"status": "APPROVED", "review": "LGTM", "summary": "OK",'
                   ' "findings": [], "findings_by_severity":'
                   ' {"critical": [], "high": [], "medium": [], "low": [], "nit": []}}')
-    elif "approved by the reviewer" in prompt[:500]:
+    elif (
+        "approved by the reviewer" in prompt.lower()
+        or "commit it now" in prompt.lower()
+        or "stage all changes with `git add -a`" in prompt.lower()
+        or "generated with millstone orchestrator" in prompt.lower()
+    ):
         # Commit step: commit only the changes staged in the builder step (impl.py).
         # Do NOT git add -A — the docs/tasklist.md tick must remain unstaged so
         # delegate_commit()'s auto-commit logic can verify the tasklist path match.
