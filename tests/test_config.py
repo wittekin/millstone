@@ -48,6 +48,16 @@ def test_roadmap_config_from_toml(temp_repo):
     assert cfg["roadmap"] == ".millstone/roadmap.md"
 
 
+def test_on_eval_regression_config_from_toml(temp_repo):
+    """on_eval_regression should load as a first-class config key."""
+    config_dir = temp_repo / ".millstone"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "config.toml").write_text('on_eval_regression = "ignore"\n')
+
+    cfg = load_config(temp_repo)
+    assert cfg["on_eval_regression"] == "ignore"
+
+
 # ---------------------------------------------------------------------------
 # tasklist_filter schema
 # ---------------------------------------------------------------------------

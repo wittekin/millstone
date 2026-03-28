@@ -15053,6 +15053,7 @@ class TestEvalRollback:
         orch = Orchestrator()
         try:
             assert orch.auto_rollback is False
+            assert orch.on_eval_regression == "prompt"
         finally:
             orch.cleanup()
 
@@ -15061,6 +15062,16 @@ class TestEvalRollback:
         orch = Orchestrator(auto_rollback=True)
         try:
             assert orch.auto_rollback is True
+            assert orch.on_eval_regression == "rollback"
+        finally:
+            orch.cleanup()
+
+    def test_on_eval_regression_param_can_be_set_to_ignore(self, temp_repo):
+        """on_eval_regression accepts the explicit ignore policy."""
+        orch = Orchestrator(on_eval_regression="ignore")
+        try:
+            assert orch.on_eval_regression == "ignore"
+            assert orch.auto_rollback is False
         finally:
             orch.cleanup()
 
@@ -15068,6 +15079,10 @@ class TestEvalRollback:
         """auto_rollback is in DEFAULT_CONFIG."""
         assert "auto_rollback" in DEFAULT_CONFIG
         assert DEFAULT_CONFIG["auto_rollback"] is False
+
+    def test_on_eval_regression_in_default_config(self):
+        """on_eval_regression is in DEFAULT_CONFIG."""
+        assert DEFAULT_CONFIG["on_eval_regression"] == "prompt"
 
     def test_last_rollback_context_starts_as_none(self, temp_repo):
         """last_rollback_context attribute starts as None."""
@@ -15346,6 +15361,34 @@ class TestEvalRollback:
         finally:
             orch.cleanup()
 
+    def test_on_eval_regression_ignore_keeps_commit_without_prompt(self, temp_repo):
+        """Ignore policy keeps the commit and avoids prompting for stdin."""
+        orch = Orchestrator(eval_on_commit=True, on_eval_regression="ignore")
+        try:
+            orch.baseline_eval = {
+                "failed_tests": [],
+                "_passed": True,
+                "composite_score": 0.95,
+                "categories": {},
+            }
+
+            with patch.object(orch, "run_eval") as mock_eval:
+                mock_eval.return_value = {
+                    "failed_tests": [],
+                    "_passed": True,
+                    "composite_score": 0.80,
+                    "categories": {},
+                }
+                with patch.object(orch, "git", return_value="abc123\n"):
+                    with patch(
+                        "builtins.input", side_effect=AssertionError("input should not be called")
+                    ):
+                        result = orch._run_eval_on_commit(task_text="Test task")
+
+            assert result is False
+        finally:
+            orch.cleanup()
+
     def test_auto_rollback_cli_flag(self, temp_repo):
         """--auto-rollback CLI flag is recognized."""
         from millstone import orchestrate
@@ -15359,6 +15402,22 @@ class TestEvalRollback:
             with pytest.raises(SystemExit) as exc_info:
                 orchestrate.main()
             assert exc_info.value.code == 0
+
+    def test_on_eval_regression_cli_flag(self, temp_repo):
+        """--on-eval-regression is forwarded into the orchestrator."""
+        from millstone import orchestrate
+
+        with patch(
+            "sys.argv",
+            ["orchestrate.py", "--task", "test", "--dry-run", "--on-eval-regression", "ignore"],
+        ):
+            with patch.object(Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(Orchestrator, "run", return_value=0):
+                    with pytest.raises(SystemExit) as exc_info:
+                        orchestrate.main()
+
+        assert exc_info.value.code == 0
+        assert mock_init.call_args.kwargs.get("on_eval_regression") == "ignore"
 
     def test_print_category_comparison_formats_output(self, temp_repo, capsys):
         """_print_category_comparison prints category comparison."""

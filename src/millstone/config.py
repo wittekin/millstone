@@ -126,6 +126,7 @@ DEFAULT_CONFIG = {
     "eval_on_commit": False,  # Run evals automatically after each commit
     "retry_on_empty_response": True,  # Retry when agent returns empty/malformed response
     "auto_rollback": False,  # Auto-revert commits when eval regresses beyond threshold
+    "on_eval_regression": "prompt",  # prompt|rollback|ignore policy for post-commit eval regressions
     "eval_scripts": [],  # Custom eval scripts to run (e.g., ["mypy .", "ruff check ."])
     # Parallel/worktree execution (worktree-based isolated task execution).
     # Flat keys are required because load_config() only reads known top-level keys.
