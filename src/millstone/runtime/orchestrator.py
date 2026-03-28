@@ -54,12 +54,17 @@ from millstone.loops.inner import InnerLoopManager
 from millstone.loops.outer import OuterLoopManager
 from millstone.loops.registry_adapter import LoopRegistryAdapter
 from millstone.policy.capability import CapabilityPolicyGate, CapabilityTier
-from millstone.policy.effects import EffectPolicyGate, NoOpEffectProvider
+from millstone.policy.effects import EffectIntent, EffectPolicyGate, NoOpEffectProvider
 from millstone.policy.schemas import (
     ReviewDecision,
     parse_design_review,
 )
 from millstone.runtime.context import ContextManager
+from millstone.runtime.decision_gate import (
+    DECISION_GATE_EXIT_CODE,
+    DecisionGate,
+    DecisionGateHalt,
+)
 from millstone.runtime.profile import ProfileRegistry
 from millstone.utils import (
     extract_claude_result,
@@ -348,6 +353,8 @@ class Orchestrator:
         approve_designs: bool = True,
         approve_plans: bool = True,
         no_approve: bool = False,
+        approve_high_risk: bool = False,
+        approve_effects: bool = False,
         category_weights: dict[str, float] | None = None,
         category_thresholds: dict[str, int] | None = None,
         task_constraints: dict | None = None,
@@ -481,6 +488,8 @@ class Orchestrator:
         self.approve_designs = approve_designs  # Pause after design
         self.approve_plans = approve_plans  # Pause after plan
         self.no_approve = no_approve
+        self.approve_high_risk = approve_high_risk
+        self.approve_effects = approve_effects
         # Progress tracking
         self.current_task_num: int = 0  # Current task number (1-indexed)
         self.total_tasks: int = max_tasks  # Total tasks to process
@@ -541,7 +550,7 @@ class Orchestrator:
             capability_gate=self._capability_gate,
             permitted_effect_classes=self.profile.permitted_effect_classes,
             provider=NoOpEffectProvider(),
-            approval_hook=(lambda _intent: True) if self.no_approve else None,
+            approval_hook=self._effect_approval_hook,
         )
         self._current_task_id: str | None = None
 
@@ -920,16 +929,9 @@ class Orchestrator:
         """Return the path to the state file."""
         return self.work_dir / STATE_FILE_NAME
 
-    def save_state(self, halt_reason: str = "") -> None:
-        """Save current orchestration state to state.json.
-
-        Called when the orchestrator halts mid-task (e.g., LoC threshold,
-        sensitive file detection) to enable resumption with --continue.
-
-        Args:
-            halt_reason: Why the orchestrator halted (for user context)
-        """
-        state = {
+    def _build_state_snapshot(self, halt_reason: str = "") -> dict[str, Any]:
+        """Build the standard state payload for resumable halts."""
+        return {
             "current_task_num": self.current_task_num,
             "builder_session_id": self.builder_session_id,
             "reviewer_session_id": self.reviewer_session_id,
@@ -940,9 +942,39 @@ class Orchestrator:
             "halt_reason": halt_reason,
             "timestamp": datetime.now().isoformat(),
         }
+
+    def save_state(self, halt_reason: str = "", **extra: object) -> None:
+        """Save current orchestration state to state.json.
+
+        Called when the orchestrator halts mid-task (e.g., LoC threshold,
+        sensitive file detection) to enable resumption with --continue.
+
+        Args:
+            halt_reason: Why the orchestrator halted (for user context)
+        """
+        state = self._build_state_snapshot(halt_reason)
+        state.update(extra)
         state_file = self._get_state_file_path()
         state_file.write_text(json.dumps(state, indent=2))
         self.log("state_saved", **{k: str(v) for k, v in state.items()})
+
+    def save_decision_gate(self, gate: DecisionGate, *, merge_existing: bool = True) -> None:
+        """Persist a pending supervisor decision alongside resumable run state."""
+        state: dict[str, Any] = {}
+        state_file = self._get_state_file_path()
+        if merge_existing and state_file.exists():
+            with contextlib.suppress(json.JSONDecodeError, OSError):
+                state = json.loads(state_file.read_text())
+
+        state.update(self._build_state_snapshot(gate.halt_reason))
+        state["decision_gate"] = gate.to_dict()
+        state_file.write_text(json.dumps(state, indent=2))
+        self.log(
+            "decision_gate_saved",
+            gate_type=gate.gate_type,
+            title=gate.title,
+            halt_reason=gate.halt_reason,
+        )
 
     def load_state(self) -> dict | None:
         """Load saved orchestration state from state.json.
@@ -958,6 +990,7 @@ class Orchestrator:
         try:
             state = json.loads(state_file.read_text())
             state.setdefault("outer_loop", None)
+            state.setdefault("decision_gate", None)
             self.log("state_loaded", **{k: str(v) for k, v in state.items()})
             return state
         except (json.JSONDecodeError, KeyError) as e:
@@ -970,6 +1003,21 @@ class Orchestrator:
         if state_file.exists():
             state_file.unlink()
             self.log("state_cleared")
+
+    def clear_decision_gate(self) -> None:
+        """Remove only the pending decision gate while keeping other state."""
+        state = self.load_state()
+        if not state or not state.get("decision_gate"):
+            return
+        state.pop("decision_gate", None)
+        state_file = self._get_state_file_path()
+        state_file.write_text(json.dumps(state, indent=2))
+        self.log("decision_gate_cleared")
+
+    def has_pending_decision_gate(self) -> bool:
+        """Return True when state.json contains an unresolved decision gate."""
+        state = self.load_state()
+        return bool(state and state.get("decision_gate"))
 
     def save_outer_loop_checkpoint(self, stage: str, **kwargs: object) -> None:
         """Persist an outer-loop stage checkpoint to state.json.
@@ -1044,6 +1092,134 @@ class Orchestrator:
         except (json.JSONDecodeError, KeyError) as e:
             self.log("sessions_clear_failed", error=str(e))
             return False
+
+    def _print_decision_gate(self, gate: DecisionGate) -> None:
+        """Print a deterministic decision-gate message for humans and automation."""
+        progress("")
+        progress("=" * 60)
+        progress(f"DECISION GATE: {gate.title}")
+        progress("=" * 60)
+        progress("")
+        progress(gate.message)
+        for key, value in gate.details.items():
+            progress(f"{key}: {value}")
+        if gate.resume_commands:
+            progress("")
+            progress("Resume with one of:")
+            for command in gate.resume_commands:
+                progress(f"  {command}")
+        progress("")
+
+    def _halt_for_decision_gate(self, gate: DecisionGate, *, merge_existing: bool = True) -> None:
+        """Persist and print a decision gate before returning control."""
+        self.save_decision_gate(gate, merge_existing=merge_existing)
+        self._print_decision_gate(gate)
+
+    def _build_high_risk_decision_gate(self, task_text: str) -> DecisionGate:
+        """Describe the saved approval decision for a high-risk task."""
+        return DecisionGate(
+            gate_type="high_risk",
+            title="High-risk task approval required",
+            message=(
+                "This task is marked high risk and requires an explicit follow-up command "
+                "instead of a stdin prompt."
+            ),
+            resume_commands=[
+                "millstone --continue --approve-high-risk",
+                "millstone --continue --no-approve",
+            ],
+            details={
+                "task": self.current_task_title or task_text[:200],
+                "risk": self.current_task_risk or "unknown",
+            },
+        )
+
+    def _effect_approval_hook(self, intent: EffectIntent) -> bool:
+        """Resolve effect approvals without prompting on stdin."""
+        if self.no_approve or self.approve_effects:
+            return True
+        raise DecisionGateHalt(
+            DecisionGate(
+                gate_type="effect_approval",
+                title="Effect approval required",
+                message=(
+                    "A C3 provider effect requires explicit approval before millstone may continue."
+                ),
+                resume_commands=[
+                    "millstone --continue --approve-effects",
+                    "millstone --continue --no-approve",
+                ],
+                details={
+                    "effect_class": intent.effect_class.value,
+                    "description": intent.description,
+                    "idempotency_key": intent.idempotency_key or "",
+                    "rollback_plan": intent.rollback_plan or "",
+                },
+            )
+        )
+
+    def _resolve_saved_eval_regression_gate(self, gate: DecisionGate) -> int:
+        """Resolve a persisted eval-regression decision gate."""
+        if self.on_eval_regression not in {"rollback", "ignore"}:
+            self._print_decision_gate(gate)
+            return DECISION_GATE_EXIT_CODE
+
+        details = gate.details.get("details", {})
+        task_text = str(gate.details.get("task_text", ""))
+        reason = str(gate.details.get("reason", ""))
+        commit_hash = str(gate.details.get("commit_hash", ""))
+
+        if self.on_eval_regression == "rollback":
+            if not commit_hash or not reason:
+                print("Saved eval-regression gate is missing rollback context.")
+                return 1
+            progress("Resolving saved eval-regression gate with rollback policy...")
+            success = self._eval_manager._perform_rollback(
+                commit_hash,
+                task_text,
+                reason,
+                details,
+                self.log,
+            )
+            if success and self._eval_manager.last_rollback_context:
+                self.last_rollback_context = self._eval_manager.last_rollback_context
+            self.clear_state()
+            return 0 if success else 1
+
+        progress("Resolving saved eval-regression gate with ignore policy...")
+        self.log(
+            "eval_regression_ignored",
+            commit=commit_hash[:8] if commit_hash else "",
+            reason=reason,
+        )
+        self.clear_state()
+        return 0
+
+    def _handle_pending_decision_gate(self, state: dict[str, Any]) -> int | None:
+        """Resolve or re-surface a saved decision gate during --continue."""
+        gate = DecisionGate.from_dict(cast(dict[str, Any] | None, state.get("decision_gate")))
+        if gate is None:
+            return None
+
+        if gate.gate_type == "high_risk":
+            if self.no_approve or self.approve_high_risk:
+                self.clear_decision_gate()
+                return None
+            self._print_decision_gate(gate)
+            return DECISION_GATE_EXIT_CODE
+
+        if gate.gate_type == "effect_approval":
+            if self.no_approve or self.approve_effects:
+                self.clear_decision_gate()
+                return None
+            self._print_decision_gate(gate)
+            return DECISION_GATE_EXIT_CODE
+
+        if gate.gate_type == "eval_regression":
+            return self._resolve_saved_eval_regression_gate(gate)
+
+        self._print_decision_gate(gate)
+        return DECISION_GATE_EXIT_CODE
 
     def auto_clear_stale_sessions(self, max_age_hours: int = 24) -> bool:
         """Auto-clear session IDs if the state file is older than max_age_hours.
@@ -1904,7 +2080,7 @@ class Orchestrator:
         Returns:
             True if task is high-risk and require_approval is set.
         """
-        if self.no_approve:
+        if self.no_approve or self.approve_high_risk:
             return False
         if self.current_task_risk != "high":
             return False
@@ -2157,6 +2333,10 @@ class Orchestrator:
             task_prefix=self._task_prefix(),
             auto_rollback=self.auto_rollback,
             on_eval_regression=self.on_eval_regression,
+            decision_gate_callback=lambda gate: self._halt_for_decision_gate(
+                gate,
+                merge_existing=False,
+            ),
             cycle_log_callback=cycle_log_callback,
             log_callback=self.log,
             run_eval_callback=lambda: self.run_eval(),
@@ -2172,6 +2352,10 @@ class Orchestrator:
             task_prefix=self._task_prefix(),
             auto_rollback=self.auto_rollback,
             on_eval_regression=self.on_eval_regression,
+            decision_gate_callback=lambda gate: self._halt_for_decision_gate(
+                gate,
+                merge_existing=False,
+            ),
             cycle_log_callback=cycle_log_callback,
             log_callback=self.log,
             run_eval_callback=lambda mode: self.run_eval(mode=mode),
@@ -3234,11 +3418,11 @@ class Orchestrator:
 
         # High-risk gate
         if self.requires_high_risk_approval():
-            print(f"\n=== HIGH-RISK TASK APPROVAL REQUIRED ===\nTask: {self.current_task_title}\n")
-            if input("Proceed? [y/N]: ").strip().lower() != "y":
-                self.log("high_risk_declined", task=task_text)
-                _worker_finish("failed", error="high_risk_declined")
-                return False
+            gate = self._build_high_risk_decision_gate(task_text)
+            self._halt_for_decision_gate(gate, merge_existing=False)
+            self.log("high_risk_gate_halted", task=task_text)
+            _worker_finish("failed", error=gate.halt_reason)
+            return False
 
         # Research mode (Short circuit)
         if self.research:
@@ -3706,6 +3890,9 @@ class Orchestrator:
                 # Load both session IDs (with fallback to legacy session_id for old state files)
                 self.builder_session_id = state.get("builder_session_id") or state.get("session_id")
                 self.reviewer_session_id = state.get("reviewer_session_id")
+                decision_gate_result = self._handle_pending_decision_gate(state)
+                if decision_gate_result is not None:
+                    return decision_gate_result
                 # Route to the correct outer-loop stage if a checkpoint exists.
                 # Stages: analyze_complete -> design_complete -> plan_complete -> inner loop.
                 outer = state.get("outer_loop")
@@ -3829,6 +4016,9 @@ class Orchestrator:
                     self.clear_state()  # Clear state on success
                     return 0
                 else:
+                    if self.has_pending_decision_gate():
+                        self.log("run_completed", result="DECISION_GATE", tasks_completed="0")
+                        return DECISION_GATE_EXIT_CODE
                     self.log("run_completed", result="FAILED", tasks_completed="0")
                     return 1
 
@@ -3859,6 +4049,14 @@ class Orchestrator:
                     self.clear_state()  # Clear state after each successful task
                 else:
                     # Stop on first failure
+                    if self.has_pending_decision_gate():
+                        progress(f"=== DECISION GATE after {tasks_completed} task(s) ===")
+                        self.log(
+                            "run_completed",
+                            result="DECISION_GATE",
+                            tasks_completed=str(tasks_completed),
+                        )
+                        return DECISION_GATE_EXIT_CODE
                     progress(f"=== HALTED after {tasks_completed} task(s) ===")
                     self.log(
                         "run_completed",
@@ -4476,6 +4674,18 @@ Remote backlog scoping (Jira / Linear / GitHub):
         "the run to continue without human intervention. Use with caution in trusted/low-risk scenarios.",
     )
     parser.add_argument(
+        "--approve-high-risk",
+        action="store_true",
+        help="Explicitly approve a previously halted high-risk task decision gate. "
+        "Use with --continue after millstone saves a high-risk approval gate in state.json.",
+    )
+    parser.add_argument(
+        "--approve-effects",
+        action="store_true",
+        help="Explicitly approve previously halted C3 effect-application gates. "
+        "Use with --continue after millstone saves an effect approval gate in state.json.",
+    )
+    parser.add_argument(
         "--complete",
         action="store_true",
         help="When combined with --plan, --design, or --analyze, continue executing all "
@@ -4810,6 +5020,8 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 approve_designs=_approve_designs,
                 approve_plans=_approve_plans,
                 no_approve=args.no_approve,
+                approve_high_risk=args.approve_high_risk,
+                approve_effects=args.approve_effects,
                 profile=config.get("profile", "dev_implementation"),
                 cli=args.cli,
                 cli_builder=args.cli_builder,
@@ -4832,6 +5044,8 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 approve_designs=_approve_designs,
                 approve_plans=_approve_plans,
                 no_approve=args.no_approve,
+                approve_high_risk=args.approve_high_risk,
+                approve_effects=args.approve_effects,
                 profile=config.get("profile", "dev_implementation"),
                 cli=args.cli,
                 cli_analyzer=args.cli_analyzer,
@@ -4931,6 +5145,8 @@ Remote backlog scoping (Jira / Linear / GitHub):
         approve_designs=_approve_designs,
         approve_plans=_approve_plans,
         no_approve=args.no_approve,
+        approve_high_risk=args.approve_high_risk,
+        approve_effects=args.approve_effects,
         parallel_enabled=parallel_enabled,
         parallel_concurrency=args.concurrency,
         base_branch=args.base_branch,

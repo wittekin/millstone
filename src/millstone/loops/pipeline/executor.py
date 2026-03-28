@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from millstone.loops.pipeline.pipeline import PipelineDefinition
 from millstone.loops.pipeline.stage import HandoffKind, StageItem, StageResult
+from millstone.runtime.decision_gate import DECISION_GATE_EXIT_CODE, DecisionGateHalt
 from millstone.utils import progress
 
 if TYPE_CHECKING:
@@ -145,7 +146,21 @@ class PipelineExecutor:
             progress(f"Pipeline stage: {stage.name}")
 
             # Execute stage
-            result = stage.execute(current_items)
+            try:
+                result = stage.execute(current_items)
+            except DecisionGateHalt as exc:
+                checkpoint = PipelineCheckpoint(
+                    completed_stage=f"{stage.name}_partial",
+                    stage_index=i,
+                    items=self._serialize_items(current_items),
+                    pending_mcp_syncs=[],
+                    pipeline_stages=self._stage_names,
+                )
+                self._save_checkpoint(checkpoint)
+                self.orchestrator.save_decision_gate(exc.gate)
+                progress(f"Stage '{stage.name}' halted for an explicit supervisor decision.")
+                self.orchestrator._print_decision_gate(exc.gate)  # noqa: SLF001
+                return DECISION_GATE_EXIT_CODE
 
             if not result.success:
                 # Always save a failure checkpoint so --continue can resume

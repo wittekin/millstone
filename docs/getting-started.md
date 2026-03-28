@@ -53,7 +53,7 @@ millstone --cycle --roadmap docs/roadmap.md
 millstone --cycle
 ```
 
-For each goal, millstone designs a solution, breaks it into atomic tasks, and implements them through a build-review loop. Approval gates pause between stages; add `--no-approve` for fully autonomous operation.
+For each goal, millstone designs a solution, breaks it into atomic tasks, and implements them through a build-review loop. Approval gates pause between stages; add `--no-approve` for fully autonomous operation. If a run halts on a high-risk task, eval regression, or critical remote effect, millstone writes a decision gate to `.millstone/state.json` and expects an explicit `--continue` command rather than interactive stdin.
 
 If you use the same roadmap path repeatedly, persist it in `.millstone/config.toml`:
 
@@ -98,6 +98,15 @@ millstone
 ```
 
 `millstone` and `millstone -n 1` read tasks from the configured tasklist path
+
+Decision-gate resume patterns:
+
+```bash
+millstone --continue --approve-high-risk
+millstone --continue --approve-effects
+millstone --continue --on-eval-regression=rollback
+millstone --continue --on-eval-regression=ignore
+```
 (default: `.millstone/tasklist.md`).
 
 Explore all options:

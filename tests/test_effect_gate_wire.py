@@ -6,6 +6,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from millstone.loops.outer import OuterLoopManager
+from millstone.loops.pipeline.executor import PipelineExecutor
+from millstone.loops.pipeline.pipeline import PipelineDefinition
+from millstone.loops.pipeline.stage import HandoffKind, StageItem
 from millstone.policy.effects import (
     EffectClass,
     EffectIntent,
@@ -13,6 +16,7 @@ from millstone.policy.effects import (
     EffectRecord,
     EffectStatus,
 )
+from millstone.runtime.decision_gate import DECISION_GATE_EXIT_CODE, DecisionGate, DecisionGateHalt
 from millstone.runtime.orchestrator import Orchestrator
 
 
@@ -88,3 +92,30 @@ def test_orchestrator_forwards_effect_gate_to_outer_loop_manager(temp_repo):
             assert kwargs["effect_gate"] is orch._effect_gate
         finally:
             orch.cleanup()
+
+
+def test_pipeline_executor_checkpoints_effect_decision_gate(temp_repo):
+    class HaltingStage:
+        name = "design"
+        input_kind = HandoffKind.OPPORTUNITY
+        output_kind = HandoffKind.DESIGN
+
+        def execute(self, inputs):
+            raise DecisionGateHalt(
+                DecisionGate(
+                    gate_type="effect_approval",
+                    title="Effect approval required",
+                    message="Need explicit effect approval",
+                    resume_commands=["millstone --continue --approve-effects"],
+                )
+            )
+
+    orchestrator = MagicMock()
+    executor = PipelineExecutor(PipelineDefinition(stages=[HaltingStage()]), orchestrator)
+    inputs = [StageItem(kind=HandoffKind.OPPORTUNITY, artifact="opp", artifact_id="opp-1")]
+
+    result = executor.run(initial_items=inputs)
+
+    assert result == DECISION_GATE_EXIT_CODE
+    orchestrator.save_outer_loop_checkpoint.assert_called_once()
+    orchestrator.save_decision_gate.assert_called_once()

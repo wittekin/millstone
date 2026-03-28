@@ -68,6 +68,12 @@ Use local `.millstone/tasklist.md` for solo or personal projects; use the MCP pr
         - `millstone --continue` (After manual review/fix).
         - `git revert HEAD` (If tests failing/bad commit).
         - `millstone --task "simpler..."` (If stuck in loop).
+- **Exit 2 (Decision gate)**: millstone saved an explicit approval/policy gate to `.millstone/state.json`.
+    - **Recovery**:
+        - `millstone --continue --approve-high-risk`
+        - `millstone --continue --approve-effects`
+        - `millstone --continue --on-eval-regression=rollback`
+        - `millstone --continue --on-eval-regression=ignore`
 
 ### Correcting Changes
 In order of preference:

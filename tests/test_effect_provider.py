@@ -17,6 +17,7 @@ from millstone.policy.effects import (
     EffectStatus,
     NoOpEffectProvider,
 )
+from millstone.runtime.decision_gate import DecisionGateHalt
 
 
 @pytest.mark.parametrize("effect_class", [EffectClass.transactional, EffectClass.operational])
@@ -140,6 +141,25 @@ def test_effect_policy_gate_c3_approval_hook_true_delegates_to_provider() -> Non
     )
 
     assert record.status == EffectStatus.skipped
+
+
+def test_effect_policy_gate_c3_default_hook_raises_decision_gate_halt() -> None:
+    gate = EffectPolicyGate(
+        capability_gate=CapabilityPolicyGate(CapabilityTier.C3_REMOTE_CRITICAL),
+        permitted_effect_classes=frozenset({EffectClass.operational}),
+        provider=NoOpEffectProvider(),
+    )
+
+    with pytest.raises(DecisionGateHalt) as exc_info:
+        gate.apply(
+            EffectIntent(
+                effect_class=EffectClass.operational,
+                description="ops",
+                idempotency_key="k",
+            )
+        )
+
+    assert exc_info.value.gate.gate_type == "effect_approval"
 
 
 def test_observe_enforces_tier_and_allowlist_but_skips_approval_hook() -> None:
