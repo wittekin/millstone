@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.5.6] - 2026-03-28
+
+### Added
+- Added stdin-safe decision gates for high-risk tasks, eval-regression prompt mode, and critical effect approvals, with explicit resume flags `--approve-high-risk` and `--approve-effects`.
+
+### Changed
+- `--continue` now re-surfaces saved decision gates deterministically and resolves them only through explicit approval or eval-regression policy flags.
+- Updated the README and operator docs to document decision-gate resumes and the new exit-code contract.
+
 ## [0.5.5] - 2026-03-28
 
 ### Added
