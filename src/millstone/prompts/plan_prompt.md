@@ -8,6 +8,9 @@ Current tasklist:
 
 Each task must be:
 - small enough to fit within `{{MAX_LOC}}` estimated LoC
+- single-concern rather than bundling multiple goals
+- low-fanout: touch as few subsystems, files, and interfaces as practical
+- fully specified at the task boundary so in-scope work and handoffs are unambiguous
 - independently verifiable
 - understandable in isolation by a stateless builder
 - ordered so dependencies come first

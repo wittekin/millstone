@@ -46,3 +46,24 @@ def test_core_prompts_use_domain_neutral_roles():
         content = _prompt_text(name).lower()
         for phrase in DEV_CENTRIC_ROLE_PHRASES:
             assert phrase not in content, f"{name} should not contain {phrase!r}"
+
+
+def test_plan_prompts_capture_task_quality_guidelines():
+    """Planning prompts should preserve the task-shaping guidance we rely on."""
+    plan_prompt = _prompt_text("plan_prompt.md").lower()
+    assert "single-concern" in plan_prompt
+    assert "low-fanout" in plan_prompt
+    assert "fully specified at the task boundary" in plan_prompt
+    assert "independently verifiable" in plan_prompt
+
+    plan_review_prompt = _prompt_text("plan_review_prompt.md").lower()
+    assert "single-concern" in plan_review_prompt
+    assert "low-fanout" in plan_review_prompt
+    assert "fully specified boundaries" in plan_review_prompt
+    assert "independent verification" in plan_review_prompt
+
+    plan_fix_prompt = _prompt_text("plan_fix_prompt.md").lower()
+    assert "single-concern" in plan_fix_prompt
+    assert "low-fanout" in plan_fix_prompt
+    assert "fully specified at its boundaries" in plan_fix_prompt
+    assert "independently verifiable" in plan_fix_prompt

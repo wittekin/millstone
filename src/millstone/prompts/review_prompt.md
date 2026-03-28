@@ -15,9 +15,9 @@ Git Diff:
 </context>
 
 <process>
-1. Identify the task that was implemented.
-   - Prefer the tasklist if available.
-   - Otherwise infer from the builder output and diff, and state the assumption.
+1. Use the selected task scope provided later in this prompt as the authoritative scope.
+   - Prefer that selected task over any broader inference from the diff.
+   - If the scope is unclear or inconsistent with the diff, state the assumption.
 2. If the diff is empty and the task required changes, return `REQUEST_CHANGES`.
 3. Review only issues that materially matter:
 {{ACCEPTANCE_CRITERIA}}- task completeness against explicit requirements
@@ -25,8 +25,11 @@ Git Diff:
 - security or data-loss risk
 - verification quality relative to risk
 - future-task coherence problems introduced by this work
-4. For each finding, cite a file plus a stable locator when possible.
-5. For each materially changed interface, behavior, or artifact, give one representative case and one edge/error case when that adds clarity.
+4. If changes spill into later tasks, do not just say they are out of scope.
+   - Explain which work should be reverted, deferred, or narrowed.
+   - Give feedback that helps the builder keep the selected task complete while removing later-task spillover.
+5. For each finding, cite a file plus a stable locator when possible.
+6. For each materially changed interface, behavior, or artifact, give one representative case and one edge/error case when that adds clarity.
 </process>
 
 <output>

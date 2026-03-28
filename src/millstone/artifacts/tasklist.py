@@ -136,6 +136,19 @@ class TasklistManager:
 
         return self._parse_task_metadata(match.group(1))
 
+    def extract_current_task_line(self) -> str:
+        """Return the exact first unchecked task line, including ``- [ ]``."""
+        tasklist_path = self._tasklist_path()
+        if not tasklist_path.exists():
+            return ""
+
+        content = tasklist_path.read_text()
+        match = re.search(r"(^- \[ \] .+$)", content, re.MULTILINE)
+        if not match:
+            return ""
+
+        return match.group(1).rstrip()
+
     def extract_current_task_acceptance_criteria(self) -> list[str]:
         """Extract acceptance criteria for the first unchecked task.
 

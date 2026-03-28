@@ -2206,6 +2206,23 @@ class TestTasklistFlag:
         finally:
             orch.cleanup()
 
+    def test_get_tasklist_prompt_includes_selected_task_line(self, temp_repo):
+        """get_tasklist_prompt() includes the first unchecked task line as explicit scope."""
+        tasklist = temp_repo / ".millstone" / "tasklist.md"
+        tasklist.write_text(
+            "# Tasklist\n\n- [ ] **Task One**: first task\n- [ ] **Task Two**: second task\n"
+        )
+
+        orch = Orchestrator(tasklist=".millstone/tasklist.md")
+        try:
+            prompt = orch.get_tasklist_prompt()
+            assert "## Selected Task" in prompt
+            assert "- [ ] **Task One**: first task" in prompt
+            assert "This run may complete only the following task line" in prompt
+            assert "do not re-select the task yourself" in prompt
+        finally:
+            orch.cleanup()
+
     def test_get_tasklist_prompt_empty_provider_placeholder_raises(self, temp_repo):
         """get_tasklist_prompt() raises ValueError when a provider placeholder is empty."""
         custom_prompts = temp_repo / "my_prompts"
@@ -2230,6 +2247,40 @@ class TestTasklistFlag:
             )
             with pytest.raises(ValueError, match="TASKLIST_READ_INSTRUCTIONS"):
                 orch.get_tasklist_prompt()
+        finally:
+            orch.cleanup()
+
+    def test_get_review_prompt_includes_selected_task_line(self, temp_repo):
+        """get_review_prompt() scopes review to the first unchecked task line."""
+        tasklist = temp_repo / ".millstone" / "tasklist.md"
+        tasklist.write_text(
+            "# Tasklist\n\n- [ ] **Task One**: first task\n- [ ] **Task Two**: second task\n"
+        )
+
+        orch = Orchestrator(tasklist=".millstone/tasklist.md")
+        try:
+            prompt = orch.get_review_prompt()
+            assert "## Review Scope" in prompt
+            assert "- [ ] **Task One**: first task" in prompt
+            assert "Flag work that spills into later tasks as out of scope." in prompt
+            assert "Explain which work should be reverted, deferred, or narrowed." in prompt
+        finally:
+            orch.cleanup()
+
+    def test_build_scoped_feedback_prompt_repeats_selected_task_scope(self, temp_repo):
+        """Fix-cycle feedback re-states the selected task and out-of-scope rule."""
+        tasklist = temp_repo / ".millstone" / "tasklist.md"
+        tasklist.write_text(
+            "# Tasklist\n\n- [ ] **Task One**: first task\n- [ ] **Task Two**: second task\n"
+        )
+
+        orch = Orchestrator(tasklist=".millstone/tasklist.md")
+        try:
+            prompt = orch._build_scoped_feedback_prompt("Remove work for Task Two.")
+            assert "Selected task for this run:" in prompt
+            assert "- [ ] **Task One**: first task" in prompt
+            assert "Out of scope: every other task in the tasklist" in prompt
+            assert "Remove work for Task Two." in prompt
         finally:
             orch.cleanup()
 
