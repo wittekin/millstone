@@ -2959,6 +2959,16 @@ class TestTaskModeRiskParsing:
         finally:
             orch.cleanup()
 
+    def test_task_mode_no_approve_skips_high_risk_prompt(self, temp_repo):
+        orch = Orchestrator(task="**Foo**: bar\n  - Risk: high\n", research=True, no_approve=True)
+        orch.run_agent = lambda *_, **__: "ok"
+        try:
+            with patch("builtins.input", side_effect=AssertionError("input should not be called")):
+                assert orch.run_single_task() is True
+                assert orch.current_task_risk == "high"
+        finally:
+            orch.cleanup()
+
     def test_task_mode_no_risk_defaults(self, temp_repo):
         orch = Orchestrator(task="simple task", research=True)
         orch.run_agent = lambda *_, **__: "ok"
@@ -12289,6 +12299,19 @@ class TestApprovalGates:
                         call_kwargs = mock_init.call_args[1]
                         assert call_kwargs.get("enforce_gates") is False
 
+    def test_no_approve_flag_passes_through_to_task_runs(self, temp_repo):
+        """--no-approve is forwarded into the orchestrator for inner-loop task runs."""
+        from millstone import orchestrate
+
+        with patch("sys.argv", ["orchestrate.py", "--task", "do thing", "--no-approve"]):
+            with patch.object(Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(Orchestrator, "run", return_value=0):
+                    with pytest.raises(SystemExit) as exc:
+                        orchestrate.main()
+
+        assert exc.value.code == 0
+        assert mock_init.call_args.kwargs.get("no_approve") is True
+
     def test_default_approval_gates_from_config(self, temp_repo):
         """Without --no-approve, gate enforcement is enabled in pipeline executor."""
         from millstone import orchestrate
@@ -13360,6 +13383,15 @@ class TestRiskLabels:
 
             # None - no approval needed
             orch.current_task_risk = None
+            assert orch.requires_high_risk_approval() is False
+        finally:
+            orch.cleanup()
+
+    def test_requires_high_risk_approval_skips_gate_when_no_approve(self, temp_repo):
+        """no_approve disables the high-risk approval gate."""
+        orch = Orchestrator(no_approve=True)
+        try:
+            orch.current_task_risk = "high"
             assert orch.requires_high_risk_approval() is False
         finally:
             orch.cleanup()

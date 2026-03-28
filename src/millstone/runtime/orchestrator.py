@@ -346,6 +346,7 @@ class Orchestrator:
         approve_opportunities: bool = True,
         approve_designs: bool = True,
         approve_plans: bool = True,
+        no_approve: bool = False,
         category_weights: dict[str, float] | None = None,
         category_thresholds: dict[str, int] | None = None,
         task_constraints: dict | None = None,
@@ -468,6 +469,7 @@ class Orchestrator:
         self.approve_opportunities = approve_opportunities  # Pause after analyze
         self.approve_designs = approve_designs  # Pause after design
         self.approve_plans = approve_plans  # Pause after plan
+        self.no_approve = no_approve
         # Progress tracking
         self.current_task_num: int = 0  # Current task number (1-indexed)
         self.total_tasks: int = max_tasks  # Total tasks to process
@@ -528,6 +530,7 @@ class Orchestrator:
             capability_gate=self._capability_gate,
             permitted_effect_classes=self.profile.permitted_effect_classes,
             provider=NoOpEffectProvider(),
+            approval_hook=(lambda _intent: True) if self.no_approve else None,
         )
         self._current_task_id: str | None = None
 
@@ -1890,6 +1893,8 @@ class Orchestrator:
         Returns:
             True if task is high-risk and require_approval is set.
         """
+        if self.no_approve:
+            return False
         if self.current_task_risk != "high":
             return False
         settings = self.risk_settings.get("high", {})
@@ -4444,8 +4449,9 @@ Remote backlog scoping (Jira / Linear / GitHub):
         action="store_true",
         help="Disable approval gates for fully autonomous operation. By default, --cycle "
         "pauses at each phase (after analyze, design, plan) for human review. This flag "
-        "sets approve_opportunities, approve_designs, and approve_plans to False, allowing "
-        "the cycle to run without human intervention. Use with caution in trusted/low-risk scenarios.",
+        "sets approve_opportunities, approve_designs, and approve_plans to False and "
+        "suppresses interactive approval prompts such as the high-risk task gate, allowing "
+        "the run to continue without human intervention. Use with caution in trusted/low-risk scenarios.",
     )
     parser.add_argument(
         "--complete",
@@ -4774,6 +4780,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 approve_opportunities=_approve_opportunities,
                 approve_designs=_approve_designs,
                 approve_plans=_approve_plans,
+                no_approve=args.no_approve,
                 profile=config.get("profile", "dev_implementation"),
                 cli=args.cli,
                 cli_builder=args.cli_builder,
@@ -4794,6 +4801,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 approve_opportunities=_approve_opportunities,
                 approve_designs=_approve_designs,
                 approve_plans=_approve_plans,
+                no_approve=args.no_approve,
                 profile=config.get("profile", "dev_implementation"),
                 cli=args.cli,
                 cli_analyzer=args.cli_analyzer,
@@ -4886,6 +4894,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
         approve_opportunities=_approve_opportunities,
         approve_designs=_approve_designs,
         approve_plans=_approve_plans,
+        no_approve=args.no_approve,
         parallel_enabled=parallel_enabled,
         parallel_concurrency=args.concurrency,
         base_branch=args.base_branch,
