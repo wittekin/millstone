@@ -390,6 +390,7 @@ class TestCapabilityProfileCliPlumbing:
 
         _, kwargs = mock_init.call_args
         assert kwargs["max_cycles"] == 7
+        assert kwargs["max_cycles_locked"] is True
 
     def test_deliver_branch_passes_profile_and_max_cycles(self, temp_repo):
         """--deliver passes profile and max_cycles into Orchestrator."""
@@ -436,6 +437,21 @@ class TestCapabilityProfileCliPlumbing:
         _, kwargs = mock_init.call_args
         assert kwargs["profile"] == "dev_implementation"
         assert kwargs["max_cycles"] == 7
+        assert kwargs["max_cycles_locked"] is True
+
+    def test_task_cli_locks_default_max_cycles_when_flag_is_explicit(self, temp_repo):
+        """An explicit --max-cycles flag stays authoritative even when it matches the default."""
+        from millstone import orchestrate
+
+        with patch("sys.argv", ["orchestrate.py", "--task", "Add retries", "--max-cycles", "3"]):
+            with patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(orchestrate.Orchestrator, "run", return_value=0):
+                    with pytest.raises(SystemExit):
+                        orchestrate.main()
+
+        _, kwargs = mock_init.call_args
+        assert kwargs["max_cycles"] == 3
+        assert kwargs["max_cycles_locked"] is True
 
 
 class TestOuterLoopManagerMaxCyclesPlumbing:
@@ -2885,6 +2901,40 @@ class TestTaskModeRiskParsing:
             assert orch.run_single_task() is True
             assert orch.current_task_risk is None
             assert orch.max_cycles == orch.base_max_cycles
+        finally:
+            orch.cleanup()
+
+    def test_run_single_task_preserves_configured_max_cycles_over_medium_risk_default(
+        self, temp_repo
+    ):
+        """Explicit max_cycles should reach the builder loop even when risk metadata is present."""
+        import millstone.runtime.orchestrator as orchestrator_module
+        from millstone.loops.engine import LoopResult
+
+        orch = Orchestrator(task="**Foo**: bar\n  - Risk: medium\n", max_cycles=10, quiet=True)
+        captured_max_cycles: list[int] = []
+        original_loop = orchestrator_module.ArtifactReviewLoop
+
+        class CapturingLoop(original_loop):  # type: ignore[misc]
+            def __init__(self, *args, **kwargs):
+                captured_max_cycles.append(kwargs.get("max_cycles", -1))
+                super().__init__(*args, **kwargs)
+
+            def run(self):
+                return LoopResult(
+                    success=False,
+                    cycles=1,
+                    artifact=None,
+                    verdict=None,
+                    error="synthetic failure",
+                )
+
+        try:
+            with patch.object(orchestrator_module, "ArtifactReviewLoop", CapturingLoop):
+                assert orch.run_single_task() is False
+
+            assert orch.current_task_risk == "medium"
+            assert captured_max_cycles == [10]
         finally:
             orch.cleanup()
 
