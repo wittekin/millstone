@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.5.4] - 2026-03-28
+
+### Fixed
+- Scope local tasklist `-n 1` runs more tightly by carrying the selected task line into builder, reviewer, and fix-cycle prompts.
+- Guide reviewers to narrow later-task spillover instead of only rejecting it, so follow-up cycles stay focused on the selected task.
+- Fix Codecov coverage upload configuration by enabling branch coverage, supplying the Codecov token, and failing CI on upload errors.
+
+### Changed
+- Strengthened planning prompts so generated tasks are explicitly single-concern, low-fanout, fully specified at their boundaries, and independently verifiable.
+
 ## [0.5.3] - 2026-03-27
 
 ### Fixed
@@ -14,6 +24,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Changed
 - Simplified built-in prompts to be shorter, more general-purpose, and less role-specific.
 - Shifted prompt emphasis toward correctness, completeness, verification quality, and concrete output contracts, leaving repo-specific guidance to `AGENTS.md`, user input, and local context.
+
+## [0.5.2] - 2026-03-20
+
+### Fixed
+- Fixed plan review context for provider-backed tasklists so planning review sees the correct task provider state.
 
 ## [0.5.1] - 2026-03-14
 
