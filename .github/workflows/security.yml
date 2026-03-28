@@ -32,4 +32,8 @@ jobs:
         run: pip check
 
       - name: Run pip-audit
-        run: pip-audit
+        run: |
+          # Pygments is pulled in via pip-audit -> rich and is not part of the shipped
+          # millstone runtime dependency set. pip-audit currently reports CVE-2026-4539
+          # with no fixed version available, so ignore it until upstream publishes a fix.
+          pip-audit --ignore-vuln CVE-2026-4539
