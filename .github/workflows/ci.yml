@@ -99,11 +99,11 @@ jobs:
 
       - name: Run unit tests with coverage (PR)
         if: github.event_name == 'pull_request'
-        run: pytest -m "not integration" --cov=millstone --cov-report=xml --cov-report=term-missing
+        run: pytest -m "not integration" --cov=millstone --cov-branch --cov-report=xml --cov-report=term-missing
 
       - name: Run full tests with coverage (push/workflow_dispatch)
         if: github.event_name != 'pull_request'
-        run: pytest --cov=millstone --cov-report=xml --cov-report=term-missing
+        run: pytest --cov=millstone --cov-branch --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
@@ -115,7 +115,8 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           files: coverage.xml
-          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
 
   build:
     name: Build package
