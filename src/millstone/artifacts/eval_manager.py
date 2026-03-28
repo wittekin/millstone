@@ -2110,6 +2110,7 @@ class EvalManager:
         task_text: str = "",
         task_prefix: str = "",
         auto_rollback: bool = False,
+        on_eval_regression: str | None = None,
         cycle_log_callback: Callable[[str, str], None] | None = None,
         log_callback: Callable[..., None] | None = None,
         run_eval_callback: Callable[..., dict] | None = None,
@@ -2126,7 +2127,9 @@ class EvalManager:
         Args:
             task_text: The task description (used for rollback context).
             task_prefix: Prefix for progress messages, e.g., '[Task 2/5]'.
-            auto_rollback: Whether to auto-revert on regression.
+            auto_rollback: Backward-compatible alias for ``on_eval_regression="rollback"``.
+            on_eval_regression: Policy when regression is detected:
+                "prompt", "rollback", or "ignore".
             cycle_log_callback: Optional callback for cycle logging.
             log_callback: Optional callback for logging events.
             run_eval_callback: Optional callback to run eval (defaults to self.run_eval).
@@ -2134,6 +2137,8 @@ class EvalManager:
         Returns:
             True if no regression, False if regression detected and halted/reverted.
         """
+        on_eval_regression = self._resolve_eval_regression_policy(on_eval_regression, auto_rollback)
+
         progress(f"{task_prefix} Running post-commit eval...")
         if run_eval_callback:
             current_eval = run_eval_callback()
@@ -2192,7 +2197,7 @@ class EvalManager:
                 task_text=task_text,
                 reason="test_failures",
                 details={"new_failures": list(new_failures)[:10]},
-                auto_rollback=auto_rollback,
+                on_eval_regression=on_eval_regression,
                 cycle_log_callback=cycle_log_callback,
                 log_callback=log_callback,
             )
@@ -2223,7 +2228,7 @@ class EvalManager:
                     "regression": score_regression,
                     "max_regression": max_regression,
                 },
-                auto_rollback=auto_rollback,
+                on_eval_regression=on_eval_regression,
                 cycle_log_callback=cycle_log_callback,
                 log_callback=log_callback,
             )
@@ -2252,6 +2257,7 @@ class EvalManager:
         task_text: str = "",
         task_prefix: str = "",
         auto_rollback: bool = False,
+        on_eval_regression: str | None = None,
         cycle_log_callback: Callable[[str, str], None] | None = None,
         log_callback: Callable[..., None] | None = None,
         run_eval_callback: Callable[..., dict] | None = None,
@@ -2271,7 +2277,9 @@ class EvalManager:
             eval_on_task: The eval mode to use.
             task_text: The task description (used for rollback context).
             task_prefix: Prefix for progress messages.
-            auto_rollback: Whether to auto-revert on regression.
+            auto_rollback: Backward-compatible alias for ``on_eval_regression="rollback"``.
+            on_eval_regression: Policy when regression is detected:
+                "prompt", "rollback", or "ignore".
             cycle_log_callback: Optional callback for cycle logging.
             log_callback: Optional callback for logging events.
             run_eval_callback: Optional callback to run eval (defaults to self.run_eval).
@@ -2279,6 +2287,8 @@ class EvalManager:
         Returns:
             True if no regression, False if regression detected and halted/reverted.
         """
+        on_eval_regression = self._resolve_eval_regression_policy(on_eval_regression, auto_rollback)
+
         mode = eval_on_task
         if mode == "none":
             return True  # Eval disabled
@@ -2345,7 +2355,7 @@ class EvalManager:
                 task_text=task_text,
                 reason="test_failures",
                 details={"new_failures": list(new_failures)[:10]},
-                auto_rollback=auto_rollback,
+                on_eval_regression=on_eval_regression,
                 cycle_log_callback=cycle_log_callback,
                 log_callback=log_callback,
             )
@@ -2376,7 +2386,7 @@ class EvalManager:
                     "regression": score_regression,
                     "max_regression": max_regression,
                 },
-                auto_rollback=auto_rollback,
+                on_eval_regression=on_eval_regression,
                 cycle_log_callback=cycle_log_callback,
                 log_callback=log_callback,
             )
@@ -2557,24 +2567,35 @@ class EvalManager:
                 print(f"  {cat}: {baseline_score:.2f} → (missing)")
         print()
 
+    def _resolve_eval_regression_policy(
+        self,
+        on_eval_regression: str | None,
+        auto_rollback: bool,
+    ) -> str:
+        """Resolve the effective eval-regression policy for compatibility paths."""
+        if on_eval_regression is None:
+            return "rollback" if auto_rollback else "prompt"
+        return on_eval_regression
+
     def _handle_eval_regression(
         self,
         current_eval: dict,
         task_text: str,
         reason: str,
         details: dict,
-        auto_rollback: bool = False,
+        on_eval_regression: str = "prompt",
         cycle_log_callback: Callable[[str, str], None] | None = None,
         log_callback: Callable[..., None] | None = None,
     ) -> bool:
-        """Handle eval regression by prompting for or auto-performing revert.
+        """Handle eval regression based on the configured policy.
 
         Args:
             current_eval: The current eval result dict.
             task_text: The task description.
             reason: Why the regression occurred (test_failures, composite_score_regression).
             details: Additional details about the regression.
-            auto_rollback: Whether to auto-revert on regression.
+            on_eval_regression: Policy when regression is detected:
+                "prompt", "rollback", or "ignore".
             cycle_log_callback: Optional callback for cycle logging.
             log_callback: Optional callback for logging events.
 
@@ -2588,7 +2609,7 @@ class EvalManager:
         if cycle_log_callback:
             cycle_log_callback("EVAL_REGRESSION", f"Detected {reason}: {details}")
 
-        if auto_rollback:
+        if on_eval_regression == "rollback":
             # Auto-revert mode
             print(f"Auto-reverting commit {short_hash} due to eval regression...")
             success = self._perform_rollback(commit_hash, task_text, reason, details, log_callback)
@@ -2601,37 +2622,43 @@ class EvalManager:
                 if cycle_log_callback:
                     cycle_log_callback("ROLLBACK_FAILED", f"Failed to revert {short_hash}")
             return False
-        else:
-            # Interactive mode - prompt user
+
+        if on_eval_regression == "ignore":
             print(
-                f"Eval regression detected. Revert commit {short_hash}? [y/N] ",
-                end="",
-                flush=True,
+                "Commit kept due to --on-eval-regression=ignore. Halting for manual intervention."
             )
-            try:
-                response = input().strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                response = ""
-                print()
-
-            if response in ("y", "yes"):
-                success = self._perform_rollback(
-                    commit_hash, task_text, reason, details, log_callback
+            if cycle_log_callback:
+                cycle_log_callback(
+                    "ROLLBACK_IGNORED", f"Kept regressed commit {short_hash} via ignore policy"
                 )
-                if success:
-                    print(f"Commit {short_hash} has been reverted.")
-                    if cycle_log_callback:
-                        cycle_log_callback(
-                            "USER_ROLLBACK", f"User requested revert of {short_hash}"
-                        )
-                else:
-                    print(f"Failed to revert commit {short_hash}. Manual intervention required.")
-            else:
-                print("Commit kept. Halting for manual intervention.")
-                if cycle_log_callback:
-                    cycle_log_callback("ROLLBACK_DECLINED", f"User declined revert of {short_hash}")
-
             return False
+
+        # Interactive mode - prompt user
+        print(
+            f"Eval regression detected. Revert commit {short_hash}? [y/N] ",
+            end="",
+            flush=True,
+        )
+        try:
+            response = input().strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            response = ""
+            print()
+
+        if response in ("y", "yes"):
+            success = self._perform_rollback(commit_hash, task_text, reason, details, log_callback)
+            if success:
+                print(f"Commit {short_hash} has been reverted.")
+                if cycle_log_callback:
+                    cycle_log_callback("USER_ROLLBACK", f"User requested revert of {short_hash}")
+            else:
+                print(f"Failed to revert commit {short_hash}. Manual intervention required.")
+        else:
+            print("Commit kept. Halting for manual intervention.")
+            if cycle_log_callback:
+                cycle_log_callback("ROLLBACK_DECLINED", f"User declined revert of {short_hash}")
+
+        return False
 
     def _perform_rollback(
         self,

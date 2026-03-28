@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.5.5] - 2026-03-28
+
+### Added
+- Added `--on-eval-regression=prompt|rollback|ignore` so supervising automation can choose a deterministic post-eval policy without relying on interactive stdin prompts.
+
+### Fixed
+- `--no-approve` now reaches inner-loop high-risk approvals and effect approval hooks instead of only disabling the outer analyze/design/plan gates.
+- Kept `--auto-rollback` as a compatibility alias while routing eval regression handling through the new explicit policy model.
+
 ## [0.5.4] - 2026-03-28
 
 ### Fixed

@@ -338,6 +338,7 @@ class Orchestrator:
         session_mode: str = "new",
         eval_on_commit: bool = False,
         auto_rollback: bool = False,
+        on_eval_regression: str | None = None,
         retry_on_empty_response: bool | None = None,
         eval_scripts: list[str] | None = None,
         eval_on_task: str = "none",
@@ -346,6 +347,7 @@ class Orchestrator:
         approve_opportunities: bool = True,
         approve_designs: bool = True,
         approve_plans: bool = True,
+        no_approve: bool = False,
         category_weights: dict[str, float] | None = None,
         category_thresholds: dict[str, int] | None = None,
         task_constraints: dict | None = None,
@@ -431,7 +433,17 @@ class Orchestrator:
             session_mode = "continue_across_runs"
         self.session_mode = session_mode
         self.eval_on_commit = eval_on_commit  # Whether to run evals automatically after each commit
-        self.auto_rollback = auto_rollback  # Whether to auto-revert on eval regression
+        if on_eval_regression is None:
+            resolved_eval_regression = "rollback" if auto_rollback else "prompt"
+        else:
+            resolved_eval_regression = on_eval_regression
+        if resolved_eval_regression not in {"prompt", "rollback", "ignore"}:
+            raise ValueError(
+                "Invalid on_eval_regression "
+                f"{resolved_eval_regression!r}. Must be 'prompt', 'rollback', or 'ignore'."
+            )
+        self.on_eval_regression = resolved_eval_regression
+        self.auto_rollback = self.on_eval_regression == "rollback"
         self.eval_scripts = eval_scripts or []  # Custom eval scripts to run
         # eval_on_task: "none", "smoke", "full", or path to custom suite
         self.eval_on_task = eval_on_task
@@ -468,6 +480,7 @@ class Orchestrator:
         self.approve_opportunities = approve_opportunities  # Pause after analyze
         self.approve_designs = approve_designs  # Pause after design
         self.approve_plans = approve_plans  # Pause after plan
+        self.no_approve = no_approve
         # Progress tracking
         self.current_task_num: int = 0  # Current task number (1-indexed)
         self.total_tasks: int = max_tasks  # Total tasks to process
@@ -528,6 +541,7 @@ class Orchestrator:
             capability_gate=self._capability_gate,
             permitted_effect_classes=self.profile.permitted_effect_classes,
             provider=NoOpEffectProvider(),
+            approval_hook=(lambda _intent: True) if self.no_approve else None,
         )
         self._current_task_id: str | None = None
 
@@ -1890,6 +1904,8 @@ class Orchestrator:
         Returns:
             True if task is high-risk and require_approval is set.
         """
+        if self.no_approve:
+            return False
         if self.current_task_risk != "high":
             return False
         settings = self.risk_settings.get("high", {})
@@ -2140,6 +2156,7 @@ class Orchestrator:
             task_text=task_text,
             task_prefix=self._task_prefix(),
             auto_rollback=self.auto_rollback,
+            on_eval_regression=self.on_eval_regression,
             cycle_log_callback=cycle_log_callback,
             log_callback=self.log,
             run_eval_callback=lambda: self.run_eval(),
@@ -2154,6 +2171,7 @@ class Orchestrator:
             task_text=task_text,
             task_prefix=self._task_prefix(),
             auto_rollback=self.auto_rollback,
+            on_eval_regression=self.on_eval_regression,
             cycle_log_callback=cycle_log_callback,
             log_callback=self.log,
             run_eval_callback=lambda mode: self.run_eval(mode=mode),
@@ -2192,7 +2210,7 @@ class Orchestrator:
             task_text=task_text,
             reason=reason,
             details=details,
-            auto_rollback=self.auto_rollback,
+            on_eval_regression=self.on_eval_regression,
             cycle_log_callback=cycle_log_callback,
             log_callback=self.log,
         )
@@ -4331,13 +4349,22 @@ Remote backlog scoping (Jira / Linear / GitHub):
         "failures do not block operation. (default: from config or False)",
     )
     parser.add_argument(
+        "--on-eval-regression",
+        choices=("prompt", "rollback", "ignore"),
+        default=None,
+        metavar="POLICY",
+        help="Policy when post-commit eval detects a regression: 'prompt' asks whether to "
+        "revert, 'rollback' reverts automatically, and 'ignore' keeps the commit without "
+        "prompting and halts for manual intervention. If omitted, uses config and remains "
+        "compatible with --auto-rollback.",
+    )
+    parser.add_argument(
         "--auto-rollback",
         action="store_true",
         default=config.get("auto_rollback", False),
-        help="Auto-revert commits when eval regression is detected. When used with --eval-on-commit, "
-        "if the composite score drops by more than policy.eval.max_regression (default 0.05), "
-        "the commit is automatically reverted. Without this flag, a prompt is shown asking whether "
-        "to revert. Rollback context is saved for the next cycle. (default: from config or False)",
+        help="Deprecated compatibility alias for --on-eval-regression=rollback. When used with "
+        "--eval-on-commit, a regressed commit is automatically reverted. Prefer "
+        "--on-eval-regression for new automation.",
     )
     parser.add_argument(
         "--eval-on-task",
@@ -4444,8 +4471,9 @@ Remote backlog scoping (Jira / Linear / GitHub):
         action="store_true",
         help="Disable approval gates for fully autonomous operation. By default, --cycle "
         "pauses at each phase (after analyze, design, plan) for human review. This flag "
-        "sets approve_opportunities, approve_designs, and approve_plans to False, allowing "
-        "the cycle to run without human intervention. Use with caution in trusted/low-risk scenarios.",
+        "sets approve_opportunities, approve_designs, and approve_plans to False and "
+        "suppresses interactive approval prompts such as the high-risk task gate, allowing "
+        "the run to continue without human intervention. Use with caution in trusted/low-risk scenarios.",
     )
     parser.add_argument(
         "--complete",
@@ -4739,6 +4767,12 @@ Remote backlog scoping (Jira / Linear / GitHub):
             _through = "execute"
         needs_full = args.plan or args.deliver or args.cycle or _through in ("plan", "execute")
 
+        _on_eval_regression = (
+            args.on_eval_regression
+            if args.on_eval_regression is not None
+            else config.get("on_eval_regression")
+        )
+
         # Resolve approval gates — used by both orchestrator constructors
         # (for MCP staging decisions) and the pipeline executor (for halts).
         if args.no_approve:
@@ -4767,6 +4801,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 compact_threshold=args.compact_threshold,
                 eval_on_commit=args.eval_on_commit,
                 auto_rollback=args.auto_rollback,
+                on_eval_regression=_on_eval_regression,
                 eval_scripts=eval_scripts,
                 eval_on_task=args.eval_on_task,
                 skip_eval=args.skip_eval,
@@ -4774,6 +4809,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 approve_opportunities=_approve_opportunities,
                 approve_designs=_approve_designs,
                 approve_plans=_approve_plans,
+                no_approve=args.no_approve,
                 profile=config.get("profile", "dev_implementation"),
                 cli=args.cli,
                 cli_builder=args.cli_builder,
@@ -4791,9 +4827,11 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 max_cycles=args.max_cycles,
                 max_cycles_locked=max_cycles_flag_provided,
                 review_designs=config.get("review_designs", True),
+                on_eval_regression=_on_eval_regression,
                 approve_opportunities=_approve_opportunities,
                 approve_designs=_approve_designs,
                 approve_plans=_approve_plans,
+                no_approve=args.no_approve,
                 profile=config.get("profile", "dev_implementation"),
                 cli=args.cli,
                 cli_analyzer=args.cli_analyzer,
@@ -4861,6 +4899,11 @@ Remote backlog scoping (Jira / Linear / GitHub):
         _approve_opportunities = config.get("approve_opportunities", True)
         _approve_designs = config.get("approve_designs", True)
         _approve_plans = config.get("approve_plans", True)
+    _on_eval_regression = (
+        args.on_eval_regression
+        if args.on_eval_regression is not None
+        else config.get("on_eval_regression")
+    )
 
     orchestrator = Orchestrator(
         max_cycles=args.max_cycles,
@@ -4879,6 +4922,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
         session_mode=args.session,
         eval_on_commit=args.eval_on_commit,
         auto_rollback=args.auto_rollback,
+        on_eval_regression=_on_eval_regression,
         eval_scripts=eval_scripts,
         eval_on_task=args.eval_on_task,
         skip_eval=args.skip_eval,
@@ -4886,6 +4930,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
         approve_opportunities=_approve_opportunities,
         approve_designs=_approve_designs,
         approve_plans=_approve_plans,
+        no_approve=args.no_approve,
         parallel_enabled=parallel_enabled,
         parallel_concurrency=args.concurrency,
         base_branch=args.base_branch,
