@@ -12,7 +12,7 @@ If the selected task is missing, no longer the first unchecked task, or otherwis
 - Read the full tasklist before editing.
 - Treat the explicitly selected task shown later in this prompt as the only task in scope.
 - Do not implement, prepare, reorder, or check off any other task.
-- You may adjust future task text only when your completed work makes it inaccurate.
+- Do not modify, reorganize, summarize, or remove any other task text.
 - Run only verification that is appropriate for the selected task and files touched.
 - Do not claim success for commands you did not run.
 - Do not run `git commit` or `git push`.
@@ -41,6 +41,5 @@ Return only this structure:
 - Action Taken: what you changed for this task
 - Verification: commands/checks run and result
 - Tasklist Status: updated completed task line
-- Coherence Updates: only if you changed future task text
 </summary>
 </output>

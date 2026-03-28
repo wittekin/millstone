@@ -17225,3 +17225,71 @@ class TestPrintFailureSummary:
             assert "Missing tests" in out
         finally:
             orch.cleanup()
+
+
+class TestUncheckedTaskPreservation:
+    """Tests for unchecked task preservation (bug: builder drops unworked tasks)."""
+
+    # --- Prompt forbids tasklist modification ---
+
+    def test_builder_prompt_forbids_modifying_other_tasks(self):
+        """Builder prompt explicitly forbids modifying other task text."""
+        prompt_path = (
+            Path(__file__).parent.parent / "src" / "millstone" / "prompts" / "tasklist_prompt.md"
+        )
+        content = prompt_path.read_text()
+        assert "Do not modify, reorganize, summarize, or remove any other task text" in content
+        # Ensure the old permissive rule is gone
+        assert "adjust future task text" not in content
+
+    # --- Inter-task compaction ---
+
+    def test_inter_task_compaction_runs_between_cycles(self, temp_repo):
+        """Compaction runs after a successful task when threshold is met."""
+        orch = Orchestrator(compact_threshold=2)
+        try:
+            call_log = []
+
+            def mock_compaction():
+                call_log.append("compact")
+                return True
+
+            def mock_single_task():
+                call_log.append("task")
+                orch.completed_task_count += 1
+                return True
+
+            orch.completed_task_count = 0
+
+            with (
+                # Two tasks available, then done
+                patch.object(orch, "has_remaining_tasks", side_effect=[True, True, False]),
+                patch.object(orch, "run_single_task", side_effect=mock_single_task),
+                patch.object(orch, "run_compaction", side_effect=mock_compaction),
+                patch.object(orch, "preflight_checks"),
+                patch.object(orch, "check_dirty_working_directory"),
+                patch.object(orch, "check_uncommitted_tasklist"),
+                patch.object(
+                    orch,
+                    "count_completed_tasks",
+                    side_effect=lambda: orch.completed_task_count,
+                ),
+                patch.object(
+                    orch,
+                    "should_compact",
+                    side_effect=lambda: orch.completed_task_count >= 2,
+                ),
+                patch.object(orch, "clear_state"),
+                patch.object(orch, "log"),
+                patch.object(orch, "cleanup"),
+            ):
+                orch.run()
+
+            # After 2 tasks complete (count=2, threshold=2), compaction should run
+            # The key assertion: compaction runs AFTER a task, not just at startup
+            assert "compact" in call_log, "Compaction should run between task cycles"
+            # Compaction should appear after at least one task
+            compact_idx = call_log.index("compact")
+            assert compact_idx > 0, "Compaction should run after a task, not only at startup"
+        finally:
+            orch.cleanup()
