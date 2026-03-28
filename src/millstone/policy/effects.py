@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any, Protocol, runtime_checkable
 
 from millstone.policy.capability import CapabilityPolicyGate, CapabilityTier
+from millstone.runtime.decision_gate import DecisionGate, DecisionGateHalt
 
 
 class EffectClass(str, Enum):
@@ -80,12 +81,26 @@ class EffectContractError(ValueError):
 
 
 def _default_approval_hook(intent: EffectIntent) -> bool:
-    print(f"Effect class: {intent.effect_class.value}")
-    print(f"Description: {intent.description}")
-    print(f"Idempotency key: {intent.idempotency_key}")
-    print(f"Rollback plan: {intent.rollback_plan}")
-    decision = input("Approve this effect? [y/N]: ")
-    return decision.strip().lower() == "y"
+    raise DecisionGateHalt(
+        DecisionGate(
+            gate_type="effect_approval",
+            title="Effect approval required",
+            message=(
+                "A C3 provider effect requires explicit approval before millstone may continue."
+            ),
+            resume_commands=[
+                "millstone --continue --approve-effects",
+                "millstone --continue --no-approve",
+            ],
+            details={
+                "effect_class": intent.effect_class.value,
+                "description": intent.description,
+                "idempotency_key": intent.idempotency_key,
+                "rollback_plan": intent.rollback_plan,
+                "metadata": dict(intent.metadata),
+            },
+        )
+    )
 
 
 class EffectPolicyGate:

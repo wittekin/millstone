@@ -48,7 +48,7 @@ Then run:
 millstone --cycle --roadmap docs/roadmap.md
 ```
 
-For each goal, millstone designs a solution, breaks it into atomic tasks, implements them through a build-review loop, and commits. The local roadmap path reads goals directly from the file; the remote path runs analysis to discover and select from provider-backed opportunities. Approval gates pause between stages for human review; add `--no-approve` for fully autonomous operation.
+For each goal, millstone designs a solution, breaks it into atomic tasks, implements them through a build-review loop, and commits. The local roadmap path reads goals directly from the file; the remote path runs analysis to discover and select from provider-backed opportunities. Approval gates pause between stages for human review; add `--no-approve` for fully autonomous operation. When a run hits a high-risk task, eval regression, or critical remote effect, millstone now saves a decision gate in `.millstone/state.json` and resumes only through an explicit follow-up command instead of waiting on stdin.
 
 Other starting points:
 
@@ -105,6 +105,10 @@ millstone --deliver "Build a CLI app for release note generation"
 | Execute roadmap goals without analyze | `millstone --cycle --roadmap docs/roadmap.md` |
 | Run autonomous cycle end-to-end | `millstone --cycle` |
 | Resume an interrupted run | `millstone --continue` |
+| Approve a saved high-risk task gate | `millstone --continue --approve-high-risk` |
+| Approve saved critical effect gates | `millstone --continue --approve-effects` |
+| Resolve a saved eval regression by rollback | `millstone --continue --on-eval-regression=rollback` |
+| Resolve a saved eval regression without rollback | `millstone --continue --on-eval-regression=ignore` |
 
 ## How It Works
 
@@ -296,7 +300,7 @@ Creates `.millstone/` in your repo containing:
 - `runs/` - Timestamped logs of each run
 - `evals/` - JSON eval results for comparison
 - `cycles/` - Logs of autonomous cycle decisions
-- `state.json` - Saved state for --continue (inner-loop halts and outer-loop stage checkpoints)
+- `state.json` - Saved state for `--continue`, including inner-loop halts, outer-loop stage checkpoints, and explicit decision gates
 - `config.toml` - Per-repo configuration
 - `STOP.md` - Created by sanity check to halt
 
@@ -308,7 +312,8 @@ This directory is auto-added to `.gitignore`.
 - No changes detected -> Warn (proceeds to review)
 - Too many lines changed -> Halt for human review
 - Sensitive files (`.env`, credentials) -> Halt for human review
-- New test failures (with `--eval-on-commit`) -> Halt
+- New test failures (with `--eval-on-commit`) -> Halt with explicit eval-regression policy
+- High-risk tasks / critical remote effects -> Halt with explicit decision gate unless approved or `--no-approve`
 
 **Judgment (via LLM):**
 - Builder output is gibberish -> Create `STOP.md` -> Halt
@@ -318,6 +323,7 @@ This directory is auto-added to `.gitignore`.
 
 - `0` - Success
 - `1` - Halted (needs human intervention)
+- `2` - Decision gate saved; resume with `--continue` plus the required explicit approval/policy flag
 
 ## Expected Runtime
 

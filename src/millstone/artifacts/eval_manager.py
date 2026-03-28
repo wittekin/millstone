@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from millstone.runtime.decision_gate import DecisionGate
 from millstone.utils import progress
 
 if TYPE_CHECKING:
@@ -2111,6 +2112,7 @@ class EvalManager:
         task_prefix: str = "",
         auto_rollback: bool = False,
         on_eval_regression: str | None = None,
+        decision_gate_callback: Callable[[DecisionGate], None] | None = None,
         cycle_log_callback: Callable[[str, str], None] | None = None,
         log_callback: Callable[..., None] | None = None,
         run_eval_callback: Callable[..., dict] | None = None,
@@ -2130,6 +2132,8 @@ class EvalManager:
             auto_rollback: Backward-compatible alias for ``on_eval_regression="rollback"``.
             on_eval_regression: Policy when regression is detected:
                 "prompt", "rollback", or "ignore".
+            decision_gate_callback: Optional callback used to persist a
+                structured decision gate instead of prompting on stdin.
             cycle_log_callback: Optional callback for cycle logging.
             log_callback: Optional callback for logging events.
             run_eval_callback: Optional callback to run eval (defaults to self.run_eval).
@@ -2198,6 +2202,7 @@ class EvalManager:
                 reason="test_failures",
                 details={"new_failures": list(new_failures)[:10]},
                 on_eval_regression=on_eval_regression,
+                decision_gate_callback=decision_gate_callback,
                 cycle_log_callback=cycle_log_callback,
                 log_callback=log_callback,
             )
@@ -2229,6 +2234,7 @@ class EvalManager:
                     "max_regression": max_regression,
                 },
                 on_eval_regression=on_eval_regression,
+                decision_gate_callback=decision_gate_callback,
                 cycle_log_callback=cycle_log_callback,
                 log_callback=log_callback,
             )
@@ -2258,6 +2264,7 @@ class EvalManager:
         task_prefix: str = "",
         auto_rollback: bool = False,
         on_eval_regression: str | None = None,
+        decision_gate_callback: Callable[[DecisionGate], None] | None = None,
         cycle_log_callback: Callable[[str, str], None] | None = None,
         log_callback: Callable[..., None] | None = None,
         run_eval_callback: Callable[..., dict] | None = None,
@@ -2280,6 +2287,8 @@ class EvalManager:
             auto_rollback: Backward-compatible alias for ``on_eval_regression="rollback"``.
             on_eval_regression: Policy when regression is detected:
                 "prompt", "rollback", or "ignore".
+            decision_gate_callback: Optional callback used to persist a
+                structured decision gate instead of prompting on stdin.
             cycle_log_callback: Optional callback for cycle logging.
             log_callback: Optional callback for logging events.
             run_eval_callback: Optional callback to run eval (defaults to self.run_eval).
@@ -2356,6 +2365,7 @@ class EvalManager:
                 reason="test_failures",
                 details={"new_failures": list(new_failures)[:10]},
                 on_eval_regression=on_eval_regression,
+                decision_gate_callback=decision_gate_callback,
                 cycle_log_callback=cycle_log_callback,
                 log_callback=log_callback,
             )
@@ -2387,6 +2397,7 @@ class EvalManager:
                     "max_regression": max_regression,
                 },
                 on_eval_regression=on_eval_regression,
+                decision_gate_callback=decision_gate_callback,
                 cycle_log_callback=cycle_log_callback,
                 log_callback=log_callback,
             )
@@ -2584,6 +2595,7 @@ class EvalManager:
         reason: str,
         details: dict,
         on_eval_regression: str = "prompt",
+        decision_gate_callback: Callable[[DecisionGate], None] | None = None,
         cycle_log_callback: Callable[[str, str], None] | None = None,
         log_callback: Callable[..., None] | None = None,
     ) -> bool:
@@ -2596,6 +2608,8 @@ class EvalManager:
             details: Additional details about the regression.
             on_eval_regression: Policy when regression is detected:
                 "prompt", "rollback", or "ignore".
+            decision_gate_callback: Optional callback used to persist a
+                structured decision gate instead of prompting on stdin.
             cycle_log_callback: Optional callback for cycle logging.
             log_callback: Optional callback for logging events.
 
@@ -2633,30 +2647,34 @@ class EvalManager:
                 )
             return False
 
-        # Interactive mode - prompt user
-        print(
-            f"Eval regression detected. Revert commit {short_hash}? [y/N] ",
-            end="",
-            flush=True,
+        gate = DecisionGate(
+            gate_type="eval_regression",
+            title="Eval regression resolution required",
+            message=(
+                "Post-commit eval detected a regression. Re-run with an explicit "
+                "resolution policy instead of answering a stdin prompt."
+            ),
+            resume_commands=[
+                "millstone --continue --on-eval-regression=rollback",
+                "millstone --continue --on-eval-regression=ignore",
+            ],
+            details={
+                "commit_hash": commit_hash,
+                "task_text": task_text,
+                "reason": reason,
+                "details": details,
+            },
         )
-        try:
-            response = input().strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            response = ""
-            print()
-
-        if response in ("y", "yes"):
-            success = self._perform_rollback(commit_hash, task_text, reason, details, log_callback)
-            if success:
-                print(f"Commit {short_hash} has been reverted.")
-                if cycle_log_callback:
-                    cycle_log_callback("USER_ROLLBACK", f"User requested revert of {short_hash}")
-            else:
-                print(f"Failed to revert commit {short_hash}. Manual intervention required.")
-        else:
-            print("Commit kept. Halting for manual intervention.")
-            if cycle_log_callback:
-                cycle_log_callback("ROLLBACK_DECLINED", f"User declined revert of {short_hash}")
+        if decision_gate_callback is not None:
+            decision_gate_callback(gate)
+        if log_callback:
+            log_callback(
+                "eval_regression_decision_gate",
+                commit=short_hash,
+                reason=reason,
+            )
+        if cycle_log_callback:
+            cycle_log_callback("DECISION_GATE", f"Saved eval-regression gate for {short_hash}")
 
         return False
 

@@ -17,6 +17,7 @@ from millstone.loops.registry.loops import DEV_REVIEW_LOOP
 from millstone.loops.registry_adapter import LoopRegistryAdapter
 from millstone.policy.capability import CapabilityTier, CapabilityViolation
 from millstone.policy.effects import EffectClass, EffectPolicyGate
+from millstone.runtime.decision_gate import DECISION_GATE_EXIT_CODE, DecisionGate
 
 # Import the module under test
 from millstone.runtime.orchestrator import (
@@ -2969,6 +2970,48 @@ class TestTaskModeRiskParsing:
         finally:
             orch.cleanup()
 
+    def test_task_mode_high_risk_saves_decision_gate_without_prompt(self, temp_repo):
+        orch = Orchestrator(task="**Foo**: bar\n  - Risk: high\n", research=True)
+        try:
+            with patch("builtins.input", side_effect=AssertionError("input should not be called")):
+                assert orch.run_single_task() is False
+
+            state = orch.load_state()
+            assert state is not None
+            assert state["halt_reason"] == "decision_gate:high_risk"
+            assert state["decision_gate"]["gate_type"] == "high_risk"
+        finally:
+            orch.cleanup()
+
+    def test_run_returns_decision_gate_exit_code_for_high_risk_halt(self, temp_repo):
+        orch = Orchestrator(task="**Foo**: bar\n  - Risk: high\n", research=True, quiet=True)
+        try:
+            with patch("builtins.input", side_effect=AssertionError("input should not be called")):
+                assert orch.run() == DECISION_GATE_EXIT_CODE
+        finally:
+            orch.cleanup()
+
+    def test_continue_with_approve_high_risk_resumes_task(self, temp_repo):
+        initial = Orchestrator(task="**Foo**: bar\n  - Risk: high\n", research=True, quiet=True)
+        try:
+            assert initial.run() == DECISION_GATE_EXIT_CODE
+        finally:
+            initial.cleanup()
+
+        resumed = Orchestrator(
+            task="**Foo**: bar\n  - Risk: high\n",
+            research=True,
+            continue_run=True,
+            approve_high_risk=True,
+            quiet=True,
+        )
+        resumed.run_agent = lambda *_, **__: "ok"
+        try:
+            assert resumed.run() == 0
+            assert resumed.has_saved_state() is False
+        finally:
+            resumed.cleanup()
+
     def test_task_mode_no_risk_defaults(self, temp_repo):
         orch = Orchestrator(task="simple task", research=True)
         orch.run_agent = lambda *_, **__: "ok"
@@ -4654,6 +4697,27 @@ class TestStatePersistence:
         try:
             orch.save_state()
             assert orch.has_saved_state() is True
+        finally:
+            orch.cleanup()
+
+    def test_save_decision_gate_merges_with_existing_state(self, temp_repo):
+        orch = Orchestrator()
+        try:
+            orch.current_task_num = 3
+            orch.save_state(halt_reason="loc_threshold_exceeded")
+            gate = DecisionGate(
+                gate_type="high_risk",
+                title="High-risk task approval required",
+                message="Need approval",
+                resume_commands=["millstone --continue --approve-high-risk"],
+            )
+
+            orch.save_decision_gate(gate)
+
+            state = orch.load_state()
+            assert state is not None
+            assert state["current_task_num"] == 3
+            assert state["decision_gate"]["gate_type"] == "high_risk"
         finally:
             orch.cleanup()
 
@@ -13396,6 +13460,15 @@ class TestRiskLabels:
         finally:
             orch.cleanup()
 
+    def test_requires_high_risk_approval_skips_gate_when_explicitly_approved(self, temp_repo):
+        """approve_high_risk disables the saved high-risk gate on resume."""
+        orch = Orchestrator(approve_high_risk=True)
+        try:
+            orch.current_task_risk = "high"
+            assert orch.requires_high_risk_approval() is False
+        finally:
+            orch.cleanup()
+
     def test_default_risk_settings_structure(self, temp_repo):
         """Default risk_settings has expected structure."""
         orch = Orchestrator()
@@ -15389,6 +15462,64 @@ class TestEvalRollback:
         finally:
             orch.cleanup()
 
+    def test_on_eval_regression_prompt_saves_decision_gate_without_prompt(self, temp_repo):
+        """Prompt mode halts through state.json instead of calling input()."""
+        orch = Orchestrator(eval_on_commit=True, on_eval_regression="prompt")
+        try:
+            orch.baseline_eval = {
+                "failed_tests": [],
+                "_passed": True,
+                "composite_score": 0.95,
+                "categories": {},
+            }
+
+            with patch.object(orch, "run_eval") as mock_eval:
+                mock_eval.return_value = {
+                    "failed_tests": [],
+                    "_passed": True,
+                    "composite_score": 0.80,
+                    "categories": {},
+                }
+                with patch.object(orch._eval_manager, "git", return_value="abc123\n"):
+                    with patch(
+                        "builtins.input", side_effect=AssertionError("input should not be called")
+                    ):
+                        result = orch._run_eval_on_commit(task_text="Test task")
+
+            assert result is False
+            state = orch.load_state()
+            assert state is not None
+            assert state["decision_gate"]["gate_type"] == "eval_regression"
+            assert state["halt_reason"] == "decision_gate:eval_regression"
+        finally:
+            orch.cleanup()
+
+    def test_continue_with_eval_regression_policy_resolves_saved_gate(self, temp_repo):
+        """--continue with rollback policy resolves a saved eval-regression gate."""
+        gate = DecisionGate(
+            gate_type="eval_regression",
+            title="Eval regression resolution required",
+            message="Resolve saved eval regression",
+            details={
+                "commit_hash": "abc123",
+                "task_text": "Test task",
+                "reason": "test_failures",
+                "details": {"new_failures": ["tests/test_example.py::test_breaks"]},
+            },
+        )
+
+        orch = Orchestrator(continue_run=True, on_eval_regression="rollback", quiet=True)
+        try:
+            orch.save_decision_gate(gate, merge_existing=False)
+            with patch.object(
+                orch._eval_manager, "_perform_rollback", return_value=True
+            ) as mock_rb:
+                assert orch.run() == 0
+            mock_rb.assert_called_once()
+            assert orch.has_saved_state() is False
+        finally:
+            orch.cleanup()
+
     def test_auto_rollback_cli_flag(self, temp_repo):
         """--auto-rollback CLI flag is recognized."""
         from millstone import orchestrate
@@ -15418,6 +15549,30 @@ class TestEvalRollback:
 
         assert exc_info.value.code == 0
         assert mock_init.call_args.kwargs.get("on_eval_regression") == "ignore"
+
+    def test_approval_resolution_cli_flags(self, temp_repo):
+        """Approval-resolution flags are forwarded into the orchestrator."""
+        from millstone import orchestrate
+
+        with patch(
+            "sys.argv",
+            [
+                "orchestrate.py",
+                "--task",
+                "test",
+                "--dry-run",
+                "--approve-high-risk",
+                "--approve-effects",
+            ],
+        ):
+            with patch.object(Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(Orchestrator, "run", return_value=0):
+                    with pytest.raises(SystemExit) as exc_info:
+                        orchestrate.main()
+
+        assert exc_info.value.code == 0
+        assert mock_init.call_args.kwargs.get("approve_high_risk") is True
+        assert mock_init.call_args.kwargs.get("approve_effects") is True
 
     def test_print_category_comparison_formats_output(self, temp_repo, capsys):
         """_print_category_comparison prints category comparison."""
