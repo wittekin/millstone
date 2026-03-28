@@ -2986,7 +2986,10 @@ class TestTaskModeRiskParsing:
     def test_run_returns_decision_gate_exit_code_for_high_risk_halt(self, temp_repo):
         orch = Orchestrator(task="**Foo**: bar\n  - Risk: high\n", research=True, quiet=True)
         try:
-            with patch("builtins.input", side_effect=AssertionError("input should not be called")):
+            with (
+                patch.object(orch, "preflight_checks", lambda: None),
+                patch("builtins.input", side_effect=AssertionError("input should not be called")),
+            ):
                 assert orch.run() == DECISION_GATE_EXIT_CODE
         finally:
             orch.cleanup()
@@ -2994,7 +2997,8 @@ class TestTaskModeRiskParsing:
     def test_continue_with_approve_high_risk_resumes_task(self, temp_repo):
         initial = Orchestrator(task="**Foo**: bar\n  - Risk: high\n", research=True, quiet=True)
         try:
-            assert initial.run() == DECISION_GATE_EXIT_CODE
+            with patch.object(initial, "preflight_checks", lambda: None):
+                assert initial.run() == DECISION_GATE_EXIT_CODE
         finally:
             initial.cleanup()
 
@@ -3007,7 +3011,8 @@ class TestTaskModeRiskParsing:
         )
         resumed.run_agent = lambda *_, **__: "ok"
         try:
-            assert resumed.run() == 0
+            with patch.object(resumed, "preflight_checks", lambda: None):
+                assert resumed.run() == 0
             assert resumed.has_saved_state() is False
         finally:
             resumed.cleanup()
