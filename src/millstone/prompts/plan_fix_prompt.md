@@ -14,3 +14,4 @@ Feedback:
 Do not append a new copy of the tasks.
 Edit the existing task blocks to address the feedback.
 Preserve the required task metadata: `Est. LoC`, `Tests`, `Risk`, `Criteria`, and context.
+Keep each task single-concern, low-fanout, fully specified at its boundaries, and independently verifiable.

@@ -14,9 +14,11 @@ Planner summary:
 
 Check for:
 - correct ordering and dependency flow
-- tasks that are atomic and clear in isolation
+- tasks that stay single-concern instead of bundling multiple goals
+- low-fanout task boundaries with minimal cross-cutting touch points
+- fully specified boundaries so a stateless builder knows what is in and out of scope
 - enough context for a stateless builder
-- realistic verification in the `Tests`/criteria fields
+- realistic independent verification in the `Tests`/criteria fields
 - appropriate handling of uncertainty or branching decisions
 
 Return JSON only:

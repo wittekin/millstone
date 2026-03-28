@@ -272,6 +272,7 @@ class Orchestrator:
         "extract_current_task_risk": "_tasklist_manager",
         "extract_current_task_context_file": "_tasklist_manager",
         "extract_current_task_group": "_tasklist_manager",
+        "extract_current_task_line": "_tasklist_manager",
         "extract_current_task_acceptance_criteria": "_tasklist_manager",
         "count_completed_tasks": "_tasklist_manager",
         "_extract_unchecked_tasks": "_tasklist_manager",
@@ -2829,6 +2830,16 @@ class Orchestrator:
             criteria_blurb = ""
         prompt = prompt.replace("{{ACCEPTANCE_CRITERIA}}", criteria_blurb)
 
+        selected_task_line = self.extract_current_task_line()
+        if selected_task_line:
+            prompt += "\n\n---\n\n## Selected Task\n\n"
+            prompt += "This run may complete only the following task line:\n\n"
+            prompt += f"```md\n{selected_task_line}\n```\n\n"
+            prompt += (
+                "Do not implement, prepare, or partially complete work from any later task, "
+                "even if the files overlap.\n"
+            )
+
         # Append group context if available
         group_context = self.get_group_context()
         if group_context:
@@ -2872,6 +2883,12 @@ class Orchestrator:
         else:
             criteria_blurb = ""
         prompt = prompt.replace("{{ACCEPTANCE_CRITERIA}}", criteria_blurb)
+        selected_task_line = self.extract_current_task_line()
+        if selected_task_line:
+            prompt += "\n\n---\n\n## Review Scope\n\n"
+            prompt += "Review the diff only against this selected task line:\n\n"
+            prompt += f"```md\n{selected_task_line}\n```\n\n"
+            prompt += "Flag work that spills into later tasks as out of scope.\n"
         return prompt
 
     def get_compact_prompt(self) -> str:
@@ -2990,6 +3007,27 @@ class Orchestrator:
             f"{self._task_prefix()} Task Complexity: {result.get('complexity', 'unknown').upper()}"
         )
         return result
+
+    def _build_scoped_feedback_prompt(self, feedback: str) -> str:
+        """Return follow-up builder instructions that preserve single-task scope."""
+        parts = [
+            "Address this review feedback while staying strictly within the selected task scope.",
+        ]
+
+        selected_task_line = self.extract_current_task_line() if not self.task else self.task
+        if selected_task_line:
+            parts.extend(
+                [
+                    "",
+                    "Selected task for this run:",
+                    selected_task_line,
+                    "",
+                    "Out of scope: every other task in the tasklist, even if the same files are touched.",
+                ]
+            )
+
+        parts.extend(["", "Review feedback:", "", feedback])
+        return "\n".join(parts)
 
     def run_single_task(self) -> bool:
         """Run a single task through the build-review cycle.
@@ -3221,7 +3259,7 @@ class Orchestrator:
                 progress(
                     f"{self._task_prefix()} Cycle {self.cycle + 1}/{self.max_cycles}: Applying fixes..."
                 )
-                msg = f"Address this review feedback:\n\n{feedback}"
+                msg = self._build_scoped_feedback_prompt(feedback)
                 output = self.run_agent(msg, resume=self.builder_session_id, role="author")
             else:
                 progress(f"{self._task_prefix()} Running builder...")
