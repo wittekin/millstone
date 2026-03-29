@@ -1,6 +1,6 @@
 [project]
 name = "millstone"
-version = "0.5.8"
+version = "0.5.9"
 description = "Orchestrator for agentic coding tools"
 readme = "README.md"
 requires-python = ">=3.10"
