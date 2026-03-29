@@ -67,6 +67,7 @@ from millstone.runtime.decision_gate import (
 )
 from millstone.runtime.profile import ProfileRegistry
 from millstone.utils import (
+    cli_error_guidance,
     extract_claude_result,
     filter_reasoning_traces,
     format_elapsed,
@@ -1721,6 +1722,10 @@ class Orchestrator:
                 stdout=result.stdout,
                 stderr=result.stderr,
             )
+            suggestion = cli_error_guidance(result.returncode, result.stderr or "")
+            if suggestion:
+                progress(f"  Suggestion: {suggestion}")
+            progress("  Resume with: millstone --continue")
 
         # Unwrapping and token tracking
         final_output = extract_claude_result(result.stdout)
