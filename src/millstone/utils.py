@@ -10,6 +10,23 @@ import json
 import re
 
 
+def format_elapsed(seconds: float) -> str:
+    """Format elapsed seconds as a human-readable string.
+
+    Args:
+        seconds: Elapsed time in seconds (from time.monotonic delta).
+
+    Returns:
+        Formatted string like "2m 35s", "12s", or "1m 0s".
+    """
+    total = int(seconds)
+    if total < 60:
+        return f"{total}s"
+    minutes = total // 60
+    secs = total % 60
+    return f"{minutes}m {secs}s"
+
+
 def progress(msg: str) -> None:
     """Print a progress message with immediate flush.
 
