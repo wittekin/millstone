@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-03-29
+
+### Added
+- Elapsed-time reporting on agent calls: each builder, reviewer, and sanity check call now prints a "done (Xm Ys)" line on completion, with a heartbeat every 60 seconds during long-running calls.
+- Resume hint (`Resume with: millstone --continue`) printed on all halt paths — STOP.md, sanity failures, task failures, and CLI errors.
+- Run summary printed at exit showing tasks completed/failed/remaining and total elapsed time.
+- Enriched task-completion line showing cycle count, reviewer findings, lines changed, and elapsed time.
+- Actionable CLI error guidance: common failure patterns (OOM, rate limit, auth, timeout) now include a one-line suggestion and resume command.
+- Compact 2-line startup header enabled by default; full header available via `--verbose-header` or `verbose_header = true` in config.
+
 ## [0.5.8] - 2026-03-28
 
 ### Changed

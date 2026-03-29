@@ -108,7 +108,7 @@ class TestCapabilityPolicyGateWiring:
             orch.cleanup()
 
     def test_startup_banner_includes_profile_tier(self, temp_repo, capsys):
-        orch = Orchestrator(task="test")
+        orch = Orchestrator(task="test", verbose_header=True)
         try:
             captured = capsys.readouterr()
             assert "Profile: dev_implementation (tier: C1_local_write)" in captured.out
@@ -286,7 +286,9 @@ class TestEffectGateWiring:
         registry = ProfileRegistry()
         registry.register(profile)
         with patch("millstone.runtime.orchestrator.ProfileRegistry", return_value=registry):
-            return Orchestrator(profile=profile.id, task="effect gate test", quiet=quiet)
+            return Orchestrator(
+                profile=profile.id, task="effect gate test", quiet=quiet, verbose_header=True
+            )
 
     def test_init_sets_effect_gate(self, temp_repo):
         orch = Orchestrator(task="test", quiet=True)
@@ -303,7 +305,7 @@ class TestEffectGateWiring:
             orch.cleanup()
 
     def test_startup_banner_omits_permitted_effects_when_none(self, temp_repo, capsys):
-        orch = Orchestrator(task="test")
+        orch = Orchestrator(task="test", verbose_header=True)
         try:
             captured = capsys.readouterr()
             assert "Permitted effects:" not in captured.out
@@ -4862,7 +4864,7 @@ class TestSessionMode:
 
     def test_session_mode_shown_in_banner(self, temp_repo, capsys):
         """Non-default session_mode is shown in startup banner."""
-        orch = Orchestrator(session_mode="continue")
+        orch = Orchestrator(session_mode="continue", verbose_header=True)
         try:
             captured = capsys.readouterr()
             # 'continue' is normalized to 'continue_across_runs'
@@ -4872,7 +4874,7 @@ class TestSessionMode:
 
     def test_session_mode_new_not_shown_in_banner(self, temp_repo, capsys):
         """Default session_mode='new' is not shown in startup banner."""
-        orch = Orchestrator(session_mode="new")
+        orch = Orchestrator(session_mode="new", verbose_header=True)
         try:
             captured = capsys.readouterr()
             assert "Session mode:" not in captured.out
@@ -4881,7 +4883,7 @@ class TestSessionMode:
 
     def test_session_mode_new_each_task_not_shown_in_banner(self, temp_repo, capsys):
         """session_mode='new_each_task' is not shown in startup banner (it's the default)."""
-        orch = Orchestrator(session_mode="new_each_task")
+        orch = Orchestrator(session_mode="new_each_task", verbose_header=True)
         try:
             captured = capsys.readouterr()
             assert "Session mode:" not in captured.out
@@ -4890,7 +4892,7 @@ class TestSessionMode:
 
     def test_session_mode_continue_within_run_shown_in_banner(self, temp_repo, capsys):
         """session_mode='continue_within_run' is shown in startup banner."""
-        orch = Orchestrator(session_mode="continue_within_run")
+        orch = Orchestrator(session_mode="continue_within_run", verbose_header=True)
         try:
             captured = capsys.readouterr()
             assert "Session mode: continue_within_run" in captured.out

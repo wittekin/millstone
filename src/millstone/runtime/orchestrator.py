@@ -67,8 +67,10 @@ from millstone.runtime.decision_gate import (
 )
 from millstone.runtime.profile import ProfileRegistry
 from millstone.utils import (
+    cli_error_guidance,
     extract_claude_result,
     filter_reasoning_traces,
+    format_elapsed,
     is_empty_response,
     is_whitespace_or_comment_only_change,
     progress,
@@ -363,6 +365,7 @@ class Orchestrator:
         min_response_length: int = 50,
         log_verbosity: str = "normal",
         log_diff_mode: str = "summary",
+        verbose_header: bool = False,
         profile: str = "dev_implementation",
         # CLI provider configuration
         cli: str = "claude",
@@ -536,6 +539,7 @@ class Orchestrator:
                 f"Invalid log_diff_mode '{log_diff_mode}'. Must be 'full', 'summary', or 'none'."
             )
         self.log_diff_mode = log_diff_mode
+        self.verbose_header = verbose_header
         self.profile = ProfileRegistry().get(profile)
         self._capability_gate = CapabilityPolicyGate(self.profile.capability_tier)
         self._loop_adapter: LoopRegistryAdapter | None
@@ -687,73 +691,124 @@ class Orchestrator:
 
         # Print startup banner (unless quiet mode for utility commands)
         if not self.quiet:
-            print("=== Orchestrator Started ===")
-            print(f"Repo: {self.repo_dir}")
-            print(f"Work dir: {self.work_dir}")
-            print(f"Log file: {self.log_file}")
-            print(f"Max cycles per task: {self.max_cycles}")
-            print(f"LoC threshold: {self.loc_threshold}")
-            print(f"Profile: {self.profile.id} (tier: {self.profile.capability_tier.value})")
-            if self.profile.permitted_effect_classes:
-                print(
-                    "Permitted effects: "
-                    + ", ".join(
-                        sorted(
-                            effect_class.value
-                            for effect_class in self.profile.permitted_effect_classes
-                        )
+            if self.verbose_header:
+                self._print_verbose_header()
+            else:
+                self._print_compact_header()
+
+    def _get_version(self) -> str:
+        """Return the installed package version, or 'dev' if unavailable."""
+        try:
+            import importlib.metadata
+
+            return importlib.metadata.version("millstone")
+        except Exception:
+            return "dev"
+
+    # Synthetic task values used by main() for non-task entrypoints.
+    _SYNTHETIC_TASKS = frozenset({"review-design", "analyze", "design"})
+
+    def _get_task_source(self) -> str:
+        """Return a short description of the task source for the compact header."""
+        if self.task and self.task not in self._SYNTHETIC_TASKS:
+            return "1 direct task"
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        tl_provider = self._outer_loop_manager.tasklist_provider
+        if isinstance(tl_provider, MCPTasklistProvider):
+            label_str = ", ".join(tl_provider._labels) if tl_provider._labels else "none"
+            return f"{tl_provider._mcp_server} (labels: {label_str})"
+        return f"{self.tasklist} (max {self.max_tasks})"
+
+    def _get_cli_info(self) -> str:
+        """Return a short CLI description for the compact header."""
+        if (
+            self._cli_builder
+            == self._cli_reviewer
+            == self._cli_sanity
+            == self._cli_analyzer
+            == self._cli_release_eng
+            == self._cli_sre
+        ):
+            return self._cli_default
+        return f"{self._cli_default} + overrides"
+
+    def _print_compact_header(self) -> None:
+        """Print a 2-line compact startup header."""
+        version = self._get_version()
+        task_source = self._get_task_source()
+        cli_info = self._get_cli_info()
+        print(f"millstone {version} | {task_source} | {cli_info}")
+        print(f"Log: {self.log_file}")
+
+    def _print_verbose_header(self) -> None:
+        """Print the full multi-line startup header."""
+        print("=== Orchestrator Started ===")
+        print(f"Repo: {self.repo_dir}")
+        print(f"Work dir: {self.work_dir}")
+        print(f"Log file: {self.log_file}")
+        print(f"Max cycles per task: {self.max_cycles}")
+        print(f"LoC threshold: {self.loc_threshold}")
+        print(f"Profile: {self.profile.id} (tier: {self.profile.capability_tier.value})")
+        if self.profile.permitted_effect_classes:
+            print(
+                "Permitted effects: "
+                + ", ".join(
+                    sorted(
+                        effect_class.value for effect_class in self.profile.permitted_effect_classes
                     )
                 )
-            if self.task:
-                print(f"Task: {self.task}")
-            else:
-                if self.roadmap:
-                    print(f"Roadmap: {self.roadmap}")
-                from millstone.artifact_providers.mcp import MCPTasklistProvider
+            )
+        if self.task:
+            print(f"Task: {self.task}")
+        else:
+            if self.roadmap:
+                print(f"Roadmap: {self.roadmap}")
+            from millstone.artifact_providers.mcp import MCPTasklistProvider
 
-                tl_provider = self._outer_loop_manager.tasklist_provider
-                if isinstance(tl_provider, MCPTasklistProvider):
-                    label_str = ", ".join(tl_provider._labels) if tl_provider._labels else "none"
-                    print(f"Tasklist: {tl_provider._mcp_server} (labels: {label_str})")
-                else:
-                    print(f"Tasklist: {self.tasklist}")
-                print(f"Max tasks: {self.max_tasks}")
-                if self.compact_threshold > 0:
-                    print(f"Compact threshold: {self.compact_threshold}")
-                else:
-                    print("Compact threshold: disabled")
-            if self.dry_run:
-                print("Mode: DRY RUN (no agent invocations)")
-            if self.session_mode != "new_each_task":
-                print(f"Session mode: {self.session_mode}")
-            # Show CLI configuration
-            if (
-                self._cli_builder
-                == self._cli_reviewer
-                == self._cli_sanity
-                == self._cli_analyzer
-                == self._cli_release_eng
-                == self._cli_sre
-            ):
-                print(f"CLI: {self._cli_default}")
+            tl_provider = self._outer_loop_manager.tasklist_provider
+            if isinstance(tl_provider, MCPTasklistProvider):
+                label_str = ", ".join(tl_provider._labels) if tl_provider._labels else "none"
+                print(f"Tasklist: {tl_provider._mcp_server} (labels: {label_str})")
             else:
-                print(f"CLI (default): {self._cli_default}")
-                if self._cli_builder != self._cli_default:
-                    print(f"CLI (builder): {self._cli_builder}")
-                if self._cli_reviewer != self._cli_default:
-                    print(f"CLI (reviewer): {self._cli_reviewer}")
-                if self._cli_sanity != self._cli_default:
-                    print(f"CLI (sanity): {self._cli_sanity}")
-                if self._cli_analyzer != self._cli_default:
-                    print(f"CLI (analyzer): {self._cli_analyzer}")
-                if self._cli_release_eng != self._cli_default:
-                    print(f"CLI (release_eng): {self._cli_release_eng}")
-                if self._cli_sre != self._cli_default:
-                    print(f"CLI (sre): {self._cli_sre}")
-            # Show detected project type
-            project_lang = self.project_config.get("project", {}).get("language", "unknown")
-            print(f"Project type: {project_lang}")
-            print()
+                print(f"Tasklist: {self.tasklist}")
+            print(f"Max tasks: {self.max_tasks}")
+            if self.compact_threshold > 0:
+                print(f"Compact threshold: {self.compact_threshold}")
+            else:
+                print("Compact threshold: disabled")
+        if self.dry_run:
+            print("Mode: DRY RUN (no agent invocations)")
+        if self.session_mode != "new_each_task":
+            print(f"Session mode: {self.session_mode}")
+        # Show CLI configuration
+        if (
+            self._cli_builder
+            == self._cli_reviewer
+            == self._cli_sanity
+            == self._cli_analyzer
+            == self._cli_release_eng
+            == self._cli_sre
+        ):
+            print(f"CLI: {self._cli_default}")
+        else:
+            print(f"CLI (default): {self._cli_default}")
+            if self._cli_builder != self._cli_default:
+                print(f"CLI (builder): {self._cli_builder}")
+            if self._cli_reviewer != self._cli_default:
+                print(f"CLI (reviewer): {self._cli_reviewer}")
+            if self._cli_sanity != self._cli_default:
+                print(f"CLI (sanity): {self._cli_sanity}")
+            if self._cli_analyzer != self._cli_default:
+                print(f"CLI (analyzer): {self._cli_analyzer}")
+            if self._cli_release_eng != self._cli_default:
+                print(f"CLI (release_eng): {self._cli_release_eng}")
+            if self._cli_sre != self._cli_default:
+                print(f"CLI (sre): {self._cli_sre}")
+        # Show detected project type
+        project_lang = self.project_config.get("project", {}).get("language", "unknown")
+        print(f"Project type: {project_lang}")
+        print()
 
     @property
     def session_id(self) -> str | None:
@@ -1720,6 +1775,10 @@ class Orchestrator:
                 stdout=result.stdout,
                 stderr=result.stderr,
             )
+            suggestion = cli_error_guidance(result.returncode, result.stderr or "")
+            if suggestion:
+                progress(f"  Suggestion: {suggestion}")
+            progress("  Resume with: millstone --continue")
 
         # Unwrapping and token tracking
         final_output = extract_claude_result(result.stdout)
@@ -3799,6 +3858,47 @@ class Orchestrator:
         print(f"Log: {self.log_file}")
         print(sep)
 
+    def _remaining_count(self, task_num: int) -> int | str:
+        """Return remaining task count, or 'unknown' for MCP providers."""
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        provider = self._outer_loop_manager.tasklist_provider
+        if isinstance(provider, MCPTasklistProvider):
+            return "unknown"
+        return self.max_tasks - task_num
+
+    def _print_run_summary(
+        self,
+        tasks_completed: int,
+        tasks_failed: int,
+        _exit_reason: str,
+        run_start_time: float,
+        remaining: int | str = 0,
+    ) -> None:
+        """Print a structured 3-line summary at the end of run().
+
+        Skipped in quiet mode.
+
+        Args:
+            tasks_completed: Number of tasks that succeeded.
+            tasks_failed: Number of tasks that failed.
+            exit_reason: Short label for why the run ended (e.g. "success", "halted").
+            run_start_time: Value from time.monotonic() captured at run start.
+        """
+        if self.quiet:
+            return
+
+        import time
+
+        elapsed = format_elapsed(time.monotonic() - run_start_time)
+
+        print("=== Run Summary ===")
+        print(
+            f"Tasks: {tasks_completed} completed, {tasks_failed} failed, "
+            f"{remaining} remaining | Total: {elapsed}"
+        )
+        print(f"Log: {self.log_file}")
+
     def run_dry_run(self) -> int:
         """Show what would be executed without invoking claude. Returns exit code 0."""
         print("=== DRY RUN MODE ===")
@@ -3899,6 +3999,12 @@ class Orchestrator:
         if self.dry_run:
             return self.run_dry_run()
 
+        import time
+
+        run_start_time = time.monotonic()
+        tasks_completed = 0
+        tasks_failed = 0
+
         # Handle --continue mode: restore state and skip mechanical checks
         if self.continue_run:
             state = self.load_state()
@@ -3914,6 +4020,9 @@ class Orchestrator:
                 self.reviewer_session_id = state.get("reviewer_session_id")
                 decision_gate_result = self._handle_pending_decision_gate(state)
                 if decision_gate_result is not None:
+                    self._print_run_summary(
+                        0, 0, "decision_gate", run_start_time, remaining="unknown"
+                    )
                     return decision_gate_result
                 # Route to the correct outer-loop stage if a checkpoint exists.
                 # Stages: analyze_complete -> design_complete -> plan_complete -> inner loop.
@@ -3931,6 +4040,9 @@ class Orchestrator:
                     # --continue is explicit user approval, so skip gates.
                     result = self._resume_from_stage(stage, outer, enforce_gates=False)
                     if result is not None:
+                        self._print_run_summary(
+                            0, 0, "outer_loop_resume", run_start_time, remaining="unknown"
+                        )
                         return result
                 else:
                     # Inner-loop resume (LoC/sensitive-file halt): user has
@@ -4040,19 +4152,23 @@ class Orchestrator:
                 self.total_tasks = 1
                 success = self.run_single_task()
                 if success:
+                    tasks_completed = 1
                     progress("=== SUCCESS ===")
                     self.log("run_completed", result="SUCCESS", tasks_completed="1")
                     self.clear_state()  # Clear state on success
+                    self._print_run_summary(1, 0, "success", run_start_time, remaining=0)
                     return 0
                 else:
+                    tasks_failed = 1
                     if self.has_pending_decision_gate():
                         self.log("run_completed", result="DECISION_GATE", tasks_completed="0")
+                        self._print_run_summary(0, 1, "decision_gate", run_start_time, remaining=0)
                         return DECISION_GATE_EXIT_CODE
                     self.log("run_completed", result="FAILED", tasks_completed="0")
+                    self._print_run_summary(0, 1, "failed", run_start_time, remaining=0)
                     return 1
 
             # For tasklist mode, run up to max_tasks
-            tasks_completed = 0
             for task_num in range(1, self.max_tasks + 1):
                 # Check if there are remaining tasks before starting
                 if not self.has_remaining_tasks():
@@ -4066,6 +4182,13 @@ class Orchestrator:
                         tasks_completed=str(tasks_completed),
                     )
                     self.clear_state()  # Clear state on success
+                    self._print_run_summary(
+                        tasks_completed,
+                        tasks_failed,
+                        "no_remaining_tasks",
+                        run_start_time,
+                        remaining=0,
+                    )
                     return 0
 
                 # Set task tracking for progress output
@@ -4085,6 +4208,7 @@ class Orchestrator:
                         if self.should_compact():
                             self.run_compaction()
                 else:
+                    tasks_failed += 1
                     # Stop on first failure
                     if self.has_pending_decision_gate():
                         progress(f"=== DECISION GATE after {tasks_completed} task(s) ===")
@@ -4093,12 +4217,26 @@ class Orchestrator:
                             result="DECISION_GATE",
                             tasks_completed=str(tasks_completed),
                         )
+                        self._print_run_summary(
+                            tasks_completed,
+                            tasks_failed,
+                            "decision_gate",
+                            run_start_time,
+                            remaining=self._remaining_count(task_num),
+                        )
                         return DECISION_GATE_EXIT_CODE
                     progress(f"=== HALTED after {tasks_completed} task(s) ===")
                     self.log(
                         "run_completed",
                         result="HALTED",
                         tasks_completed=str(tasks_completed),
+                    )
+                    self._print_run_summary(
+                        tasks_completed,
+                        tasks_failed,
+                        "halted",
+                        run_start_time,
+                        remaining=self._remaining_count(task_num),
                     )
                     return 1
 
@@ -4111,6 +4249,9 @@ class Orchestrator:
                 tasks_completed=str(tasks_completed),
             )
             self.clear_state()  # Clear state on success
+            self._print_run_summary(
+                tasks_completed, tasks_failed, "max_tasks_reached", run_start_time, remaining=0
+            )
             return 0
 
         finally:
@@ -4391,6 +4532,11 @@ Remote backlog scoping (Jira / Linear / GitHub):
         help="Show full diffs in logs. Overrides log_diff_mode config to 'full', "
         "showing complete diffs inline instead of summaries. Useful for debugging "
         "specific runs when you need to see exact changes without checking .patch files.",
+    )
+    parser.add_argument(
+        "--verbose-header",
+        action="store_true",
+        help="Print the full multi-line startup banner instead of the compact 2-line default.",
     )
     # CLI provider arguments
     available_clis = ", ".join(list_providers())
@@ -4812,6 +4958,8 @@ Remote backlog scoping (Jira / Linear / GitHub):
     _configure_python_logging_for_verbosity(log_verbosity)
     # Compute effective log_diff_mode: --full-diff flag overrides config
     log_diff_mode = "full" if args.full_diff else config.get("log_diff_mode", "summary")
+    # Compute effective verbose_header: --verbose-header flag overrides config
+    verbose_header = args.verbose_header or config.get("verbose_header", False)
 
     # Handle --migrate-tasklist: normalize a local backlog into markdown checklist format
     if args.migrate_tasklist:
@@ -4843,6 +4991,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
             quiet=True,  # Suppress startup banner for utility command
             log_verbosity=log_verbosity,
             log_diff_mode=log_diff_mode,
+            verbose_header=verbose_header,
         )
         try:
             if orchestrator.clear_sessions():
@@ -4864,6 +5013,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
             quiet=True,  # Suppress startup banner for utility command
             log_verbosity=log_verbosity,
             log_diff_mode=log_diff_mode,
+            verbose_header=verbose_header,
         )
         try:
             eval_result = orchestrator.run_eval(coverage=args.cov)
@@ -4881,6 +5031,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
             quiet=True,  # Suppress startup banner for utility command
             log_verbosity=log_verbosity,
             log_diff_mode=log_diff_mode,
+            verbose_header=verbose_header,
         )
         try:
             result = orchestrator.compare_evals()
@@ -4901,6 +5052,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
             quiet=True,  # Suppress startup banner for utility command
             log_verbosity=log_verbosity,
             log_diff_mode=log_diff_mode,
+            verbose_header=verbose_header,
         )
         try:
             orchestrator.print_eval_summary()
@@ -4918,6 +5070,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
             quiet=True,  # Suppress startup banner for utility command
             log_verbosity=log_verbosity,
             log_diff_mode=log_diff_mode,
+            verbose_header=verbose_header,
         )
         try:
             orchestrator.print_metrics_report()
@@ -4935,6 +5088,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
             quiet=True,  # Suppress startup banner for utility command
             log_verbosity=log_verbosity,
             log_diff_mode=log_diff_mode,
+            verbose_header=verbose_header,
         )
         try:
             orchestrator.analyze_tasklist()
@@ -4963,6 +5117,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
             cli_analyzer=args.cli_analyzer,
             log_verbosity=log_verbosity,
             log_diff_mode=log_diff_mode,
+            verbose_header=verbose_header,
         )
         try:
             result = orchestrator.split_task(task_number=args.split_task)
@@ -4982,6 +5137,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
             cli_sanity=args.cli_sanity,
             log_verbosity=log_verbosity,
             log_diff_mode=log_diff_mode,
+            verbose_header=verbose_header,
         )
         try:
             result = orchestrator.review_design(design_path=args.review_design)
@@ -5067,6 +5223,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 cli_analyzer=args.cli_analyzer,
                 log_verbosity=log_verbosity,
                 log_diff_mode=log_diff_mode,
+                verbose_header=verbose_header,
             )
         else:
             # Minimal orchestrator — analyze-only or design-only (no --through)
@@ -5089,6 +5246,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 cli_sanity=args.cli_sanity,
                 log_verbosity=log_verbosity,
                 log_diff_mode=log_diff_mode,
+                verbose_header=verbose_header,
             )
 
         try:
@@ -5206,6 +5364,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
         cli_sre=args.cli_sre,
         log_verbosity=log_verbosity,
         log_diff_mode=log_diff_mode,
+        verbose_header=verbose_header,
     )
     try:
         # Handle --compact: force compaction and exit

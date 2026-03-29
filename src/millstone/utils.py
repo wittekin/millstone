@@ -10,6 +10,23 @@ import json
 import re
 
 
+def format_elapsed(seconds: float) -> str:
+    """Format elapsed seconds as a human-readable string.
+
+    Args:
+        seconds: Elapsed time in seconds (from time.monotonic delta).
+
+    Returns:
+        Formatted string like "2m 35s", "12s", or "1m 0s".
+    """
+    total = int(seconds)
+    if total < 60:
+        return f"{total}s"
+    minutes = total // 60
+    secs = total % 60
+    return f"{minutes}m {secs}s"
+
+
 def progress(msg: str) -> None:
     """Print a progress message with immediate flush.
 
@@ -307,6 +324,38 @@ def summarize_diff(diff_text: str, lines_per_file: int = 20) -> str:
         summary_parts.append("")
 
     return "\n".join(summary_parts)
+
+
+def cli_error_guidance(returncode: int, stderr: str) -> str | None:
+    """Return a one-line suggestion for common CLI failure patterns.
+
+    Args:
+        returncode: The CLI process exit code.
+        stderr: The captured stderr output (may be empty).
+
+    Returns:
+        A suggestion string, or None if no known pattern matches.
+    """
+    stderr_lower = stderr.lower() if stderr else ""
+
+    if returncode == 137:
+        return (
+            "Process was killed (possible OOM). Consider splitting the task or increasing memory."
+        )
+
+    if "rate limit" in stderr_lower or ("limit" in stderr_lower and "reset" in stderr_lower):
+        return "Rate limited. Wait for reset, then run: millstone --continue"
+
+    if "auth" in stderr_lower or "401" in stderr_lower or "403" in stderr_lower:
+        return "Authentication failed. Check CLI auth with: claude --version"
+
+    if "timeout" in stderr_lower or "timed out" in stderr_lower:
+        return "Request timed out. Retry with: millstone --continue"
+
+    if returncode == 1 and not stderr_lower.strip():
+        return "CLI failed with no details. Check that the CLI is installed and authenticated."
+
+    return None
 
 
 def is_whitespace_or_comment_only_change(before_diff: str, after_diff: str) -> bool:

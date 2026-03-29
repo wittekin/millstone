@@ -154,6 +154,7 @@ DEFAULT_CONFIG = {
     "log_verbosity": "normal",
     # Diff logging mode: "full" (complete diffs), "summary" (stats + truncated), "none" (suppress diffs)
     "log_diff_mode": "summary",
+    "verbose_header": False,
     # CLI provider configuration - use "claude", "codex", "gemini", or "opencode"
     # Can be set globally or per-role (builder, reviewer, sanity, analyzer, etc.)
     "cli": "claude",  # Default CLI for all roles
