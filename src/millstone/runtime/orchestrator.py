@@ -4047,6 +4047,14 @@ class Orchestrator:
                 if success:
                     tasks_completed += 1
                     self.clear_state()  # Clear state after each successful task
+
+                    # Inter-task compaction: reduce completed-task verbosity
+                    # before the next builder sees the file, removing the
+                    # motivation to reorganize and drop unchecked tasks.
+                    if not self.task:
+                        self.completed_task_count = self.count_completed_tasks()
+                        if self.should_compact():
+                            self.run_compaction()
                 else:
                     # Stop on first failure
                     if self.has_pending_decision_gate():

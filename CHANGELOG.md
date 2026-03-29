@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.5.7] - 2026-03-28
+
+### Fixed
+- Builder no longer silently drops unchecked tasks when rewriting `.millstone/tasklist.md`. The builder prompt now explicitly forbids modifying, reorganizing, or removing other task text.
+- Added inter-task compaction: the orchestrator compacts completed tasks between cycles when the threshold is met, reducing file verbosity that motivated builders to reorganize.
+
 ## [0.5.6] - 2026-03-28
 
 ### Added
