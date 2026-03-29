@@ -107,7 +107,7 @@ class ConfigurationError(RuntimeError):
     """Raised when runtime wiring does not match configured loop contracts."""
 
 
-DEFAULT_LOC_THRESHOLD: int = 1000
+DEFAULT_LOC_THRESHOLD: int = cast(int, DEFAULT_CONFIG["loc_threshold"])
 _ORCHESTRATOR_INTERNAL_ROLES = {"default", "sanity", "analyzer", "release_eng", "sre"}
 __all__ = [
     "CONFIG_FILE_NAME",
@@ -1437,12 +1437,11 @@ class Orchestrator:
                         "Create it or use --task to specify a task directly."
                     )
 
-    def check_dirty_working_directory(self) -> None:
-        """Check for uncommitted changes and warn if present.
+    def _get_working_tree_status_lines(self) -> list[str] | None:
+        """Return porcelain status lines for the current working tree.
 
-        This is a non-blocking warning. Uncommitted changes from prior work
-        will be included in the first task's diff and may trigger the LoC
-        threshold. The operator may know what they're doing, so we just warn.
+        Returns:
+            List of non-empty porcelain status lines, or None if git status fails.
         """
         result = subprocess.run(
             ["git", "status", "--porcelain"],
@@ -1451,21 +1450,38 @@ class Orchestrator:
             cwd=self.repo_dir,
         )
         if result.returncode != 0:
-            return  # Git command failed, skip warning
+            return None
+        return [line for line in result.stdout.strip().split("\n") if line]
 
-        status_lines = [line for line in result.stdout.strip().split("\n") if line]
+    def check_dirty_working_directory(self) -> bool:
+        """Check for uncommitted changes and warn if present.
+
+        This is a non-blocking warning. Uncommitted changes from prior work
+        will be included in the first task's diff and may trigger the LoC
+        threshold. The operator may know what they're doing, so we just warn.
+
+        Returns:
+            True when the working tree is dirty, False otherwise.
+        """
+        status_lines = self._get_working_tree_status_lines()
+        if status_lines is None:
+            return False  # Git command failed, skip warning
         if not status_lines:
-            return  # Working directory is clean
+            return False  # Working directory is clean
 
         file_count = len(status_lines)
         print()
         print("⚠️  WARNING: Working directory has uncommitted changes")
         print(f"   {file_count} file(s) modified")
         print("   These will be included in the first task's diff and may trigger LoC threshold.")
-        print(
-            f"   Consider committing first or running with --loc-threshold={self.loc_threshold * 2}"
-        )
+        if self.loc_threshold > 0:
+            print(
+                f"   Consider committing first or running with --loc-threshold={self.loc_threshold * 2}"
+            )
+        else:
+            print("   Consider committing first, or set --loc-threshold to a positive value.")
         print()
+        return True
 
     def check_uncommitted_tasklist(self) -> None:
         """Check if the tasklist file has uncommitted changes and warn.
@@ -3844,11 +3860,17 @@ class Orchestrator:
                     content = tasklist_path.read_text()
                     unchecked = len(re.findall(r"^- \[ \]", content, re.MULTILINE))
                     self.completed_task_count = self.count_completed_tasks()
+                    startup_worktree_dirty = bool(self._get_working_tree_status_lines())
                     print(f"  Unchecked tasks: {unchecked}")
                     print(f"  Completed tasks: {self.completed_task_count}")
                     print(f"  Compact threshold: {self.compact_threshold}")
                     if self.should_compact():
-                        print("  Compaction: WOULD TRIGGER (completed >= threshold)")
+                        if startup_worktree_dirty:
+                            print(
+                                "  Compaction: WOULD TRIGGER, but startup auto-compaction is skipped while the working tree is dirty"
+                            )
+                        else:
+                            print("  Compaction: WOULD TRIGGER (completed >= threshold)")
                     elif self.compact_threshold <= 0:
                         print("  Compaction: DISABLED")
                     else:
@@ -3956,9 +3978,11 @@ class Orchestrator:
         if not self.continue_run or not self.loc_baseline_ref:
             self._init_loc_baseline()
 
+        startup_worktree_dirty = False
+
         # Warn about uncommitted changes (non-blocking, but skip if continuing)
         if not self.continue_run:
-            self.check_dirty_working_directory()
+            startup_worktree_dirty = self.check_dirty_working_directory()
             self.check_uncommitted_tasklist()
 
         # Count completed tasks in tasklist (for compaction tracking)
@@ -3967,7 +3991,12 @@ class Orchestrator:
 
             # Check if compaction is needed before starting (skip if continuing)
             if not self.continue_run and self.should_compact():
-                self.run_compaction()
+                if startup_worktree_dirty:
+                    progress(
+                        "Skipping startup tasklist compaction because the working tree has uncommitted changes."
+                    )
+                else:
+                    self.run_compaction()
 
         # Capture baseline eval if eval_on_commit or eval_on_task is enabled
         # Note: skip_eval only affects eval_on_task gate, not eval_on_commit
@@ -4132,7 +4161,7 @@ Configuration:
   Settings can be stored in .millstone/config.toml. CLI flags override config file values.
   Example config.toml:
     max_cycles = 5
-    loc_threshold = 1000
+    loc_threshold = 0
     tasklist = "TODO.md"
     roadmap = "docs/roadmap.md"
     max_tasks = 10
@@ -4182,7 +4211,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
         metavar="N",
         help="Maximum lines of code changed (additions + deletions) before requiring "
         "human review. Large changes bypass automated approval as a safety measure. "
-        f"Set higher for refactoring tasks, lower for security-sensitive repos. (default: {config['loc_threshold']})",
+        f"Set to 0 to disable. Set higher for refactoring tasks, lower for security-sensitive repos. (default: {config['loc_threshold']})",
     )
     parser.add_argument(
         "--task",

@@ -36,7 +36,7 @@ POLICY_FILE_NAME = "policy.toml"
 # Default policy configuration (can be overridden by .millstone/policy.toml)
 DEFAULT_POLICY = {
     "limits": {
-        "max_loc_per_task": 2000,
+        "max_loc_per_task": 0,
         "max_cycles": 3,
     },
     "sensitive": {
@@ -91,7 +91,7 @@ DEFAULT_PROJECT_CONFIG = {
 # Default configuration values
 DEFAULT_CONFIG = {
     "max_cycles": 3,
-    "loc_threshold": 1_000_000,
+    "loc_threshold": 0,
     "tasklist": ".millstone/tasklist.md",
     "roadmap": None,
     "max_tasks": 5,
@@ -242,6 +242,23 @@ DEFAULT_CONFIG = {
         ],
     },
 }
+
+
+def resolve_loc_threshold(*limits: int | None) -> int | None:
+    """Return the strictest enabled LoC threshold, or None when disabled.
+
+    Each limit uses `0` (or any negative value) as a disable sentinel.
+    """
+    enabled_limits: list[int] = []
+    for limit in limits:
+        if limit is None:
+            continue
+        normalized = int(limit)
+        if normalized > 0:
+            enabled_limits.append(normalized)
+    if not enabled_limits:
+        return None
+    return min(enabled_limits)
 
 
 def load_config(repo_dir: Path | None = None) -> dict:

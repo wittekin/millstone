@@ -12,6 +12,7 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
+from millstone.config import resolve_loc_threshold
 from millstone.policy.schemas import (
     ReviewDecision,
     parse_review_decision,
@@ -36,7 +37,7 @@ class InnerLoopManager:
         self,
         work_dir: Path,
         repo_dir: Path,
-        loc_threshold: int = 1000,
+        loc_threshold: int = 0,
         policy: dict | None = None,
         project_config: dict | None = None,
         loop_sensitive_patterns: list[str] | None = None,
@@ -46,7 +47,7 @@ class InnerLoopManager:
         Args:
             work_dir: Path to the work directory (.millstone/).
             repo_dir: Path to the repository root.
-            loc_threshold: Maximum lines of code changed per task.
+            loc_threshold: Maximum lines of code changed per task. Set to 0 to disable.
             policy: Policy configuration dict (from load_policy).
             project_config: Project configuration dict (from load_project_config).
             loop_sensitive_patterns: Optional sensitive-file patterns from loop registry.
@@ -292,11 +293,10 @@ class InnerLoopManager:
                 if parts[0] != "-" and parts[1] != "-":  # Skip binary files
                     total_loc += int(parts[0]) + int(parts[1])
 
-        # Enforce the stricter of policy and CLI limits.
-        # This prevents accidental widening of safeguards from either source.
+        # Enforce the strictest enabled limit from policy and CLI config.
         policy_loc_limit = self.policy.get("limits", {}).get("max_loc_per_task", self.loc_threshold)
-        effective_loc_threshold = min(int(policy_loc_limit), int(self.loc_threshold))
-        if total_loc > effective_loc_threshold:
+        effective_loc_threshold = resolve_loc_threshold(policy_loc_limit, self.loc_threshold)
+        if effective_loc_threshold is not None and total_loc > effective_loc_threshold:
             rule = f"limits.max_loc_per_task ({effective_loc_threshold})"
             self._log_policy_violation(
                 "loc_threshold_exceeded", f"{total_loc} LoC exceeds {rule}", log_callback

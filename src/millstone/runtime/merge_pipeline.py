@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from millstone.artifacts.tasklist import TasklistManager
-from millstone.config import WORK_DIR_NAME
+from millstone.config import WORK_DIR_NAME, resolve_loc_threshold
 from millstone.runtime.locks import AdvisoryLock
 
 
@@ -44,10 +44,10 @@ def run_safety_gates(
         if parts[0] != "-" and parts[1] != "-":
             total_loc += int(parts[0]) + int(parts[1])
 
-    # Enforce the stricter of policy and caller limits.
+    # Enforce the strictest enabled limit from policy and caller config.
     policy_loc_limit = policy.get("limits", {}).get("max_loc_per_task", loc_threshold)
-    effective_loc_threshold = min(int(policy_loc_limit), int(loc_threshold))
-    if total_loc > effective_loc_threshold:
+    effective_loc_threshold = resolve_loc_threshold(policy_loc_limit, loc_threshold)
+    if effective_loc_threshold is not None and total_loc > effective_loc_threshold:
         return False, f"loc_threshold_exceeded:{total_loc}>{effective_loc_threshold}"
 
     changed_files = git("diff", "--name-only", diff_range)
