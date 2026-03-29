@@ -54,7 +54,7 @@ class TestOrchestratorInit:
         orch = Orchestrator()
         try:
             assert orch.max_cycles == 3
-            assert orch.loc_threshold == 1000
+            assert orch.loc_threshold == 0
             assert orch.cycle == 0
             assert orch.session_id is None
         finally:
@@ -2045,6 +2045,19 @@ class TestMechanicalChecks:
         finally:
             orch.cleanup()
 
+    def test_zero_loc_threshold_disables_loc_gate(self, temp_repo):
+        """A zero LoC threshold disables the LoC gate instead of blocking every change."""
+        orch = Orchestrator(loc_threshold=0)
+        try:
+            large_content = "\n".join([f"line {i}" for i in range(100)])
+            (temp_repo / "large_file.txt").write_text(large_content)
+            subprocess.run(["git", "add", "."], cwd=temp_repo, capture_output=True)
+
+            result = orch.mechanical_checks()
+            assert result is True
+        finally:
+            orch.cleanup()
+
     def test_allows_sensitive_file_by_default(self, temp_repo):
         """Allows sensitive files by default when policy disables the check."""
         orch = Orchestrator()
@@ -3420,6 +3433,27 @@ compact_threshold = 50
             orch.run()
             captured = capsys.readouterr()
             assert "WOULD TRIGGER" in captured.out
+        finally:
+            orch.cleanup()
+
+    def test_dry_run_shows_startup_compaction_skip_when_worktree_dirty(self, temp_repo, capsys):
+        """Dry run shows that startup compaction is skipped when the worktree is dirty."""
+        tasklist_path = temp_repo / ".millstone" / "tasklist.md"
+        tasklist_path.write_text("""# Tasks
+- [x] Done 1
+- [x] Done 2
+- [x] Done 3
+- [ ] Pending
+""")
+        (temp_repo / "dirty.txt").write_text("uncommitted content")
+
+        orch = Orchestrator(dry_run=True, compact_threshold=3)
+        try:
+            orch.run()
+            captured = capsys.readouterr()
+            assert (
+                "startup auto-compaction is skipped while the working tree is dirty" in captured.out
+            )
         finally:
             orch.cleanup()
 
@@ -15001,7 +15035,7 @@ max_loc_per_task = 5
 
         # Check limits section
         assert "limits" in DEFAULT_POLICY
-        assert DEFAULT_POLICY["limits"]["max_loc_per_task"] == 2000
+        assert DEFAULT_POLICY["limits"]["max_loc_per_task"] == 0
         assert DEFAULT_POLICY["limits"]["max_cycles"] == 3
 
         # Check sensitive section
@@ -17291,5 +17325,51 @@ class TestUncheckedTaskPreservation:
             # Compaction should appear after at least one task
             compact_idx = call_log.index("compact")
             assert compact_idx > 0, "Compaction should run after a task, not only at startup"
+        finally:
+            orch.cleanup()
+
+    def test_startup_compaction_skips_when_worktree_dirty(self, temp_repo):
+        """Startup compaction is skipped on fresh runs when the worktree is dirty."""
+        orch = Orchestrator(compact_threshold=2)
+        try:
+            with (
+                patch.object(orch, "preflight_checks"),
+                patch.object(orch, "check_dirty_working_directory", return_value=True),
+                patch.object(orch, "check_uncommitted_tasklist"),
+                patch.object(orch, "count_completed_tasks", return_value=2),
+                patch.object(orch, "should_compact", return_value=True),
+                patch.object(orch, "run_compaction") as mock_compact,
+                patch.object(orch, "has_remaining_tasks", return_value=False),
+                patch.object(orch, "clear_state"),
+                patch.object(orch, "log"),
+                patch.object(orch, "cleanup"),
+            ):
+                result = orch.run()
+
+            assert result == 0
+            mock_compact.assert_not_called()
+        finally:
+            orch.cleanup()
+
+    def test_startup_compaction_runs_when_worktree_clean(self, temp_repo):
+        """Startup compaction still runs on fresh runs when the worktree is clean."""
+        orch = Orchestrator(compact_threshold=2)
+        try:
+            with (
+                patch.object(orch, "preflight_checks"),
+                patch.object(orch, "check_dirty_working_directory", return_value=False),
+                patch.object(orch, "check_uncommitted_tasklist"),
+                patch.object(orch, "count_completed_tasks", return_value=2),
+                patch.object(orch, "should_compact", return_value=True),
+                patch.object(orch, "run_compaction", return_value=True) as mock_compact,
+                patch.object(orch, "has_remaining_tasks", return_value=False),
+                patch.object(orch, "clear_state"),
+                patch.object(orch, "log"),
+                patch.object(orch, "cleanup"),
+            ):
+                result = orch.run()
+
+            assert result == 0
+            mock_compact.assert_called_once()
         finally:
             orch.cleanup()

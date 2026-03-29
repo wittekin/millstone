@@ -841,7 +841,7 @@ wheels = [
 
 [[package]]
 name = "millstone"
-version = "0.5.6"
+version = "0.5.8"
 source = { editable = "." }
 dependencies = [
     { name = "requests" },

@@ -60,7 +60,7 @@ DEV_REVIEW_LOOP = LoopDefinition(
             name="Lines of Code Threshold",
             description="Halt if too many lines changed",
             check_type="loc_threshold",
-            threshold=1000,
+            threshold=0,
         ),
         MechanicalCheck(
             id="sensitive_files",

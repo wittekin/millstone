@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [Unreleased]
+
+## [0.5.8] - 2026-03-28
+
+### Changed
+- LoC gating now treats `0` as disabled across task execution and merge safety checks, and the default `loc_threshold` is now `0`.
+
+### Fixed
+- Startup auto-compaction now skips dirty working trees on fresh runs, avoiding tasklist rewrites after a crash or interrupted task until the operator resumes cleanly.
+
 ## [0.5.7] - 2026-03-28
 
 ### Fixed

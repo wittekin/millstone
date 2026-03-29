@@ -98,6 +98,16 @@ class TestSafetyGates:
         assert ok is True
         assert reason == ""
 
+    def test_safety_loc_threshold_zero_disables_gate(self, temp_repo):
+        base = _rev_parse(temp_repo, "HEAD")
+        _commit_file(temp_repo, "a.txt", "1\n2\n3\n4\n5\n", "add lines")
+        policy = {"limits": {"max_loc_per_task": 0}}
+        ok, reason = run_safety_gates(
+            temp_repo, base_ref=base, head_ref="HEAD", policy=policy, loc_threshold=0
+        )
+        assert ok is True
+        assert reason == ""
+
 
 class TestMergePipeline:
     def _setup(self, temp_repo, merge_strategy: str):
@@ -301,8 +311,10 @@ class TestMergePipeline:
         pipeline, _base_branch, base_ref_sha, commit_sha, integration_wt, _task_wt = self._setup(
             temp_repo, merge_strategy="cherry-pick"
         )
+        _commit_file(_task_wt, "extra.txt", "one\ntwo\n", "grow task diff")
+        commit_sha = _rev_parse(_task_wt, "HEAD")
         # Force a failure via tiny LoC threshold.
-        pipeline.loc_threshold = 0
+        pipeline.loc_threshold = 1
         res = pipeline.integrate_eval_and_land(
             task_id="t1",
             task_branch="millstone/task/t1",
