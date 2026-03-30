@@ -91,6 +91,7 @@ DEFAULT_PROJECT_CONFIG = {
 # Default configuration values
 DEFAULT_CONFIG = {
     "max_cycles": 3,
+    "required_approvals": 1,
     "loc_threshold": 0,
     "tasklist": ".millstone/tasklist.md",
     "roadmap": None,

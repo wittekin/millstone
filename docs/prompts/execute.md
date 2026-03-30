@@ -39,7 +39,7 @@ Run this command. Verify the result. Review the remainder of the tasklist to ens
 | Single task (`-n 1`) | 2-30 minutes | 60 min |
 
 ### Authoring Loop Invariant
-Every outer-loop authoring step — `--analyze`, `--design`, and `--plan` — runs an iterative write/review/fix loop. A reviewer agent checks the output and requests revisions until it approves or `--max-cycles` is exhausted. `--max-cycles` applies equally to inner-loop build-review iterations and outer-loop authoring loops.
+Every outer-loop authoring step — `--analyze`, `--design`, and `--plan` — runs an iterative write/review/fix loop. A reviewer agent checks the output and requests revisions until it approves or `--max-cycles` is exhausted. `--max-cycles` applies equally to inner-loop build-review iterations and outer-loop authoring loops. Within a task, both builder and reviewer retain their session context across fix cycles. With `--required-approvals N`, N independent reviewers must each approve (each getting up to `--max-cycles` fix loops) before the task is committed.
 
 ### Scoping Remote Backlogs
 When using the MCP tasklist provider, the default scope is all open items returned by the agent's configured MCP server. Narrow it with `[millstone.artifacts.tasklist_filter]` in `.millstone/config.toml` — filter keys are forwarded to the agent as part of the read instruction:

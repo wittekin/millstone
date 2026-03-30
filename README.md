@@ -77,6 +77,7 @@ millstone --deliver "Build a CLI app for release note generation"
 - Deterministic inner loop: `Builder -> Sanity -> Reviewer -> Sanity -> Fix -> Commit`.
 - Autonomous outer loops: `analyze`, `design`, `plan`, `cycle` — every authoring step is write/review gated.
 - `--max-cycles` governs both inner build-review iterations and outer-loop authoring loops.
+- `--required-approvals N` runs N independent reviewer rounds per task, each with up to `--max-cycles` fix loops.
 - Parallel execution via `git worktree` — run multiple tasks concurrently with isolated checkouts and a serialized merge queue.
 - Primary operating mode is coding-agent-invoked execution (`docs/prompts/execute.md`).
 - Built-in evaluation flow with result capture and regression comparison.
@@ -94,6 +95,7 @@ millstone --deliver "Build a CLI app for release note generation"
 | Migrate an existing local backlog to tasklist format | `millstone --migrate-tasklist backlog.md` |
 | Design, plan, and execute one scoped objective | `millstone --deliver "..."` |
 | Claude code as author, codex as reviewer, one task, max of 6 write/review cycles | `millstone --cli claude --cli-reviewer codex -n 1 --max-cycles 6` |
+| Require two independent reviewer approvals per task | `millstone --required-approvals 2` |
 | Run 4 tasks in parallel (worktree mode) | `millstone --worktrees --concurrency 4` |
 | Dry-run prompt flow without invoking agents | `millstone --dry-run` |
 | Scan codebase for opportunities | `millstone --analyze` |
@@ -195,6 +197,7 @@ Create `.millstone/config.toml` in the target repo:
 
 ```toml
 max_cycles = 3
+required_approvals = 1
 max_tasks = 5
 tasklist = ".millstone/tasklist.md"
 roadmap = "docs/roadmap.md" # optional: used by `--cycle` when tasklist is empty

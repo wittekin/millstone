@@ -53,7 +53,7 @@ millstone --cycle --roadmap docs/roadmap.md
 millstone --cycle
 ```
 
-For each goal, millstone designs a solution, breaks it into atomic tasks, and implements them through a build-review loop. Approval gates pause between stages; add `--no-approve` for fully autonomous operation. If a run halts on a high-risk task, eval regression, or critical remote effect, millstone writes a decision gate to `.millstone/state.json` and expects an explicit `--continue` command rather than interactive stdin.
+For each goal, millstone designs a solution, breaks it into atomic tasks, and implements them through a build-review loop. Each reviewer retains context across fix cycles within a task; use `--required-approvals N` to require N independent reviewer approvals before committing. Approval gates pause between stages; add `--no-approve` for fully autonomous operation. If a run halts on a high-risk task, eval regression, or critical remote effect, millstone writes a decision gate to `.millstone/state.json` and expects an explicit `--continue` command rather than interactive stdin.
 
 If you use the same roadmap path repeatedly, persist it in `.millstone/config.toml`:
 
