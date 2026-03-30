@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-29
+
+### Added
+- `--required-approvals N` flag and `required_approvals` config option: require N independent reviewer approvals per task before committing. Each reviewer gets a fresh session and up to `--max-cycles` fix loops; the builder retains context across all rounds.
+
+### Changed
+- Reviewer now retains session context across fix cycles within a task (previously reset every cycle in the default `new_each_task` mode). Sessions are still reset between tasks.
+
 ## [0.5.9] - 2026-03-29
 
 ### Added

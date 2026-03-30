@@ -49,7 +49,7 @@ from millstone.config import (
     load_policy,
     load_project_config,
 )
-from millstone.loops.engine import ArtifactReviewLoop
+from millstone.loops.engine import ArtifactReviewLoop, LoopResult
 from millstone.loops.inner import InnerLoopManager
 from millstone.loops.outer import OuterLoopManager
 from millstone.loops.registry_adapter import LoopRegistryAdapter
@@ -331,6 +331,7 @@ class Orchestrator:
     def __init__(
         self,
         max_cycles: int = 3,
+        required_approvals: int = 1,
         loc_threshold: int = DEFAULT_LOC_THRESHOLD,
         repo_dir: Path | None = None,
         task: str | None = None,
@@ -401,6 +402,7 @@ class Orchestrator:
         max_cycles_locked: bool = False,
     ):
         self.max_cycles = max_cycles
+        self.required_approvals = max(1, required_approvals)
         self.base_max_cycles = max_cycles  # Store original for risk-based adjustments
         # Preserve explicit/non-default cycle budgets instead of silently replacing
         # them with risk-profile defaults during task execution.
@@ -748,6 +750,8 @@ class Orchestrator:
         print(f"Work dir: {self.work_dir}")
         print(f"Log file: {self.log_file}")
         print(f"Max cycles per task: {self.max_cycles}")
+        if self.required_approvals > 1:
+            print(f"Required approvals: {self.required_approvals}")
         print(f"LoC threshold: {self.loc_threshold}")
         print(f"Profile: {self.profile.id} (tier: {self.profile.capability_tier.value})")
         if self.profile.permitted_effect_classes:
@@ -3639,9 +3643,11 @@ class Orchestrator:
 
         def builder_reviewer(artifact: BuilderArtifact) -> BuilderVerdict:
             review_start = time.time()
-            reviewer_resume = (
-                self.reviewer_session_id if self.session_mode != "new_each_task" else None
-            )
+            # Always resume the reviewer within a task's fix-loop cycles so it
+            # retains context of its prior feedback.  Session IDs are already
+            # reset between tasks in run_single_task() when session_mode is
+            # "new_each_task", so this won't leak across tasks.
+            reviewer_resume = self.reviewer_session_id
 
             review_output = self.run_agent(
                 self.get_review_prompt(artifact.output, artifact.git_diff),
@@ -3763,24 +3769,51 @@ class Orchestrator:
             loop_state["failure_reason"] = "commit_failed"
             return False
 
-        # Run the loop
-        loop = ArtifactReviewLoop(
-            name="Builder",
-            producer=builder_producer,
-            validator=builder_validator,
-            reviewer=builder_reviewer,
-            is_approved=lambda v: v.approved,
-            max_cycles=self.max_cycles,
-            on_cycle_start=lambda c: setattr(
-                self, "cycle", c - 1
-            ),  # Keep self.cycle aligned with cycle body
-            on_success=builder_on_success,
-        )
+        # Run the review loop.  When required_approvals > 1, each approval
+        # round gets a fresh reviewer session while the builder keeps context.
+        # The commit (on_success) only runs after the final approval.
+        total_cycles = 0
+        result: LoopResult | None = None
 
-        result = loop.run()
-        self.cycle = result.cycles  # Final cycle count
+        for approval_round in range(1, self.required_approvals + 1):
+            is_final_round = approval_round == self.required_approvals
+
+            if approval_round > 1:
+                # Fresh reviewer for each additional approval round
+                self.reviewer_session_id = None
+                progress(
+                    f"{self._task_prefix()} Approval {approval_round}/{self.required_approvals}: "
+                    "starting additional review..."
+                )
+
+            loop = ArtifactReviewLoop(
+                name="Builder",
+                producer=builder_producer,
+                validator=builder_validator,
+                reviewer=builder_reviewer,
+                is_approved=lambda v: v.approved,
+                max_cycles=self.max_cycles,
+                on_cycle_start=lambda c: setattr(
+                    self, "cycle", c - 1
+                ),  # Keep self.cycle aligned with cycle body
+                on_success=builder_on_success if is_final_round else None,
+            )
+
+            result = loop.run()
+            total_cycles += result.cycles
+
+            if not result.success:
+                break
+
+            if not is_final_round:
+                progress(
+                    f"{self._task_prefix()} Approval {approval_round}/{self.required_approvals} granted."
+                )
+
+        self.cycle = total_cycles  # Final cycle count
 
         # Logging final state
+        assert result is not None  # At least one round always runs
         if result.success:
             self.save_task_metrics(
                 task_text,
@@ -4344,6 +4377,16 @@ Remote backlog scoping (Jira / Linear / GitHub):
         "plan). If the reviewer requests changes N times without approval, the orchestrator "
         "stops for human intervention. Higher values allow more automated fixes but risk "
         f"infinite loops. (default: {config['max_cycles']})",
+    )
+    parser.add_argument(
+        "--required-approvals",
+        type=int,
+        default=config.get("required_approvals", 1),
+        metavar="N",
+        help="Number of independent reviewer approvals required before committing. "
+        "Each reviewer gets a fresh context and up to --max-cycles fix loops with the "
+        "builder. The builder retains its session across all approval rounds. "
+        f"(default: {config.get('required_approvals', 1)})",
     )
     parser.add_argument(
         "--loc-threshold",
@@ -5194,6 +5237,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
             review_designs = config.get("review_designs", True)
             orchestrator = Orchestrator(
                 max_cycles=args.max_cycles,
+                required_approvals=args.required_approvals,
                 max_cycles_locked=max_cycles_flag_provided,
                 loc_threshold=args.loc_threshold,
                 tasklist=args.tasklist,
