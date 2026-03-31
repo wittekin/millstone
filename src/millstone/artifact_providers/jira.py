@@ -145,6 +145,42 @@ class JiraTasklistProvider(MCPTasklistProvider):
     # Write operations — Jira status transition terminology
     # ------------------------------------------------------------------
 
+    def update_task(self, task: TasklistItem) -> None:
+        """Update a Jira issue in place via agent callback."""
+        cb = self._require_callback()
+        self._apply_write_effect(
+            operation="update",
+            artifact_id=task.task_id,
+            description=(f"Update Jira issue '{task.task_id}' via jira MCP tools."),
+        )
+
+        description_lines = [
+            f"- Design reference: {task.design_ref or '<clear>'}",
+            f"- Opportunity reference: {task.opportunity_ref or '<clear>'}",
+            f"- Risk: {task.risk or '<clear>'}",
+            f"- Tests: {task.tests or '<clear>'}",
+            f"- Context: {task.context or '<clear>'}",
+            f"- Criteria: {task.criteria or '<clear>'}",
+        ]
+        if task.acceptance_criteria:
+            description_lines.append("- Acceptance criteria:")
+            description_lines.extend(f"  - {criterion}" for criterion in task.acceptance_criteria)
+        else:
+            description_lines.append("- Acceptance criteria: <clear>")
+
+        prompt = (
+            f"Use the jira MCP tools to find issue '{task.task_id}' and update that existing "
+            "issue in place.\n"
+            "Do not create a duplicate issue or change any other issue.\n"
+            "Clear fields explicitly marked '<clear>'.\n\n"
+            f"- Summary: {task.title}\n"
+            f"- Status: {self._jira_status(task.status)}\n"
+            "- Description/body should include exactly these structured details:\n"
+            + "\n".join(description_lines)
+        )
+        cb(prompt)
+        self.invalidate_cache()
+
     def update_task_status(self, task_id: str, status: TaskStatus) -> None:
         """Transition a Jira issue to the given status via agent callback."""
         cb = self._require_callback()

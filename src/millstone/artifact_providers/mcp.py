@@ -273,12 +273,16 @@ class MCPTasklistProvider(TasklistProviderBase):
         if not item:
             return None
         status = _TASK_STATUS_MAP.get(item.get("status", "todo"), TaskStatus.todo)
+        acceptance_criteria = item.get("acceptance_criteria") or []
+        if isinstance(acceptance_criteria, str):
+            acceptance_criteria = [acceptance_criteria]
         return TasklistItem(
             task_id=item.get("id", task_id),
             title=item.get("title", ""),
             status=status,
             context=item.get("context"),
             criteria=item.get("criteria"),
+            acceptance_criteria=acceptance_criteria,
             tests=item.get("tests"),
             risk=item.get("risk"),
         )
@@ -437,6 +441,45 @@ class MCPTasklistProvider(TasklistProviderBase):
             if task.criteria:
                 prompt += f"- Acceptance criteria: {task.criteria}\n"
             cb(prompt)
+        self.invalidate_cache()
+
+    def update_task(self, task: TasklistItem) -> None:
+        """Update one existing task in place via the configured MCP server."""
+        if self._staging_mode and self._staging_provider is not None:
+            self._staging_provider.update_task(task)
+            return
+
+        cb = self._require_callback()
+        self._apply_write_effect(
+            operation="update",
+            artifact_id=task.task_id,
+            description=(f"Update task '{task.task_id}' via {self._mcp_server} MCP tools."),
+        )
+        label_clause = self._label_clause()
+        project_clause = self._project_clause()
+        field_lines = [
+            f"- Title: {task.title}",
+            f"- Status: {task.status.value}",
+            f"- Design reference: {task.design_ref or '<clear>'}",
+            f"- Opportunity reference: {task.opportunity_ref or '<clear>'}",
+            f"- Risk: {task.risk or '<clear>'}",
+            f"- Tests: {task.tests or '<clear>'}",
+            f"- Context: {task.context or '<clear>'}",
+            f"- Criteria: {task.criteria or '<clear>'}",
+        ]
+        if task.acceptance_criteria:
+            field_lines.append("- Acceptance criteria:")
+            field_lines.extend(f"  - {criterion}" for criterion in task.acceptance_criteria)
+        else:
+            field_lines.append("- Acceptance criteria: <clear>")
+        prompt = (
+            f"Use the {self._mcp_server} MCP tools to find task '{task.task_id}'"
+            f"{label_clause}{project_clause} and update that existing task in place.\n"
+            "Do not create a duplicate task or change any other task.\n"
+            "Clear fields explicitly marked '<clear>'.\n\n"
+            "Set the task to:\n" + "\n".join(field_lines)
+        )
+        cb(prompt)
         self.invalidate_cache()
 
     def update_task_status(self, task_id: str, status: TaskStatus) -> None:

@@ -32,6 +32,7 @@ from millstone.artifacts.evidence_store import (
     make_eval_evidence,
     make_review_evidence,
 )
+from millstone.artifacts.models import TasklistItem, TaskStatus
 from millstone.artifacts.tasklist import TasklistManager
 from millstone.config import (
     CONFIG_FILE_NAME,
@@ -57,7 +58,9 @@ from millstone.policy.capability import CapabilityPolicyGate, CapabilityTier
 from millstone.policy.effects import EffectIntent, EffectPolicyGate, NoOpEffectProvider
 from millstone.policy.schemas import (
     ReviewDecision,
+    ReviewStatus,
     parse_design_review,
+    parse_task_repair_proposal,
 )
 from millstone.runtime.context import ContextManager
 from millstone.runtime.decision_gate import (
@@ -87,6 +90,7 @@ class BuilderArtifact:
     git_status: str
     git_diff: str
     builder_committed: bool = False
+    task_repair: TasklistItem | None = None
 
 
 @dataclass
@@ -332,6 +336,7 @@ class Orchestrator:
         self,
         max_cycles: int = 3,
         required_approvals: int = 1,
+        allow_tasklist_fix: bool = False,
         loc_threshold: int = DEFAULT_LOC_THRESHOLD,
         repo_dir: Path | None = None,
         task: str | None = None,
@@ -403,6 +408,7 @@ class Orchestrator:
     ):
         self.max_cycles = max_cycles
         self.required_approvals = max(1, required_approvals)
+        self.allow_tasklist_fix = allow_tasklist_fix
         self.base_max_cycles = max_cycles  # Store original for risk-based adjustments
         # Preserve explicit/non-default cycle budgets instead of silently replacing
         # them with risk-profile defaults during task execution.
@@ -522,6 +528,9 @@ class Orchestrator:
             "nit": 0,
         }  # Aggregated severity counts
         self._current_task_text: str = ""  # Current task text for review metrics
+        self._selected_task_item: TasklistItem | None = None
+        self._tasklist_fix_scope_active: bool = False
+        self._task_impossible_decision: ReviewDecision | None = None
         self._task_previous_diff: str | None = (
             None  # Diff before REQUEST_CHANGES for false positive detection
         )
@@ -1829,7 +1838,7 @@ class Orchestrator:
                 if output_schema == "sanity_check":
                     return '{"status": "HALT", "reason": "Agent returned empty response"}'
                 if output_schema == "review_decision":
-                    return '{"status": "REQUEST_CHANGES", "review": "Reviewer returned empty response", "summary": "Empty review response", "findings": ["Reviewer returned empty response"], "findings_by_severity": {"critical": [], "high": ["Reviewer returned empty response"], "medium": [], "low": [], "nit": []}}'
+                    return '{"status": "REQUEST_CHANGES", "review": "Reviewer returned empty response", "summary": "Empty review response", "findings": ["Reviewer returned empty response"], "findings_by_severity": {"critical": [], "high": ["Reviewer returned empty response"], "medium": [], "low": [], "nit": []}, "impossible_condition": null, "tasklist_fix_recommendation": null}'
 
         return final_output
 
@@ -2083,9 +2092,271 @@ class Orchestrator:
             )
         return prompt
 
+    def _tasklist_fix_scope_notes(self) -> str:
+        if not self._tasklist_fix_enabled():
+            return ""
+
+        provider_placeholders = self._outer_loop_manager.tasklist_provider.get_prompt_placeholders()
+        update_instructions = provider_placeholders.get("TASKLIST_UPDATE_INSTRUCTIONS", "")
+        targeted_update_instruction = self._tasklist_fix_targeted_update_instruction()
+        notes = [
+            "## Tasklist Repair Mode",
+            "",
+            "- Reviewer agreed the selected task contains an impossible or contradictory condition.",
+            "- `--allow-tasklist-fix` is active for the selected task.",
+            "- Do not persist a tasklist/backlog edit yourself during this fix cycle.",
+            "- Adjust the repaired scope in code as needed, then return a structured repaired-task proposal for the selected task only.",
+            "- The reviewer will review that exact proposal together with the code changes.",
+            "- If approved, the orchestrator will apply exactly that reviewed proposal through the tasklist provider.",
+            "- Do not edit, reorder, or summarize any other task.",
+            "- Make the corresponding code changes needed for the repaired task scope, if any.",
+        ]
+        if update_instructions:
+            notes.extend(
+                ["", "Provider update behavior for the approved repair:", update_instructions]
+            )
+        if targeted_update_instruction:
+            notes.extend(
+                ["", "Selected-task target for the approved repair:", targeted_update_instruction]
+            )
+        if self._task_impossible_decision and self._task_impossible_decision.impossible_condition:
+            notes.extend(
+                [
+                    "",
+                    "Reviewer-confirmed impossible condition:",
+                    self._task_impossible_decision.impossible_condition,
+                ]
+            )
+        if (
+            self._task_impossible_decision
+            and self._task_impossible_decision.tasklist_fix_recommendation
+        ):
+            notes.extend(
+                [
+                    "",
+                    "Recommended tasklist fix:",
+                    self._task_impossible_decision.tasklist_fix_recommendation,
+                ]
+            )
+        return "\n".join(notes)
+
+    def _supports_tasklist_fix(self) -> bool:
+        return not self.task
+
+    def _tasklist_fix_allowed(self) -> bool:
+        return self.allow_tasklist_fix and self._supports_tasklist_fix()
+
+    def _tasklist_fix_enabled(self) -> bool:
+        return self._tasklist_fix_allowed() and self._tasklist_fix_scope_active
+
     def _task_prefix(self) -> str:
         """Return the task prefix for progress messages, e.g., '[Task 2/5]'."""
         return f"[Task {self.current_task_num}/{self.total_tasks}]"
+
+    def _build_current_task_item(self) -> TasklistItem | None:
+        current_id = self._current_task_id
+        if not current_id:
+            return None
+
+        metadata = (
+            self._tasklist_manager._parse_task_metadata(self._current_task_text)
+            if self._current_task_text
+            else {}
+        )
+        title = (
+            metadata.get("title") or self.current_task_title or self._current_task_text or "task"
+        )
+        return TasklistItem(
+            task_id=current_id,
+            title=title,
+            status=TaskStatus.todo,
+            design_ref=metadata.get("design_ref"),
+            opportunity_ref=metadata.get("opportunity_ref"),
+            risk=metadata.get("risk"),
+            tests=metadata.get("tests"),
+            criteria=metadata.get("criteria"),
+            acceptance_criteria=metadata.get("acceptance_criteria") or [],
+            context=metadata.get("context"),
+        )
+
+    def _get_selected_task_item(self) -> TasklistItem | None:
+        if self._selected_task_item is not None:
+            return self._selected_task_item
+        if not self._current_task_id:
+            return None
+        with contextlib.suppress(Exception):
+            item = self._outer_loop_manager.tasklist_provider.get_task(self._current_task_id)
+            if item is not None:
+                self._selected_task_item = item
+                return item
+        self._selected_task_item = self._build_current_task_item()
+        return self._selected_task_item
+
+    def _render_task_item(self, task: TasklistItem | None) -> str:
+        if task is None:
+            return "(unavailable)"
+        lines = [
+            f"- ID: {task.task_id}",
+            f"- Title: {task.title}",
+            f"- Status: {task.status.value}",
+            f"- Design Ref: {task.design_ref or '<none>'}",
+            f"- Opportunity Ref: {task.opportunity_ref or '<none>'}",
+            f"- Risk: {task.risk or '<none>'}",
+            f"- Tests: {task.tests or '<none>'}",
+            f"- Criteria: {task.criteria or '<none>'}",
+            f"- Context: {task.context or '<none>'}",
+        ]
+        if task.acceptance_criteria:
+            lines.append("- Acceptance Criteria:")
+            lines.extend(f"  - {criterion}" for criterion in task.acceptance_criteria)
+        else:
+            lines.append("- Acceptance Criteria: <none>")
+        return "\n".join(lines)
+
+    def _selected_task_scope_block(self) -> str:
+        from millstone.artifact_providers.file import FileTasklistProvider
+
+        provider = self._outer_loop_manager.tasklist_provider
+        if isinstance(provider, FileTasklistProvider):
+            selected_task_line = self.extract_current_task_line()
+            if selected_task_line:
+                return (
+                    "This run may complete only the following task line:\n\n"
+                    f"```md\n{selected_task_line}\n```\n\n"
+                    "Do not implement, prepare, or partially complete work from any later task, "
+                    "even if the files overlap.\n"
+                )
+
+        task = self._get_selected_task_item()
+        if task is None:
+            return ""
+        return (
+            "This run may complete only the following selected task:\n\n"
+            f"```text\n{self._render_task_item(task)}\n```\n\n"
+            "Do not implement, prepare, or partially complete work from any other task, "
+            "even if the files overlap.\n"
+        )
+
+    def _current_task_acceptance_criteria(self) -> list[str]:
+        from millstone.artifact_providers.file import FileTasklistProvider
+
+        provider = self._outer_loop_manager.tasklist_provider
+        if not isinstance(provider, FileTasklistProvider):
+            task = self._get_selected_task_item()
+            if task is not None:
+                if task.acceptance_criteria:
+                    return task.acceptance_criteria
+                if task.criteria:
+                    return [task.criteria]
+        return self.extract_current_task_acceptance_criteria()
+
+    def _tasklist_fix_targeted_update_instruction(self) -> str:
+        task = self._get_selected_task_item()
+        if task is None:
+            return ""
+
+        from millstone.artifact_providers.file import FileTasklistProvider
+        from millstone.artifact_providers.jira import JiraTasklistProvider
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        provider = self._outer_loop_manager.tasklist_provider
+        if isinstance(provider, JiraTasklistProvider):
+            return (
+                f"Use the jira MCP tools to find issue '{task.task_id}' and update that existing "
+                "issue in place. Do not create a duplicate issue or change any other issue."
+            )
+        if isinstance(provider, MCPTasklistProvider):
+            return (
+                f"Use the {provider._mcp_server} MCP tools to find task '{task.task_id}' and "
+                "update that existing task in place. Do not create a duplicate task or change "
+                "any other task."
+            )
+        if isinstance(provider, FileTasklistProvider):
+            return (
+                f"Update only the selected task with ID `{task.task_id}` in `{self.tasklist}`. "
+                "Do not edit any other task."
+            )
+        return ""
+
+    def _build_task_repair_proposal_prompt(self) -> str:
+        task = self._get_selected_task_item()
+        if task is None:
+            raise ValueError("No selected task is available for task repair proposal")
+
+        parts = [
+            "Return ONLY one JSON object describing the repaired selected task.",
+            "This proposal will be reviewed and then applied through the tasklist provider.",
+            "",
+            "Selected task update instruction:",
+            self._tasklist_fix_targeted_update_instruction() or "(none)",
+            "",
+            "Current selected task:",
+            self._render_task_item(task),
+        ]
+        if self._task_impossible_decision and self._task_impossible_decision.impossible_condition:
+            parts.extend(
+                [
+                    "",
+                    "Reviewer-confirmed impossible condition:",
+                    self._task_impossible_decision.impossible_condition,
+                ]
+            )
+        if (
+            self._task_impossible_decision
+            and self._task_impossible_decision.tasklist_fix_recommendation
+        ):
+            parts.extend(
+                [
+                    "",
+                    "Reviewer-recommended tasklist fix:",
+                    self._task_impossible_decision.tasklist_fix_recommendation,
+                ]
+            )
+        parts.extend(
+            [
+                "",
+                "Preserve any field that should remain unchanged by copying its current value.",
+                "Set nullable fields to null only when the repaired task should clear them.",
+                "Do not change the task status. The orchestrator will preserve the current status.",
+            ]
+        )
+        return "\n".join(parts)
+
+    def _collect_task_repair(self) -> TasklistItem:
+        task = self._get_selected_task_item()
+        if task is None:
+            raise ValueError("No selected task is available for task repair")
+
+        proposal_output = self.run_agent(
+            self._build_task_repair_proposal_prompt(),
+            resume=self.builder_session_id,
+            role="author",
+            output_schema="task_repair_proposal",
+        )
+        proposal = parse_task_repair_proposal(proposal_output)
+        if proposal is None:
+            raise ValueError("Builder did not return a valid task repair proposal")
+
+        return TasklistItem(
+            task_id=task.task_id,
+            title=proposal.title,
+            status=task.status,
+            design_ref=proposal.design_ref,
+            opportunity_ref=proposal.opportunity_ref,
+            risk=proposal.risk,
+            tests=proposal.tests,
+            criteria=proposal.criteria,
+            acceptance_criteria=proposal.acceptance_criteria or [],
+            context=proposal.context,
+        )
+
+    def _ensure_tasklist_provider_author_callback(self) -> None:
+        provider = self._outer_loop_manager.tasklist_provider
+        if (
+            hasattr(provider, "set_agent_callback")
+            and getattr(provider, "_agent_callback", None) is None
+        ):
+            provider.set_agent_callback(lambda p, **k: self.run_agent(p, role="author", **k))
 
     def get_task_context_file_content(self) -> str | None:
         # Delegates to TasklistManager
@@ -3103,7 +3374,7 @@ class Orchestrator:
         prompt = prompt.replace("{{TASKLIST_PATH}}", self.tasklist)
 
         # Inject acceptance criteria for the builder
-        acceptance_criteria = self.extract_current_task_acceptance_criteria()
+        acceptance_criteria = self._current_task_acceptance_criteria()
         if acceptance_criteria:
             criteria_lines = "\n".join(f"- {c}" for c in acceptance_criteria)
             criteria_blurb = f"\nYour implementation must satisfy:\n{criteria_lines}\n"
@@ -3111,15 +3382,10 @@ class Orchestrator:
             criteria_blurb = ""
         prompt = prompt.replace("{{ACCEPTANCE_CRITERIA}}", criteria_blurb)
 
-        selected_task_line = self.extract_current_task_line()
-        if selected_task_line:
+        selected_scope = self._selected_task_scope_block()
+        if selected_scope:
             prompt += "\n\n---\n\n## Selected Task\n\n"
-            prompt += "This run may complete only the following task line:\n\n"
-            prompt += f"```md\n{selected_task_line}\n```\n\n"
-            prompt += (
-                "Do not implement, prepare, or partially complete work from any later task, "
-                "even if the files overlap.\n"
-            )
+            prompt += selected_scope
 
         # Append group context if available
         group_context = self.get_group_context()
@@ -3138,9 +3404,18 @@ class Orchestrator:
             prompt += f"The following context has been provided for this task from `{context_file_path}`:\n\n"
             prompt += context_file_content
 
+        tasklist_fix_notes = self._tasklist_fix_scope_notes()
+        if tasklist_fix_notes:
+            prompt += f"\n\n---\n\n{tasklist_fix_notes}"
+
         return prompt
 
-    def get_review_prompt(self, builder_output: str = "", git_diff: str | None = None) -> str:
+    def get_review_prompt(
+        self,
+        builder_output: str = "",
+        git_diff: str | None = None,
+        task_repair: TasklistItem | None = None,
+    ) -> str:
         """Generate prompt for review."""
         prompt = self.load_prompt("review_prompt.md")
         prompt = prompt.replace("{{WORKING_DIRECTORY}}", str(self.repo_dir))
@@ -3157,19 +3432,44 @@ class Orchestrator:
         if "{{AUTHOR_OUTPUT}}" in prompt:
             prompt = prompt.replace("{{AUTHOR_OUTPUT}}", builder_output)
         # Inject acceptance criteria for the reviewer
-        acceptance_criteria = self.extract_current_task_acceptance_criteria()
+        acceptance_criteria = self._current_task_acceptance_criteria()
         if acceptance_criteria:
             criteria_lines = "\n".join(f"- {c}" for c in acceptance_criteria)
             criteria_blurb = f"Verify each criterion is met:\n{criteria_lines}\n\n"
         else:
             criteria_blurb = ""
         prompt = prompt.replace("{{ACCEPTANCE_CRITERIA}}", criteria_blurb)
-        selected_task_line = self.extract_current_task_line()
-        if selected_task_line:
+        selected_scope = self._selected_task_scope_block()
+        if selected_scope:
             prompt += "\n\n---\n\n## Review Scope\n\n"
-            prompt += "Review the diff only against this selected task line:\n\n"
-            prompt += f"```md\n{selected_task_line}\n```\n\n"
+            prompt += selected_scope + "\n"
             prompt += "Flag work that spills into later tasks as out of scope.\n"
+        if self._tasklist_fix_enabled():
+            prompt += "\n\n---\n\n## Tasklist Repair Review\n\n"
+            prompt += (
+                "Tasklist repair mode is active for the selected task in the active tasklist "
+                "provider. Review the selected task's "
+                "proposed repaired task together with the code changes. Do not approve edits to any other task.\n"
+            )
+            if task_repair is not None:
+                prompt += "\nProposed repaired task:\n\n"
+                prompt += f"```text\n{self._render_task_item(task_repair)}\n```\n"
+                prompt += (
+                    "If you approve, this exact repaired-task proposal will be applied through "
+                    "the tasklist provider after review.\n"
+                )
+            if (
+                self._task_impossible_decision
+                and self._task_impossible_decision.impossible_condition
+            ):
+                prompt += "\nReviewer-confirmed impossible condition:\n\n"
+                prompt += f"{self._task_impossible_decision.impossible_condition}\n"
+            if (
+                self._task_impossible_decision
+                and self._task_impossible_decision.tasklist_fix_recommendation
+            ):
+                prompt += "\nReviewer-recommended tasklist fix:\n\n"
+                prompt += f"{self._task_impossible_decision.tasklist_fix_recommendation}\n"
         return prompt
 
     def get_compact_prompt(self) -> str:
@@ -3308,6 +3608,21 @@ class Orchestrator:
             )
 
         parts.extend(["", "Review feedback:", "", feedback])
+        tasklist_fix_notes = self._tasklist_fix_scope_notes()
+        if tasklist_fix_notes:
+            parts.extend(["", tasklist_fix_notes])
+        return "\n".join(parts)
+
+    def _task_impossible_feedback(self, decision: ReviewDecision) -> str:
+        parts = [
+            "Reviewer agreed the selected task is impossible as written.",
+        ]
+        if decision.impossible_condition:
+            parts.extend(["", "Impossible condition:", decision.impossible_condition])
+        if decision.tasklist_fix_recommendation:
+            parts.extend(["", "Required tasklist repair:", decision.tasklist_fix_recommendation])
+        if decision.review:
+            parts.extend(["", "Reviewer notes:", decision.review])
         return "\n".join(parts)
 
     def run_single_task(self) -> bool:
@@ -3339,6 +3654,9 @@ class Orchestrator:
             "nit": 0,
         }
         self._task_previous_diff = None
+        self._selected_task_item = None
+        self._tasklist_fix_scope_active = False
+        self._task_impossible_decision = None
 
         # Determine task text and metadata
         _mcp_task_item: Any = None  # Set when MCP provider supplies the current task
@@ -3355,7 +3673,6 @@ class Orchestrator:
             # remote provider's cached task list instead of reading a local file
             # that may not exist or may be stale.
             from millstone.artifact_providers.mcp import MCPTasklistProvider
-            from millstone.artifacts.models import TaskStatus
 
             provider = self._outer_loop_manager.tasklist_provider
             if isinstance(provider, MCPTasklistProvider):
@@ -3397,6 +3714,29 @@ class Orchestrator:
             self._current_task_id = _task_meta.get("task_id") or (
                 re.sub(r"[^a-z0-9]+", "-", task_text.lower()).strip("-")[:30] or None
             )
+
+        self._selected_task_item = _mcp_task_item
+        if not self.task and self._selected_task_item is None:
+            with contextlib.suppress(Exception):
+                pending_provider_tasks = [
+                    t
+                    for t in self._outer_loop_manager.tasklist_provider.list_tasks()
+                    if t.status in (TaskStatus.todo, TaskStatus.in_progress)
+                ]
+                if pending_provider_tasks:
+                    self._selected_task_item = pending_provider_tasks[0]
+                    self._current_task_id = self._selected_task_item.task_id
+                    self.current_task_title = (
+                        self._selected_task_item.title or self.current_task_title
+                    )
+
+        if self._selected_task_item is None and self._current_task_id and not self.task:
+            with contextlib.suppress(Exception):
+                self._selected_task_item = self._outer_loop_manager.tasklist_provider.get_task(
+                    self._current_task_id
+                )
+        if self._selected_task_item is None:
+            self._selected_task_item = self._build_current_task_item()
 
         # Worker mode: when --shared-state-dir is set, emit result.json + heartbeats
         # for the worktree control plane to consume.
@@ -3515,7 +3855,6 @@ class Orchestrator:
                 # only updates the local tasklist file, which is a no-op when
                 # the task lives on a remote backend (GitHub Issues, Linear, …).
                 from millstone.artifact_providers.mcp import MCPTasklistProvider
-                from millstone.artifacts.models import TaskStatus
 
                 provider = self._outer_loop_manager.tasklist_provider
                 if isinstance(provider, MCPTasklistProvider) and self._current_task_id:
@@ -3536,12 +3875,15 @@ class Orchestrator:
 
         # Define Loop components
         def builder_producer(feedback: str | None = None) -> BuilderArtifact:
+            task_repair: TasklistItem | None = None
             if feedback:
                 progress(
                     f"{self._task_prefix()} Cycle {self.cycle + 1}/{self.max_cycles}: Applying fixes..."
                 )
                 msg = self._build_scoped_feedback_prompt(feedback)
                 output = self.run_agent(msg, resume=self.builder_session_id, role="author")
+                if self._tasklist_fix_enabled():
+                    task_repair = self._collect_task_repair()
             else:
                 progress(f"{self._task_prefix()} Running builder...")
                 self._analyze_task_complexity(task_text)
@@ -3586,7 +3928,11 @@ class Orchestrator:
                 pre_build_head = current_head
 
             return BuilderArtifact(
-                output, git_status, git_diff, builder_committed=builder_committed
+                output,
+                git_status,
+                git_diff,
+                builder_committed=builder_committed,
+                task_repair=task_repair,
             )
 
         def builder_validator(artifact: BuilderArtifact) -> tuple[bool, str | None]:
@@ -3650,7 +3996,7 @@ class Orchestrator:
             reviewer_resume = self.reviewer_session_id
 
             review_output = self.run_agent(
-                self.get_review_prompt(artifact.output, artifact.git_diff),
+                self.get_review_prompt(artifact.output, artifact.git_diff, artifact.task_repair),
                 role="reviewer",
                 output_schema="review_decision",
                 resume=reviewer_resume,
@@ -3681,17 +4027,36 @@ class Orchestrator:
                 if decision.findings_by_severity:
                     for s, f in decision.findings_by_severity.items():
                         self._task_findings_by_severity[s] += len(f)
+                if decision.status == ReviewStatus.TASK_IMPOSSIBLE:
+                    self._task_impossible_decision = decision
+                    if self._tasklist_fix_allowed():
+                        self._tasklist_fix_scope_active = True
 
             if not approved:
                 self._task_review_cycles += 1
                 self._task_previous_diff = artifact.git_diff
 
-            return BuilderVerdict(approved, decision, review_output, review_output[:4000])
+            feedback_text = review_output[:4000]
+            if decision is not None:
+                feedback_text = decision.review or decision.summary or feedback_text
+                if decision.status == ReviewStatus.TASK_IMPOSSIBLE:
+                    feedback_text = self._task_impossible_feedback(decision)
+
+            return BuilderVerdict(approved, decision, review_output, feedback_text)
 
         # State tracking for the loop
         loop_state: dict[str, str | None] = {"failure_reason": None}
 
         def builder_on_success(artifact: BuilderArtifact, verdict: BuilderVerdict) -> bool:
+            if artifact.task_repair is not None:
+                try:
+                    self._ensure_tasklist_provider_author_callback()
+                    self._outer_loop_manager.tasklist_provider.update_task(artifact.task_repair)
+                    self._selected_task_item = artifact.task_repair
+                except Exception as exc:
+                    loop_state["failure_reason"] = f"task_repair_failed: {exc}"
+                    return False
+
             # Detect false positive
             is_false_positive = False
             if self._task_previous_diff is not None:
@@ -3775,6 +4140,17 @@ class Orchestrator:
         total_cycles = 0
         result: LoopResult | None = None
 
+        def builder_terminal_status(
+            verdict: BuilderVerdict,
+        ) -> tuple[bool, bool, str | None]:
+            decision = verdict.decision
+            if decision is None or decision.status != ReviewStatus.TASK_IMPOSSIBLE:
+                return False, False, None
+            if self._tasklist_fix_allowed():
+                return False, False, None
+            condition = decision.impossible_condition or "Selected task is impossible as written"
+            return True, False, f"Task impossible: {condition}"
+
         for approval_round in range(1, self.required_approvals + 1):
             is_final_round = approval_round == self.required_approvals
 
@@ -3797,6 +4173,7 @@ class Orchestrator:
                     self, "cycle", c - 1
                 ),  # Keep self.cycle aligned with cycle body
                 on_success=builder_on_success if is_final_round else None,
+                terminal_status=builder_terminal_status,
             )
 
             result = loop.run()
@@ -3827,7 +4204,14 @@ class Orchestrator:
             _worker_finish("success", review_summary=review_summary)
             return True
         else:
-            reason = loop_state["failure_reason"] or result.error or "Unknown failure"
+            if (
+                result.verdict
+                and result.verdict.decision
+                and result.verdict.decision.status == ReviewStatus.TASK_IMPOSSIBLE
+            ):
+                reason = "task_impossible"
+            else:
+                reason = loop_state["failure_reason"] or result.error or "Unknown failure"
             self.save_task_metrics(task_text, reason.lower().replace(" ", "_"), self.cycle)
             self.log("run_completed", result=reason.upper(), cycles=str(self.cycle))
             review_summary = result.verdict.feedback if result.verdict else None
@@ -3872,7 +4256,13 @@ class Orchestrator:
         if last_verdict is None:
             print("Reviewer verdict: N/A")
         else:
-            verdict_label = "REJECTED" if not last_verdict.approved else "APPROVED"
+            if (
+                last_verdict.decision
+                and last_verdict.decision.status == ReviewStatus.TASK_IMPOSSIBLE
+            ):
+                verdict_label = "TASK IMPOSSIBLE"
+            else:
+                verdict_label = "REJECTED" if not last_verdict.approved else "APPROVED"
             print(f"Reviewer verdict: {verdict_label}")
             print("Reviewer feedback:")
             feedback = last_verdict.feedback.strip() if last_verdict.feedback else ""
@@ -3881,12 +4271,52 @@ class Orchestrator:
                     print(f"  {line}")
             else:
                 print("  (none)")
+            if (
+                last_verdict.decision
+                and last_verdict.decision.status == ReviewStatus.TASK_IMPOSSIBLE
+            ):
+                if last_verdict.decision.impossible_condition:
+                    print()
+                    print("Impossible condition:")
+                    print(f"  {last_verdict.decision.impossible_condition}")
+                if last_verdict.decision.tasklist_fix_recommendation:
+                    print()
+                    print("Recommended tasklist fix:")
+                    print(f"  {last_verdict.decision.tasklist_fix_recommendation}")
         print()
 
-        print(
-            "Suggestion: Revise the task description to clarify requirements,\n"
-            'or add acceptance criteria so the builder knows what "done" looks like.'
-        )
+        if last_verdict and last_verdict.decision:
+            if last_verdict.decision.status == ReviewStatus.TASK_IMPOSSIBLE:
+                if self._tasklist_fix_enabled():
+                    print(
+                        "Suggestion: The selected task was still impossible after review.\n"
+                        "Revise the selected task in the tasklist/backlog and rerun once the "
+                        "requirement is satisfiable."
+                    )
+                elif self.task:
+                    print(
+                        "Suggestion: Revise the direct task description to remove the impossible "
+                        "constraint and rerun."
+                    )
+                else:
+                    if self._supports_tasklist_fix():
+                        print(
+                            "Suggestion: Revise the selected task in the tasklist/backlog to remove the impossible "
+                            "constraint.\n"
+                            "Re-run with --allow-tasklist-fix if you want millstone to repair the "
+                            "selected task through the tasklist provider during execution after reviewer "
+                            "confirmation."
+                        )
+            else:
+                print(
+                    "Suggestion: Revise the task description to clarify requirements,\n"
+                    'or add acceptance criteria so the builder knows what "done" looks like.'
+                )
+        else:
+            print(
+                "Suggestion: Revise the task description to clarify requirements,\n"
+                'or add acceptance criteria so the builder knows what "done" looks like.'
+            )
         print()
         print(f"Log: {self.log_file}")
         print(sep)
@@ -4387,6 +4817,14 @@ Remote backlog scoping (Jira / Linear / GitHub):
         "Each reviewer gets a fresh context and up to --max-cycles fix loops with the "
         "builder. The builder retains its session across all approval rounds. "
         f"(default: {config.get('required_approvals', 1)})",
+    )
+    parser.add_argument(
+        "--allow-tasklist-fix",
+        action="store_true",
+        default=config.get("allow_tasklist_fix", False),
+        help="Allow the builder to repair the selected tasklist entry only after the reviewer "
+        "returns TASK_IMPOSSIBLE for that task. "
+        "Without this flag, impossible tasks exit early with a recommended tasklist fix.",
     )
     parser.add_argument(
         "--loc-threshold",
@@ -5238,6 +5676,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
             orchestrator = Orchestrator(
                 max_cycles=args.max_cycles,
                 required_approvals=args.required_approvals,
+                allow_tasklist_fix=args.allow_tasklist_fix,
                 max_cycles_locked=max_cycles_flag_provided,
                 loc_threshold=args.loc_threshold,
                 tasklist=args.tasklist,
@@ -5360,6 +5799,8 @@ Remote backlog scoping (Jira / Linear / GitHub):
 
     orchestrator = Orchestrator(
         max_cycles=args.max_cycles,
+        required_approvals=args.required_approvals,
+        allow_tasklist_fix=args.allow_tasklist_fix,
         max_cycles_locked=max_cycles_flag_provided,
         loc_threshold=args.loc_threshold,
         repo_dir=args.repo_dir,

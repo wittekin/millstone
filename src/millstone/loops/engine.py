@@ -55,6 +55,7 @@ class ArtifactReviewLoop(Generic[T, V]):
     max_cycles: int = 3
     on_cycle_start: Callable[[int], None] | None = None
     on_success: Callable[[T, V], bool] | None = None
+    terminal_status: Callable[[V], tuple[bool, bool, str | None]] | None = None
 
     def run(self, *producer_args, **producer_kwargs) -> LoopResult[T, V]:
         """Execute the loop."""
@@ -104,6 +105,19 @@ class ArtifactReviewLoop(Generic[T, V]):
                 return LoopResult(
                     False, last_artifact, error=f"Reviewer failed: {str(e)}", cycles=current_cycle
                 )
+
+            if self.terminal_status:
+                is_terminal, terminal_success, terminal_error = self.terminal_status(last_verdict)
+                if is_terminal:
+                    duration = int((time.time() - start_time) * 1000)
+                    return LoopResult(
+                        terminal_success,
+                        last_artifact,
+                        last_verdict,
+                        cycles=current_cycle,
+                        duration_ms=duration,
+                        error=terminal_error,
+                    )
 
             # Step 3: Decision
             if self.is_approved(last_verdict):

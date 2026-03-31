@@ -456,6 +456,22 @@ class TestCapabilityProfileCliPlumbing:
         assert kwargs["max_cycles"] == 3
         assert kwargs["max_cycles_locked"] is True
 
+    def test_task_cli_passes_allow_tasklist_fix_into_orchestrator(self, temp_repo):
+        """--allow-tasklist-fix reaches the main Orchestrator constructor."""
+        from millstone import orchestrate
+
+        with patch(
+            "sys.argv",
+            ["orchestrate.py", "--task", "Add retries", "--allow-tasklist-fix"],
+        ):
+            with patch.object(orchestrate.Orchestrator, "__init__", return_value=None) as mock_init:
+                with patch.object(orchestrate.Orchestrator, "run", return_value=0):
+                    with pytest.raises(SystemExit):
+                        orchestrate.main()
+
+        _, kwargs = mock_init.call_args
+        assert kwargs["allow_tasklist_fix"] is True
+
 
 class TestOuterLoopManagerMaxCyclesPlumbing:
     """Tests that Orchestrator forwards max_cycles to OuterLoopManager."""
@@ -817,12 +833,12 @@ class TestIsEmptyResponse:
 
     def test_review_decision_schema_approved(self):
         """Valid review decision APPROVED response is not empty."""
-        response = '{"status": "APPROVED", "review": "Looks good", "summary": "No blockers"}'
+        response = '{"status": "APPROVED", "review": "Looks good", "summary": "No blockers", "impossible_condition": null, "tasklist_fix_recommendation": null}'
         assert is_empty_response(response, expected_schema="review_decision") is False
 
     def test_review_decision_schema_request_changes(self):
         """Valid review decision REQUEST_CHANGES response is not empty."""
-        response = '{"status": "REQUEST_CHANGES", "review": "Needs changes", "summary": "Blocking issues", "findings": ["fix typo"]}'
+        response = '{"status": "REQUEST_CHANGES", "review": "Needs changes", "summary": "Blocking issues", "findings": ["fix typo"], "impossible_condition": null, "tasklist_fix_recommendation": null}'
         assert is_empty_response(response, expected_schema="review_decision") is False
 
     def test_review_decision_schema_missing_status(self):
@@ -834,8 +850,13 @@ class TestIsEmptyResponse:
 
     def test_review_decision_schema_with_findings_by_severity(self):
         """Valid review decision with findings_by_severity is not empty."""
-        response = '{"status": "REQUEST_CHANGES", "review": "Needs changes", "summary": "Blocking issues", "findings_by_severity": {"critical": ["security issue"], "high": ["bug"]}}'
+        response = '{"status": "REQUEST_CHANGES", "review": "Needs changes", "summary": "Blocking issues", "findings_by_severity": {"critical": ["security issue"], "high": ["bug"]}, "impossible_condition": null, "tasklist_fix_recommendation": null}'
         assert is_empty_response(response, expected_schema="review_decision") is False
+
+    def test_review_decision_schema_missing_impossible_fields(self):
+        """Review decision responses missing the new impossible-task fields are treated as empty."""
+        response = '{"status": "APPROVED", "review": "Looks good", "summary": "No blockers"}'
+        assert is_empty_response(response, expected_schema="review_decision") is True
 
     def test_builder_completion_schema_completed(self):
         """Valid builder completion response is not empty."""
@@ -2375,6 +2396,82 @@ class TestTasklistFlag:
         finally:
             orch.cleanup()
 
+    def test_get_tasklist_prompt_includes_tasklist_repair_mode_when_active(self, temp_repo):
+        """Tasklist prompt exposes repair scope only after reviewer-confirmed impossibility."""
+        from millstone.policy.schemas import ReviewDecision, ReviewStatus
+
+        orch = Orchestrator(tasklist=".millstone/tasklist.md", allow_tasklist_fix=True)
+        try:
+            orch._tasklist_fix_scope_active = True
+            orch._task_impossible_decision = ReviewDecision(
+                status=ReviewStatus.TASK_IMPOSSIBLE,
+                impossible_condition="The task requires both preserving and removing the same API.",
+                tasklist_fix_recommendation="Clarify that the legacy API remains until follow-up cleanup.",
+            )
+            prompt = orch.get_tasklist_prompt()
+            assert "## Tasklist Repair Mode" in prompt
+            assert "--allow-tasklist-fix" in prompt
+            assert "Clarify that the legacy API remains until follow-up cleanup." in prompt
+        finally:
+            orch.cleanup()
+
+    def test_get_review_prompt_includes_tasklist_repair_review_when_active(self, temp_repo):
+        """Review prompt widens to selected-task tasklist edits only in repair mode."""
+        from millstone.policy.schemas import ReviewDecision, ReviewStatus
+
+        orch = Orchestrator(tasklist=".millstone/tasklist.md", allow_tasklist_fix=True)
+        try:
+            orch._tasklist_fix_scope_active = True
+            orch._task_impossible_decision = ReviewDecision(
+                status=ReviewStatus.TASK_IMPOSSIBLE,
+                impossible_condition="The task requires both preserving and removing the same API.",
+                tasklist_fix_recommendation="Clarify that the legacy API remains until follow-up cleanup.",
+            )
+            prompt = orch.get_review_prompt(builder_output="builder", git_diff="diff")
+            assert "## Tasklist Repair Review" in prompt
+            assert (
+                "Review the selected task's proposed repaired task together with the code changes."
+                in prompt
+            )
+            assert "The task requires both preserving and removing the same API." in prompt
+        finally:
+            orch.cleanup()
+
+    def test_remote_scope_prefers_selected_provider_task_over_stale_local_file(self, temp_repo):
+        """Remote prompts must scope against the selected provider task, not a stale local file."""
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        local_tasklist = temp_repo / ".millstone" / "tasklist.md"
+        local_tasklist.write_text("# Tasklist\n\n- [ ] Local stale task\n")
+
+        orch = Orchestrator(tasklist=".millstone/tasklist.md", allow_tasklist_fix=True)
+        provider = MCPTasklistProvider("github")
+        provider.set_agent_callback(
+            lambda _prompt: '[{"id": "task-1", "title": "Remote selected task", "status": "todo"}]'
+        )
+        orch._outer_loop_manager.tasklist_provider = provider
+        try:
+            orch._current_task_id = "task-1"
+            orch._selected_task_item = TasklistItem(
+                task_id="task-1",
+                title="Remote selected task",
+                status=TaskStatus.todo,
+                acceptance_criteria=["Use the remote-selected task only."],
+            )
+            orch._tasklist_fix_scope_active = True
+
+            task_prompt = orch.get_tasklist_prompt()
+            review_prompt = orch.get_review_prompt(builder_output="builder", git_diff="diff")
+
+            assert "Remote selected task" in task_prompt
+            assert "Remote selected task" in review_prompt
+            assert "Local stale task" not in task_prompt
+            assert "Local stale task" not in review_prompt
+            assert "Use the remote-selected task only." in task_prompt
+        finally:
+            orch.cleanup()
+
     def test_get_task_prompt_resolves_update_instructions(self, tmp_path):
         """get_task_prompt() resolves {{TASKLIST_UPDATE_INSTRUCTIONS}} via provider placeholders."""
         orch = Orchestrator(task="fix the bug", tasklist="my/tasks.md", repo_dir=tmp_path)
@@ -3097,6 +3194,7 @@ class TestConfigFile:
         config_file = config_dir / CONFIG_FILE_NAME
         config_file.write_text("""
 max_cycles = 10
+allow_tasklist_fix = true
 loc_threshold = 1000
 tasklist = "tasks.md"
 max_tasks = 20
@@ -3105,6 +3203,7 @@ prompts_dir = "custom_prompts"
 
         config = load_config(temp_repo)
         assert config["max_cycles"] == 10
+        assert config["allow_tasklist_fix"] is True
         assert config["loc_threshold"] == 1000
         assert config["tasklist"] == "tasks.md"
         assert config["max_tasks"] == 20
@@ -17259,6 +17358,237 @@ class TestPrintFailureSummary:
             assert "Task Failed" in out
             assert "REJECTED" in out
             assert "Missing tests" in out
+        finally:
+            orch.cleanup()
+
+    def test_run_single_task_exits_early_on_task_impossible(self, temp_repo):
+        """Reviewer-confirmed impossible tasks exit early by default."""
+        orch = Orchestrator(tasklist=".millstone/tasklist.md", allow_tasklist_fix=False, quiet=True)
+        readme = temp_repo / "README.md"
+        call_state = {"author_calls": 0}
+
+        def fake_run_agent(prompt, role="default", **kwargs):
+            if role == "author":
+                call_state["author_calls"] += 1
+                readme.write_text("# Test Repo\n\nBuilder attempted the task.\n")
+                return (
+                    "<analysis>\n"
+                    "- Risks/Blockers: impossible requirement\n"
+                    "</analysis>\n"
+                    "<summary>\n"
+                    "- Action Taken: documented impossible requirement\n"
+                    "</summary>"
+                )
+            if role == "reviewer":
+                return (
+                    '{"status":"TASK_IMPOSSIBLE","review":"The selected task cannot be '
+                    'satisfied as written.","summary":"Task is impossible as written.",'
+                    '"findings":[],"findings_by_severity":{"critical":[],"high":[],"medium":[],'
+                    '"low":[],"nit":[]},"impossible_condition":"The task requires both removing '
+                    'and preserving the same behavior.","tasklist_fix_recommendation":"Clarify '
+                    'that the legacy behavior must remain until a follow-up task."}'
+                )
+            raise AssertionError(f"Unexpected role: {role}")
+
+        try:
+            with (
+                patch.object(orch, "run_agent", side_effect=fake_run_agent),
+                patch.object(orch, "_analyze_task_complexity", return_value={}),
+                patch.object(orch, "mechanical_checks", return_value=True),
+                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "save_task_metrics") as save_metrics,
+                patch.object(orch, "delegate_commit") as delegate_commit,
+            ):
+                result = orch.run_single_task()
+
+            assert result is False
+            delegate_commit.assert_not_called()
+            assert save_metrics.call_args.args[1] == "task_impossible"
+            assert orch._task_impossible_decision is not None
+            assert (
+                orch._task_impossible_decision.impossible_condition
+                == "The task requires both removing and preserving the same behavior."
+            )
+            assert call_state["author_calls"] == 1
+        finally:
+            orch.cleanup()
+
+    def test_run_single_task_allows_tasklist_fix_after_impossible_review(self, temp_repo):
+        """--allow-tasklist-fix activates selected-task tasklist repair on the next cycle."""
+        orch = Orchestrator(tasklist=".millstone/tasklist.md", allow_tasklist_fix=True, quiet=True)
+        tasklist = temp_repo / ".millstone" / "tasklist.md"
+        readme = temp_repo / "README.md"
+        author_prompts: list[str] = []
+        review_prompts: list[str] = []
+
+        def fake_run_agent(prompt, role="default", **kwargs):
+            if role == "author":
+                author_prompts.append(prompt)
+                if kwargs.get("output_schema") == "task_repair_proposal":
+                    return (
+                        '{"title":"Task 1","design_ref":null,"opportunity_ref":null,'
+                        '"risk":null,"tests":null,"criteria":"Keep legacy behavior until '
+                        'follow-up removal task","context":null,"acceptance_criteria":['
+                        '"Keep legacy behavior until follow-up removal task"],'
+                        '"summary":"Clarified legacy behavior constraint."}'
+                    )
+                if len(author_prompts) == 1:
+                    readme.write_text("# Test Repo\n\nInitial attempt.\n")
+                    return (
+                        "<analysis>\n- Risks/Blockers: task is impossible as written\n</analysis>"
+                    )
+
+                assert "## Tasklist Repair Mode" in prompt
+                assert "Required tasklist repair:" in prompt
+                readme.write_text("# Test Repo\n\nApplied repaired scope.\n")
+                return (
+                    "<summary>\n"
+                    "- Action Taken: repaired selected tasklist entry and code\n"
+                    "</summary>"
+                )
+
+            if role == "reviewer":
+                review_prompts.append(prompt)
+                if len(review_prompts) == 1:
+                    return (
+                        '{"status":"TASK_IMPOSSIBLE","review":"The selected task cannot be '
+                        'satisfied as written.","summary":"Task is impossible as written.",'
+                        '"findings":[],"findings_by_severity":{"critical":[],"high":[],"medium":[],'
+                        '"low":[],"nit":[]},"impossible_condition":"The task requires both removing '
+                        'and preserving the same behavior.","tasklist_fix_recommendation":"Clarify '
+                        'that the legacy behavior must remain until a follow-up task."}'
+                    )
+
+                assert "## Tasklist Repair Review" in prompt
+                assert (
+                    "Clarify that the legacy behavior must remain until a follow-up task." in prompt
+                )
+                return (
+                    '{"status":"APPROVED","review":"The repaired tasklist scope and code now '
+                    'align.","summary":"Approved after tasklist repair.","findings":[],'
+                    '"findings_by_severity":{"critical":[],"high":[],"medium":[],"low":[],"nit":[]},'
+                    '"impossible_condition":null,"tasklist_fix_recommendation":null}'
+                )
+
+            raise AssertionError(f"Unexpected role: {role}")
+
+        try:
+            with (
+                patch.object(orch, "run_agent", side_effect=fake_run_agent),
+                patch.object(orch, "_analyze_task_complexity", return_value={}),
+                patch.object(orch, "mechanical_checks", return_value=True),
+                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "delegate_commit", return_value=True) as delegate_commit,
+            ):
+                result = orch.run_single_task()
+
+            assert result is True
+            delegate_commit.assert_called_once()
+            assert "Keep legacy behavior until follow-up removal task" in tasklist.read_text()
+            assert len(author_prompts) == 3
+            assert len(review_prompts) == 2
+        finally:
+            orch.cleanup()
+
+    def test_run_single_task_remote_tasklist_allows_tasklist_fix(self, temp_repo):
+        """Remote tasklists enter the same repair flow when --allow-tasklist-fix is set."""
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        orch = Orchestrator(tasklist=".millstone/tasklist.md", allow_tasklist_fix=True, quiet=True)
+        provider = MCPTasklistProvider("github")
+        provider.set_agent_callback(
+            lambda _prompt: '[{"id": "task-1", "title": "Task 1: Do something", "status": "todo"}]'
+        )
+        orch._outer_loop_manager.tasklist_provider = provider
+        readme = temp_repo / "README.md"
+        author_prompts: list[str] = []
+        review_prompts: list[str] = []
+
+        def fake_run_agent(prompt, role="default", **kwargs):
+            if role == "author":
+                author_prompts.append(prompt)
+                if kwargs.get("output_schema") == "task_repair_proposal":
+                    assert "Use the github MCP tools to find task 'task-1'" in prompt
+                    return (
+                        '{"title":"Task 1: Keep legacy behavior until follow-up removal task",'
+                        '"design_ref":null,"opportunity_ref":null,"risk":null,"tests":null,'
+                        '"criteria":"Keep legacy behavior until follow-up removal task",'
+                        '"context":null,"acceptance_criteria":["Keep legacy behavior until '
+                        'follow-up removal task"],"summary":"Clarified impossible requirement."}'
+                    )
+                if len(author_prompts) == 1:
+                    readme.write_text("# Test Repo\n\nBuilder attempted the task.\n")
+                    return "<analysis>\n- Risks/Blockers: impossible requirement\n</analysis>"
+                assert "## Tasklist Repair Mode" in prompt
+                assert "Use the github MCP tools to find task 'task-1'" in prompt
+                readme.write_text("# Test Repo\n\nApplied repaired scope.\n")
+                return "<summary>\n- Action Taken: repaired remote task and code\n</summary>"
+            if role == "reviewer":
+                review_prompts.append(prompt)
+                if len(review_prompts) == 1:
+                    return (
+                        '{"status":"TASK_IMPOSSIBLE","review":"The selected task cannot be '
+                        'satisfied as written.","summary":"Task is impossible as written.",'
+                        '"findings":[],"findings_by_severity":{"critical":[],"high":[],"medium":[],'
+                        '"low":[],"nit":[]},"impossible_condition":"The task requires both removing '
+                        'and preserving the same behavior.","tasklist_fix_recommendation":"Clarify '
+                        'that the legacy behavior must remain until a follow-up task."}'
+                    )
+                assert "## Tasklist Repair Review" in prompt
+                return (
+                    '{"status":"APPROVED","review":"The repaired task scope and code now '
+                    'align.","summary":"Approved after tasklist repair.","findings":[],'
+                    '"findings_by_severity":{"critical":[],"high":[],"medium":[],"low":[],"nit":[]},'
+                    '"impossible_condition":null,"tasklist_fix_recommendation":null}'
+                )
+            raise AssertionError(f"Unexpected role: {role}")
+
+        try:
+            with (
+                patch.object(orch, "run_agent", side_effect=fake_run_agent),
+                patch.object(orch, "_analyze_task_complexity", return_value={}),
+                patch.object(orch, "mechanical_checks", return_value=True),
+                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "delegate_commit", return_value=True) as delegate_commit,
+                patch.object(provider, "update_task", wraps=provider.update_task) as update_task,
+            ):
+                result = orch.run_single_task()
+
+            assert result is True
+            assert orch._tasklist_fix_scope_active is True
+            assert len(author_prompts) == 3
+            assert len(review_prompts) == 2
+            delegate_commit.assert_called_once()
+            update_task.assert_called_once()
+            assert update_task.call_args.args[0].task_id == "task-1"
+        finally:
+            orch.cleanup()
+
+    def test_failure_summary_for_direct_task_impossible_mentions_direct_task(
+        self, temp_repo, capsys
+    ):
+        """Direct tasks should not tell the user to revise a tasklist entry."""
+        from millstone.policy.schemas import ReviewDecision, ReviewStatus
+        from millstone.runtime.orchestrator import BuilderVerdict
+
+        orch = Orchestrator(task="Do the impossible thing", allow_tasklist_fix=True, quiet=False)
+        try:
+            verdict = BuilderVerdict(
+                approved=False,
+                decision=ReviewDecision(
+                    status=ReviewStatus.TASK_IMPOSSIBLE,
+                    review="Impossible as written.",
+                    summary="Impossible",
+                    impossible_condition="The task contradicts itself.",
+                    tasklist_fix_recommendation="Remove the contradiction.",
+                ),
+                raw_output="raw",
+                feedback="Impossible as written.",
+            )
+            orch._print_failure_summary("Do the impossible thing", "builder output", verdict)
+            out = capsys.readouterr().out
+            assert "Revise the direct task description" in out
+            assert "Revise the selected tasklist entry" not in out
         finally:
             orch.cleanup()
 

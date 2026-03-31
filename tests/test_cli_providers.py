@@ -324,7 +324,7 @@ class TestSchemasParsing:
         """Parses APPROVED status from JSON."""
         from millstone.policy.schemas import ReviewStatus, parse_review_decision
 
-        output = '{"status": "APPROVED", "review": "Looks good", "summary": "No blockers"}'
+        output = '{"status": "APPROVED", "review": "Looks good", "summary": "No blockers", "impossible_condition": null, "tasklist_fix_recommendation": null}'
         result = parse_review_decision(output)
         assert result is not None
         assert result.status == ReviewStatus.APPROVED
@@ -334,7 +334,7 @@ class TestSchemasParsing:
         """Parses REQUEST_CHANGES status with findings."""
         from millstone.policy.schemas import ReviewStatus, parse_review_decision
 
-        output = '{"status": "REQUEST_CHANGES", "review": "Needs fixes", "summary": "Blocking issues", "findings": ["fix bug", "add tests"]}'
+        output = '{"status": "REQUEST_CHANGES", "review": "Needs fixes", "summary": "Blocking issues", "findings": ["fix bug", "add tests"], "impossible_condition": null, "tasklist_fix_recommendation": null}'
         result = parse_review_decision(output)
         assert result is not None
         assert result.status == ReviewStatus.REQUEST_CHANGES
@@ -350,7 +350,7 @@ class TestSchemasParsing:
         The changes look good.
 
         ```json
-        {"status": "APPROVED", "review": "Looks good", "summary": "Clean implementation"}
+        {"status": "APPROVED", "review": "Looks good", "summary": "Clean implementation", "impossible_condition": null, "tasklist_fix_recommendation": null}
         ```
         """
         result = parse_review_decision(output)
@@ -374,6 +374,8 @@ class TestSchemasParsing:
             "status": "REQUEST_CHANGES",
             "review": "Needs fixes",
             "summary": "Blocking issues",
+            "impossible_condition": null,
+            "tasklist_fix_recommendation": null,
             "findings_by_severity": {
                 "critical": ["security vulnerability in auth"],
                 "high": ["missing input validation"],
@@ -399,6 +401,8 @@ class TestSchemasParsing:
             "review": "Needs fixes",
             "summary": "Blocking issues",
             "findings": ["general issue"],
+            "impossible_condition": null,
+            "tasklist_fix_recommendation": null,
             "findings_by_severity": {
                 "critical": ["critical1", "critical2"],
                 "high": ["high1"]
@@ -417,6 +421,8 @@ class TestSchemasParsing:
             "status": "REQUEST_CHANGES",
             "review": "Needs fixes",
             "summary": "Blocking issues",
+            "impossible_condition": null,
+            "tasklist_fix_recommendation": null,
             "findings_by_severity": {
                 "critical": ["a", "b"],
                 "high": ["c"],
@@ -954,6 +960,8 @@ class TestOrchestratorCLIIntegration:
                 assert "findings" in output
                 assert '"review"' in output
                 assert '"summary"' in output
+                assert '"impossible_condition": null' in output
+                assert '"tasklist_fix_recommendation": null' in output
                 # Check the log file contains fallback event
                 log_content = orch.log_file.read_text()
                 assert "empty_response_fallback" in log_content

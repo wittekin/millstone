@@ -95,6 +95,7 @@ Run from tasklist directly:
 
 ```bash
 millstone
+millstone --allow-tasklist-fix  # repair the selected task after reviewer-confirmed impossibility
 ```
 
 `millstone` and `millstone -n 1` read tasks from the configured tasklist path

@@ -61,6 +61,9 @@ class StubTasklistProvider:
     def append_tasks(self, tasks: list[TasklistItem]) -> None:
         pass
 
+    def update_task(self, task: TasklistItem) -> None:
+        pass
+
     def update_task_status(self, task_id: str, status: TaskStatus) -> None:
         pass
 
@@ -235,6 +238,7 @@ def test_tasklist_provider_methods_callable():
     )
     provider.append_tasks([sample_task])  # should not raise
 
+    provider.update_task(sample_task)  # should not raise
     provider.update_task_status("task-1", TaskStatus.done)  # should not raise
     assert provider.get_snapshot() == ""
     provider.restore_snapshot("# Tasklist\n")
@@ -311,6 +315,9 @@ def test_tasklist_provider_base_get_prompt_placeholders_returns_empty():
             return None
 
         def append_tasks(self, tasks):
+            pass
+
+        def update_task(self, task):
             pass
 
         def update_task_status(self, task_id, status):

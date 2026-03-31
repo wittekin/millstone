@@ -129,6 +129,10 @@ class TasklistProviderBase(ABC):
         """Append tasks."""
 
     @abstractmethod
+    def update_task(self, task: TasklistItem) -> None:
+        """Update one existing task in place by task_id."""
+
+    @abstractmethod
     def update_task_status(self, task_id: str, status: TaskStatus) -> None:
         """Update task status by id."""
 

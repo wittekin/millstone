@@ -91,14 +91,22 @@ def is_empty_response(
             return '"OK"' not in response and '"HALT"' not in response
 
         elif expected_schema == "review_decision":
-            # Expect {"status": "APPROVED"|"REQUEST_CHANGES", "review": "...", "summary": "...", ...}
+            # Expect {"status": "APPROVED"|"REQUEST_CHANGES"|"TASK_IMPOSSIBLE", "review": "...", "summary": "...", ...}
             if '"status"' not in response:
                 return True
-            if '"APPROVED"' not in response and '"REQUEST_CHANGES"' not in response:
+            if (
+                '"APPROVED"' not in response
+                and '"REQUEST_CHANGES"' not in response
+                and '"TASK_IMPOSSIBLE"' not in response
+            ):
                 return True
             if '"review"' not in response:
                 return True
-            return '"summary"' not in response
+            if '"summary"' not in response:
+                return True
+            if '"impossible_condition"' not in response:
+                return True
+            return '"tasklist_fix_recommendation"' not in response
 
         elif expected_schema == "builder_completion":
             # Expect {"completed": true|false, ...}
@@ -113,6 +121,13 @@ def is_empty_response(
             if '"strengths"' not in response:
                 return True
             return '"issues"' not in response
+
+        elif expected_schema == "task_repair_proposal":
+            if '"title"' not in response:
+                return True
+            if '"summary"' not in response:
+                return True
+            return '"acceptance_criteria"' not in response
 
         elif expected_schema == "context_extraction":
             # Expect {"summary": "...", "key_decisions": [...]}
