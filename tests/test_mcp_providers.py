@@ -88,6 +88,12 @@ def test_update_task_status_without_callback_raises_runtime_error():
         provider.update_task_status("t-1", TaskStatus.done)
 
 
+def test_update_task_without_callback_raises_runtime_error():
+    provider = MCPTasklistProvider("linear")
+    with pytest.raises(RuntimeError, match="set_agent_callback"):
+        provider.update_task(TasklistItem(task_id="t-1", title="Task", status=TaskStatus.todo))
+
+
 def test_list_tasks_without_callback_raises_runtime_error():
     provider = MCPTasklistProvider("linear")
     with pytest.raises(RuntimeError, match="set_agent_callback"):
@@ -515,6 +521,20 @@ def test_task_cache_invalidated_after_update_task_status():
     assert provider._task_cache is None
 
 
+def test_task_cache_invalidated_after_update_task():
+    provider = MCPTasklistProvider("linear")
+    list_response = json.dumps([{"id": "t-1", "title": "T", "status": "todo", "description": ""}])
+    mock_cb = MagicMock(return_value=list_response)
+    provider.set_agent_callback(mock_cb)
+
+    provider.list_tasks()
+    assert provider._task_cache is not None
+
+    provider.update_task(TasklistItem(task_id="t-1", title="T repaired", status=TaskStatus.todo))
+
+    assert provider._task_cache is None
+
+
 # ---------------------------------------------------------------------------
 # MCPTasklistProvider — writes call agent callback
 # ---------------------------------------------------------------------------
@@ -561,6 +581,30 @@ def test_update_task_status_calls_callback():
     assert "linear" in prompt
 
 
+def test_update_task_calls_callback():
+    provider = MCPTasklistProvider("linear")
+    mock_cb = MagicMock(return_value="ok")
+    provider.set_agent_callback(mock_cb)
+
+    provider.update_task(
+        TasklistItem(
+            task_id="t-1",
+            title="Repair task wording",
+            status=TaskStatus.todo,
+            criteria="Keep the legacy behavior for now",
+            acceptance_criteria=["Document the follow-up cleanup task"],
+        )
+    )
+
+    mock_cb.assert_called_once()
+    prompt = mock_cb.call_args[0][0]
+    assert "t-1" in prompt
+    assert "Repair task wording" in prompt
+    assert "Keep the legacy behavior for now" in prompt
+    assert "Document the follow-up cleanup task" in prompt
+    assert "linear" in prompt
+
+
 # ---------------------------------------------------------------------------
 # MCPTasklistProvider — effect gate integration
 # ---------------------------------------------------------------------------
@@ -577,6 +621,19 @@ def test_update_task_status_routes_through_effect_gate():
     intent: EffectIntent = mock_gate.call_args[0][0]
     assert intent.idempotency_key == "t-1"
     assert intent.metadata["mcp_server"] == "linear"
+
+
+def test_update_task_routes_through_effect_gate():
+    mock_gate = MagicMock(return_value=_applied_record())
+    provider = MCPTasklistProvider("linear", effect_applier=mock_gate)
+    provider.set_agent_callback(MagicMock(return_value="ok"))
+
+    provider.update_task(TasklistItem(task_id="t-1", title="Repair task", status=TaskStatus.todo))
+
+    mock_gate.assert_called_once()
+    intent: EffectIntent = mock_gate.call_args[0][0]
+    assert intent.idempotency_key == "t-1"
+    assert intent.metadata["operation"] == "update"
 
 
 def test_effect_gate_denial_raises_before_callback():

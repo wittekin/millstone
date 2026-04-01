@@ -27,6 +27,7 @@ class ReviewStatus(str, Enum):
 
     APPROVED = "APPROVED"
     REQUEST_CHANGES = "REQUEST_CHANGES"
+    TASK_IMPOSSIBLE = "TASK_IMPOSSIBLE"
 
 
 class FindingSeverity(str, Enum):
@@ -70,7 +71,7 @@ REVIEW_DECISION_SCHEMA = {
     "properties": {
         "status": {
             "type": "string",
-            "enum": ["APPROVED", "REQUEST_CHANGES"],
+            "enum": ["APPROVED", "REQUEST_CHANGES", "TASK_IMPOSSIBLE"],
             "description": "The review decision",
         },
         "review": {"type": "string", "description": "Full review content (free-form text)"},
@@ -113,8 +114,24 @@ REVIEW_DECISION_SCHEMA = {
             "additionalProperties": False,
             "description": "Findings grouped by severity level",
         },
+        "impossible_condition": {
+            "type": ["string", "null"],
+            "description": "Exact constraint or contradiction that makes the selected task impossible",
+        },
+        "tasklist_fix_recommendation": {
+            "type": ["string", "null"],
+            "description": "Smallest tasklist change that would make the selected task satisfiable",
+        },
     },
-    "required": ["status", "review", "summary", "findings", "findings_by_severity"],
+    "required": [
+        "status",
+        "review",
+        "summary",
+        "findings",
+        "findings_by_severity",
+        "impossible_condition",
+        "tasklist_fix_recommendation",
+    ],
     "additionalProperties": False,
 }
 
@@ -189,6 +206,48 @@ SCHEMAS = {
     "design_review": DESIGN_REVIEW_SCHEMA,
 }
 
+TASK_REPAIR_PROPOSAL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string", "description": "Updated selected-task title"},
+        "design_ref": {"type": ["string", "null"], "description": "Updated design reference"},
+        "opportunity_ref": {
+            "type": ["string", "null"],
+            "description": "Updated opportunity reference",
+        },
+        "risk": {"type": ["string", "null"], "description": "Updated task risk level"},
+        "tests": {"type": ["string", "null"], "description": "Updated test expectations"},
+        "criteria": {
+            "type": ["string", "null"],
+            "description": "Updated single-line success or acceptance note",
+        },
+        "context": {"type": ["string", "null"], "description": "Updated task context"},
+        "acceptance_criteria": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Updated acceptance-criteria list for the selected task",
+        },
+        "summary": {
+            "type": "string",
+            "description": "Short summary of the repaired task scope",
+        },
+    },
+    "required": [
+        "title",
+        "design_ref",
+        "opportunity_ref",
+        "risk",
+        "tests",
+        "criteria",
+        "context",
+        "acceptance_criteria",
+        "summary",
+    ],
+    "additionalProperties": False,
+}
+
+SCHEMAS["task_repair_proposal"] = TASK_REPAIR_PROPOSAL_SCHEMA
+
 
 # =============================================================================
 # Schema Utilities
@@ -253,6 +312,8 @@ class ReviewDecision:
     findings: list[str] | None = None
     findings_by_severity: dict[str, list[str]] | None = None
     summary: str | None = None
+    impossible_condition: str | None = None
+    tasklist_fix_recommendation: str | None = None
 
     @property
     def is_approved(self) -> bool:
@@ -314,6 +375,21 @@ class DesignReviewResult:
         return self.verdict == DesignReviewVerdict.APPROVED
 
 
+@dataclass
+class TaskRepairProposal:
+    """Structured repaired-task proposal emitted by the builder."""
+
+    title: str
+    design_ref: str | None = None
+    opportunity_ref: str | None = None
+    risk: str | None = None
+    tests: str | None = None
+    criteria: str | None = None
+    context: str | None = None
+    acceptance_criteria: list[str] | None = None
+    summary: str | None = None
+
+
 # =============================================================================
 # Parsing Functions
 # =============================================================================
@@ -339,7 +415,11 @@ def parse_review_decision(output: str) -> ReviewDecision | None:
     if code_block_match:
         try:
             data = json.loads(code_block_match.group(1))
-            if "status" in data and data["status"] in ("APPROVED", "REQUEST_CHANGES"):
+            if "status" in data and data["status"] in (
+                "APPROVED",
+                "REQUEST_CHANGES",
+                "TASK_IMPOSSIBLE",
+            ):
                 if "review" not in data or "summary" not in data:
                     return None
                 return ReviewDecision(
@@ -348,6 +428,8 @@ def parse_review_decision(output: str) -> ReviewDecision | None:
                     findings=data.get("findings"),
                     findings_by_severity=data.get("findings_by_severity"),
                     summary=data.get("summary"),
+                    impossible_condition=data.get("impossible_condition"),
+                    tasklist_fix_recommendation=data.get("tasklist_fix_recommendation"),
                 )
         except (json.JSONDecodeError, KeyError, ValueError):
             pass
@@ -372,7 +454,11 @@ def parse_review_decision(output: str) -> ReviewDecision | None:
     for start, end in brace_positions:
         try:
             data = json.loads(output[start:end])
-            if "status" in data and data["status"] in ("APPROVED", "REQUEST_CHANGES"):
+            if "status" in data and data["status"] in (
+                "APPROVED",
+                "REQUEST_CHANGES",
+                "TASK_IMPOSSIBLE",
+            ):
                 if "review" not in data or "summary" not in data:
                     return None
                 return ReviewDecision(
@@ -381,6 +467,8 @@ def parse_review_decision(output: str) -> ReviewDecision | None:
                     findings=data.get("findings"),
                     findings_by_severity=data.get("findings_by_severity"),
                     summary=data.get("summary"),
+                    impossible_condition=data.get("impossible_condition"),
+                    tasklist_fix_recommendation=data.get("tasklist_fix_recommendation"),
                 )
         except (json.JSONDecodeError, KeyError, ValueError):
             continue
@@ -391,6 +479,24 @@ def parse_review_decision(output: str) -> ReviewDecision | None:
     )
     if re.search(r'"status"\s*:\s*"APPROVED"', output, re.IGNORECASE) and has_review_summary:
         return ReviewDecision(status=ReviewStatus.APPROVED)
+    if re.search(r'"status"\s*:\s*"TASK_IMPOSSIBLE"', output, re.IGNORECASE) and has_review_summary:
+        impossible_match = re.search(
+            r'"impossible_condition"\s*:\s*"([^"]+)"',
+            output,
+            re.IGNORECASE,
+        )
+        recommendation_match = re.search(
+            r'"tasklist_fix_recommendation"\s*:\s*"([^"]+)"',
+            output,
+            re.IGNORECASE,
+        )
+        return ReviewDecision(
+            status=ReviewStatus.TASK_IMPOSSIBLE,
+            impossible_condition=impossible_match.group(1) if impossible_match else None,
+            tasklist_fix_recommendation=recommendation_match.group(1)
+            if recommendation_match
+            else None,
+        )
     if re.search(r'"status"\s*:\s*"REQUEST_CHANGES"', output, re.IGNORECASE) and has_review_summary:
         # Try to extract findings
         findings_match = re.search(r'"findings"\s*:\s*\[(.*?)\]', output, re.DOTALL)
@@ -400,6 +506,54 @@ def parse_review_decision(output: str) -> ReviewDecision | None:
                 findings = json.loads(f"[{findings_match.group(1)}]")
         return ReviewDecision(status=ReviewStatus.REQUEST_CHANGES, findings=findings)
 
+    return None
+
+
+def parse_task_repair_proposal(output: str) -> TaskRepairProposal | None:
+    """Parse a structured repaired-task proposal from agent output."""
+    import re
+
+    code_block_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", output, re.DOTALL)
+    candidates: list[str] = []
+    if code_block_match:
+        candidates.append(code_block_match.group(1))
+
+    depth = 0
+    start = -1
+    for i, char in enumerate(output):
+        if char == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0 and start >= 0:
+                candidates.append(output[start : i + 1])
+                start = -1
+
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        if "title" not in data or "acceptance_criteria" not in data:
+            continue
+        try:
+            return TaskRepairProposal(
+                title=data["title"],
+                design_ref=data.get("design_ref"),
+                opportunity_ref=data.get("opportunity_ref"),
+                risk=data.get("risk"),
+                tests=data.get("tests"),
+                criteria=data.get("criteria"),
+                context=data.get("context"),
+                acceptance_criteria=data.get("acceptance_criteria"),
+                summary=data.get("summary"),
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
     return None
 
 

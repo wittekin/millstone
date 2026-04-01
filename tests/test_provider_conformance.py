@@ -216,6 +216,19 @@ class TestTasklistProviderConformance:
         assert result.title == "Task One"
         assert result.status == TaskStatus.todo
 
+        provider.update_task(
+            TasklistItem(
+                task_id=created_id,
+                title="Task One Updated",
+                status=TaskStatus.todo,
+                criteria="Keep legacy behavior until follow-up cleanup",
+            )
+        )
+        repaired = provider.get_task(created_id)
+        assert repaired is not None
+        assert repaired.title == "Task One Updated"
+        assert repaired.criteria == "Keep legacy behavior until follow-up cleanup"
+
         provider.update_task_status(created_id, TaskStatus.done)
         updated = provider.get_task(created_id)
         assert updated is not None

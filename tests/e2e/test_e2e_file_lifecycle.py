@@ -19,7 +19,8 @@ from tests.e2e.conftest import StubCli
 _APPROVED_JSON = (
     '{"status": "APPROVED", "review": "Looks good", "summary": "Looks good!",'
     ' "findings": [], "findings_by_severity":'
-    ' {"critical": [], "high": [], "medium": [], "low": [], "nit": []}}'
+    ' {"critical": [], "high": [], "medium": [], "low": [], "nit": []},'
+    ' "impossible_condition": null, "tasklist_fix_recommendation": null}'
 )
 _SANITY_OK_JSON = '{"status": "OK", "reason": ""}'
 # Analyze review: _parse_analyze_review_verdict expects {"verdict": "APPROVED", ...}
@@ -292,7 +293,8 @@ _STUB_CLAUDE_SCRIPT = textwrap.dedent("""\
         else:
             print('{"status": "APPROVED", "review": "LGTM", "summary": "OK",'
                   ' "findings": [], "findings_by_severity":'
-                  ' {"critical": [], "high": [], "medium": [], "low": [], "nit": []}}')
+                  ' {"critical": [], "high": [], "medium": [], "low": [], "nit": []},'
+                  ' "impossible_condition": null, "tasklist_fix_recommendation": null}')
     elif (
         "approved by the reviewer" in prompt.lower()
         or "commit it now" in prompt.lower()

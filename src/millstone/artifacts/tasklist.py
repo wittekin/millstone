@@ -272,7 +272,11 @@ class TasklistManager:
 
         return current_group
 
-    def get_task_context_file_content(self, log_callback=None) -> str | None:
+    def get_task_context_file_content(
+        self,
+        log_callback=None,
+        context_file_override: str | None = None,
+    ) -> str | None:
         """Get the content of the context file for the current task, if specified.
 
         Reads the context file referenced by the task's <!-- context: path --> annotation.
@@ -281,12 +285,14 @@ class TasklistManager:
         Args:
             log_callback: Optional callback function for logging events.
                 Should accept (event: str, **data) signature.
+            context_file_override: Optional path to context file to use instead
+                of extracting from tasklist (ensures stability during cycles).
 
         Returns:
             Content of the context file, or None if no context file is specified
             or the file doesn't exist.
         """
-        context_file_path = self.extract_current_task_context_file()
+        context_file_path = context_file_override or self.extract_current_task_context_file()
         if not context_file_path:
             return None
 

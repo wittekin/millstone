@@ -81,6 +81,9 @@ class InMemoryTasklistProvider:
     def append_tasks(self, tasks: list[TasklistItem]) -> None:
         return None
 
+    def update_task(self, task: TasklistItem) -> None:
+        return None
+
     def update_task_status(self, task_id: str, status: TaskStatus) -> None:
         return None
 

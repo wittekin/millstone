@@ -1719,6 +1719,57 @@ class TestFileTasklistProviderUpdateTaskStatus:
         assert f.read_text() == replacement
 
 
+class TestFileTasklistProviderUpdateTask:
+    """update_task replaces exactly one task block in place."""
+
+    def test_update_task_rewrites_selected_task_only(self, tmp_path):
+        from millstone.artifact_providers.file import FileTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        f = tmp_path / "tasklist.md"
+        f.write_text(
+            "- [ ] **Task One**\n"
+            "  - ID: task-1\n"
+            "  - Risk: low\n"
+            "\n"
+            "- [ ] **Task Two**\n"
+            "  - ID: task-2\n"
+        )
+        provider = FileTasklistProvider(f)
+
+        provider.update_task(
+            TasklistItem(
+                task_id="task-1",
+                title="Task One Repaired",
+                status=TaskStatus.todo,
+                risk="medium",
+                acceptance_criteria=[
+                    "Keep the legacy endpoint until the follow-up cleanup task lands."
+                ],
+            )
+        )
+
+        content = f.read_text()
+        assert "**Task One Repaired**" in content
+        assert "Risk: medium" in content
+        assert "**Acceptance Criteria:**" in content
+        assert "follow-up cleanup task" in content
+        assert "**Task Two**" in content
+
+    def test_update_task_missing_id_raises_key_error(self, tmp_path):
+        from millstone.artifact_providers.file import FileTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        f = tmp_path / "tasklist.md"
+        f.write_text("- [ ] **Task One**\n  - ID: task-1\n")
+        provider = FileTasklistProvider(f)
+
+        with pytest.raises(KeyError, match="missing"):
+            provider.update_task(
+                TasklistItem(task_id="missing", title="Nope", status=TaskStatus.todo)
+            )
+
+
 # ---------------------------------------------------------------------------
 # FileTasklistProvider – protocol conformance
 # ---------------------------------------------------------------------------

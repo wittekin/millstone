@@ -28,16 +28,21 @@ Git Diff:
 4. If changes spill into later tasks, do not just say they are out of scope.
    - Explain which work should be reverted, deferred, or narrowed.
    - Give feedback that helps the builder keep the selected task complete while removing later-task spillover.
-5. For each finding, cite a file plus a stable locator when possible.
-6. For each materially changed interface, behavior, or artifact, give one representative case and one edge/error case when that adds clarity.
+5. If the selected task itself is impossible or contradictory, and the builder output credibly identifies that condition, return `TASK_IMPOSSIBLE`.
+   - Name the exact impossible condition.
+   - Recommend the smallest tasklist fix that would make the task satisfiable.
+6. For each finding, cite a file plus a stable locator when possible.
+7. For each materially changed interface, behavior, or artifact, give one representative case and one edge/error case when that adds clarity.
 </process>
 
 <output>
 Return one JSON object and nothing else.
 It must match the provided schema and include:
-- `status` (`APPROVED` or `REQUEST_CHANGES`)
+- `status` (`APPROVED`, `REQUEST_CHANGES`, or `TASK_IMPOSSIBLE`)
 - `review`
 - `summary`
 - `findings`
 - `findings_by_severity`
+- `impossible_condition`
+- `tasklist_fix_recommendation`
 </output>

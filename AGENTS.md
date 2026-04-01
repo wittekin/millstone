@@ -37,6 +37,7 @@ millstone                           # Process tasks from .millstone/tasklist.md
 millstone --task "description"      # Single direct task
 millstone --migrate-tasklist backlog.md  # Convert a local backlog to tasklist format
 millstone --deliver "objective"     # Design -> plan -> execute (skip analyze)
+millstone --allow-tasklist-fix      # Repair selected task after reviewer confirms it is impossible
 millstone --dry-run                 # Preview prompts without invoking agent
 millstone --cli codex               # Use Codex CLI instead of Claude
 
@@ -67,6 +68,7 @@ Builder → Sanity ✓ → Reviewer → Sanity ✓ → [Fix Loop] → Commit
 4. Reviewer agent evaluates changes
 5. Sanity check on review (sanity role/provider)
 6. If approved: delegate commit to builder; else: loop back with feedback (up to max-cycles)
+7. If reviewer returns `TASK_IMPOSSIBLE`: stop early with a recommended tasklist fix by default; with `--allow-tasklist-fix`, let the builder repair the selected tasklist entry and corresponding code in the next cycle through the active tasklist provider
 
 ### Outer Loops (Self-Direction)
 
@@ -147,6 +149,7 @@ Defaults in `DEFAULT_CONFIG` dict, overridden by `.millstone/config.toml`, then 
 
 Key config options:
 - `max_cycles`, `loc_threshold`, `tasklist`, `roadmap`, `max_tasks`
+- `required_approvals`, `allow_tasklist_fix`
 - `eval_on_commit` - Run tests after each commit
 - `eval_scripts` - Custom scripts to run during eval
 - `approve_opportunities`, `approve_designs`, `approve_plans` - Human-in-loop gates

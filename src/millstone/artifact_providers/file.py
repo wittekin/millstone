@@ -620,6 +620,28 @@ class FileTasklistProvider(TasklistProviderBase):
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_text(new_text)
 
+    def update_task(self, task: TasklistItem) -> None:
+        """Replace one existing task block in place by task_id."""
+        task.validate()
+        if not self.path.exists():
+            raise FileNotFoundError(f"tasklist file not found: {self.path}")
+
+        content = self.path.read_text()
+        task_pattern = r"^- \[([ x])\] (.+(?:\n(?:  .+))*)"
+        matches = list(re.finditer(task_pattern, content, re.MULTILINE | re.IGNORECASE))
+        target_index = self._mgr._resolve_task_index_by_id(
+            task_id=task.task_id,
+            taskmap={},
+            matches=matches,
+        )
+        if target_index is None:
+            raise KeyError(f"task_id not found in {self.path}: {task.task_id!r}")
+
+        match = matches[target_index]
+        replacement = self._to_checklist_block(task)
+        new_content = content[: match.start()] + replacement + content[match.end() :]
+        self.path.write_text(new_content)
+
     def update_task_status(self, task_id: str, status: TaskStatus) -> None:
         """Update task status; only todo→done is supported via TasklistManager."""
         if status == TaskStatus.in_progress:
@@ -694,6 +716,7 @@ class FileTasklistProvider(TasklistProviderBase):
                     tests=metadata.get("tests"),
                     context=metadata.get("context"),
                     criteria=metadata.get("criteria"),
+                    acceptance_criteria=metadata.get("acceptance_criteria") or [],
                     raw=raw_text,
                 )
             )
@@ -714,7 +737,10 @@ class FileTasklistProvider(TasklistProviderBase):
             parts.append(f"  - Tests: {item.tests}")
         if item.context:
             parts.append(f"  - Context: {item.context}")
-        if item.criteria:
+        if item.acceptance_criteria:
+            parts.append("  - **Acceptance Criteria:**")
+            parts.extend(f"    - {criterion}" for criterion in item.acceptance_criteria)
+        elif item.criteria:
             parts.append(f"  - Acceptance: {item.criteria}")
         return "\n".join(parts)
 

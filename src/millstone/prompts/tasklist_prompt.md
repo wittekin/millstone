@@ -13,6 +13,8 @@ If the selected task is missing, no longer the first unchecked task, or otherwis
 - Treat the explicitly selected task shown later in this prompt as the only task in scope.
 - Do not implement, prepare, reorder, or check off any other task.
 - Do not modify, reorganize, summarize, or remove any other task text.
+- If the selected task contains an impossible or contradictory constraint, describe that constraint explicitly in your analysis and summary.
+- Do not edit tasklist task text unless a later instruction in this prompt explicitly enables tasklist repair for the selected task.
 - Run only verification that is appropriate for the selected task and files touched.
 - Do not claim success for commands you did not run.
 - Do not run `git commit` or `git push`.
