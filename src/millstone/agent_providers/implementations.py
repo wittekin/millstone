@@ -431,7 +431,7 @@ class GeminiProvider(CLIProvider):
 class OpenCodeProvider(CLIProvider):
     """Provider for OpenCode CLI."""
 
-    DEFAULT_MODEL = "opencode/trinity-large-preview-free"
+    DEFAULT_MODEL: str | None = None
 
     @property
     def name(self) -> str:
@@ -479,8 +479,10 @@ class OpenCodeProvider(CLIProvider):
                 # Follow-up prompt in an existing session
                 cmd.append(prompt)
 
-        # Use provided model or default
-        cmd.extend(["-m", model or self.DEFAULT_MODEL])
+        # Use provided model or let opencode use its configured default
+        effective_model = model or self.DEFAULT_MODEL
+        if effective_model:
+            cmd.extend(["-m", effective_model])
 
         # Prepare prompt with schema if needed (OpenCode doesn't have native --json-schema)
         if output_schema:

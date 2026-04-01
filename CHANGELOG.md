@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-03-31
+
+### Fixed
+- OpenCode provider no longer forces a nonexistent default model (`opencode/trinity-large-preview-free`); it now defers to opencode's configured default unless overridden via `--model` or config.
+
 ## [0.6.1] - 2026-03-31
 
 ### Fixed
