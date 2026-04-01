@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-03-31
+
+### Fixed
+- Task re-selection bug: freeze task identity at the start of each task run so that marking a task complete mid-cycle no longer shifts the orchestrator's scope to the next unchecked task during review/fix loops.
+
 ## [0.6.0] - 2026-03-29
 
 ### Added

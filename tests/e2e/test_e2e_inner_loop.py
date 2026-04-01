@@ -15,7 +15,8 @@ _original_subprocess_run = subprocess.run
 _APPROVED_JSON = (
     '{"status": "APPROVED", "review": "Looks good", "summary": "Looks good!",'
     ' "findings": [], "findings_by_severity":'
-    ' {"critical": [], "high": [], "medium": [], "low": [], "nit": []}}'
+    ' {"critical": [], "high": [], "medium": [], "low": [], "nit": []},'
+    ' "impossible_condition": null, "tasklist_fix_recommendation": null}'
 )
 _SANITY_OK_JSON = '{"status": "OK", "reason": ""}'
 
@@ -111,9 +112,11 @@ class TestWorkingDirectorySubstitution:
 
 
 _REQUEST_CHANGES_JSON = (
-    '{"status": "REQUEST_CHANGES", "review": "Needs type annotations", "summary": "Blocking issues",'
+    '{"status": "REQUEST_CHANGES", "review": "Needs type annotations; missing type annotations",'
+    ' "summary": "Blocking issues",'
     ' "findings": ["missing type annotations"], "findings_by_severity":'
-    ' {"critical": [], "high": ["missing type annotations"], "medium": [], "low": [], "nit": []}}'
+    ' {"critical": [], "high": ["missing type annotations"], "medium": [], "low": [], "nit": []},'
+    ' "impossible_condition": null, "tasklist_fix_recommendation": null}'
 )
 
 

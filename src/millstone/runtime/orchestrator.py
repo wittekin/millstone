@@ -279,11 +279,6 @@ class Orchestrator:
         # TasklistManager methods
         # Note: has_remaining_tasks is NOT delegated here; it is overridden below
         # to support MCP-backed tasklist providers that have no local file.
-        "extract_current_task_title": "_tasklist_manager",
-        "extract_current_task_risk": "_tasklist_manager",
-        "extract_current_task_context_file": "_tasklist_manager",
-        "extract_current_task_group": "_tasklist_manager",
-        "extract_current_task_line": "_tasklist_manager",
         "extract_current_task_acceptance_criteria": "_tasklist_manager",
         "count_completed_tasks": "_tasklist_manager",
         "_extract_unchecked_tasks": "_tasklist_manager",
@@ -498,6 +493,10 @@ class Orchestrator:
         self.approve_opportunities = approve_opportunities  # Pause after analyze
         self.approve_designs = approve_designs  # Pause after design
         self.approve_plans = approve_plans  # Pause after plan
+        # Selected task line and title (persisted across cycles)
+        self._selected_task_line: str | None = None
+        self._selected_task_title: str | None = None
+        self._selected_task_context_file: str | None = None
         self.no_approve = no_approve
         self.approve_high_risk = approve_high_risk
         self.approve_effects = approve_effects
@@ -2218,7 +2217,7 @@ class Orchestrator:
 
         provider = self._outer_loop_manager.tasklist_provider
         if isinstance(provider, FileTasklistProvider):
-            selected_task_line = self.extract_current_task_line()
+            selected_task_line = self._selected_task_line or self.extract_current_task_line()
             if selected_task_line:
                 return (
                     "This run may complete only the following task line:\n\n"
@@ -2358,9 +2357,40 @@ class Orchestrator:
         ):
             provider.set_agent_callback(lambda p, **k: self.run_agent(p, role="author", **k))
 
+    def extract_current_task_line(self) -> str:
+        if self._selected_task_line:
+            return self._selected_task_line
+        return self._tasklist_manager.extract_current_task_line()
+
+    def extract_current_task_title(self) -> str:
+        if self._selected_task_title:
+            return self._selected_task_title
+        return self._tasklist_manager.extract_current_task_title()
+
+    def extract_current_task_risk(self) -> str | None:
+        if self.current_task_risk:
+            return self.current_task_risk
+        return self._tasklist_manager.extract_current_task_risk()
+
+    def extract_current_task_context_file(self) -> str | None:
+        if self._selected_task_context_file:
+            return self._selected_task_context_file
+        return self._tasklist_manager.extract_current_task_context_file()
+
+    def extract_current_task_group(self) -> str | None:
+        if self.current_task_group:
+            return self.current_task_group
+        return self._tasklist_manager.extract_current_task_group()
+
     def get_task_context_file_content(self) -> str | None:
-        # Delegates to TasklistManager
-        return self._tasklist_manager.get_task_context_file_content(log_callback=self.log)
+        # Prefer cached context file to ensure stability during review cycles.
+        context_file = self.extract_current_task_context_file()
+        if not context_file:
+            return None
+        return self._tasklist_manager.get_task_context_file_content(
+            log_callback=self.log,
+            context_file_override=context_file,
+        )
 
     def get_group_context(self, group_name: str | None = None) -> str | None:
         # Delegates to ContextManager
@@ -3595,7 +3625,9 @@ class Orchestrator:
             "Address this review feedback while staying strictly within the selected task scope.",
         ]
 
-        selected_task_line = self.extract_current_task_line() if not self.task else self.task
+        selected_task_line = self._selected_task_line or (
+            self.extract_current_task_line() if not self.task else self.task
+        )
         if selected_task_line:
             parts.extend(
                 [
@@ -3657,6 +3689,9 @@ class Orchestrator:
         self._selected_task_item = None
         self._tasklist_fix_scope_active = False
         self._task_impossible_decision = None
+        self._selected_task_line = None
+        self._selected_task_title = None
+        self._selected_task_context_file = None
 
         # Determine task text and metadata
         _mcp_task_item: Any = None  # Set when MCP provider supplies the current task
@@ -3668,6 +3703,9 @@ class Orchestrator:
             task_metadata = self._tasklist_manager._parse_task_metadata(task_text)
             self.apply_risk_settings(task_metadata.get("risk"))
             self.current_task_group = None
+            self._selected_task_title = self.current_task_title
+            self._selected_task_line = task_text
+            self._selected_task_context_file = task_metadata.get("context")
         else:
             # When the tasklist is MCP-backed, derive task title and ID from the
             # remote provider's cached task list instead of reading a local file
@@ -3686,14 +3724,25 @@ class Orchestrator:
                     task_text = self.current_task_title
                     self.apply_risk_settings(_mcp_task_item.risk)
                     self.current_task_group = None
+                    self._selected_task_title = self.current_task_title
+                    self._selected_task_line = task_text
+                    self._selected_task_context_file = _mcp_task_item.context
                 else:
                     self.current_task_title = "task"
                     task_text = self.current_task_title
                     self.apply_risk_settings(None)
                     self.current_task_group = None
+                    self._selected_task_title = self.current_task_title
+                    self._selected_task_line = task_text
+                    self._selected_task_context_file = None
             else:
                 self.current_task_title = self.extract_current_task_title() or "task"
                 task_text = self.current_task_title
+                self._selected_task_line = self.extract_current_task_line()
+                self._selected_task_title = self.current_task_title
+                self._selected_task_context_file = (
+                    self._tasklist_manager.extract_current_task_context_file()
+                )
                 self.apply_risk_settings(self.extract_current_task_risk())
                 self.current_task_group = self.extract_current_task_group()
 

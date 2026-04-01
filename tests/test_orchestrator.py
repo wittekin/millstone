@@ -17705,3 +17705,108 @@ class TestUncheckedTaskPreservation:
             mock_compact.assert_called_once()
         finally:
             orch.cleanup()
+
+    def test_task_scope_stability_after_completion_mid_run(self, temp_repo):
+        """Orchestrator preserves selected task identity even if marked complete mid-run."""
+        from millstone.runtime.orchestrator import Orchestrator
+
+        # Setup tasklist with two adjacent unchecked tasks
+        tasklist_path = Path("tasklist.md")
+        tasklist_path.write_text("# Tasklist\n\n- [ ] Task 1\n- [ ] Task 2\n")
+
+        orch = Orchestrator(tasklist="tasklist.md")
+        try:
+            # First cycle: Builder "completes" Task 1
+            def mock_builder_first_cycle(prompt, **kwargs):
+                # Mid-run: Task 1 is marked complete
+                tasklist_path.write_text("# Tasklist\n\n- [x] Task 1\n- [ ] Task 2\n")
+                return "Implemented Task 1"
+
+            # Reviewer requests a fix, triggering Cycle 2
+            def mock_reviewer_request_fix(prompt, **kwargs):
+                return json.dumps(
+                    {
+                        "status": "REQUEST_CHANGES",
+                        "review": "Missing something in Task 1",
+                        "summary": "Fix needed",
+                        "findings": ["finding"],
+                        "findings_by_severity": {
+                            "critical": [],
+                            "high": ["finding"],
+                            "medium": [],
+                            "low": [],
+                            "nit": [],
+                        },
+                    }
+                )
+
+            # Second cycle: Builder is asked to fix Task 1
+            def mock_builder_second_cycle(prompt, **kwargs):
+                # Ensure the prompt still focuses on Task 1 and has not shifted to Task 2.
+                assert "Task 1" in prompt, "Prompt lost Task 1 context in Cycle 2"
+                assert "Task 2" not in prompt, (
+                    "Prompt incorrectly shifted to Task 2 context in Cycle 2"
+                )
+                return "Fixed Task 1"
+
+            # Final approval
+            def mock_reviewer_approve(prompt, **kwargs):
+                return json.dumps(
+                    {
+                        "status": "APPROVED",
+                        "review": "Perfect",
+                        "summary": "Approved",
+                        "findings": [],
+                        "findings_by_severity": {
+                            "critical": [],
+                            "high": [],
+                            "medium": [],
+                            "low": [],
+                            "nit": [],
+                        },
+                    }
+                )
+
+            with patch.object(orch, "run_agent") as mock_run:
+                # Use a wrapper function to ensure side effects are executed
+                calls = [
+                    mock_builder_first_cycle,
+                    mock_reviewer_request_fix,
+                    mock_builder_second_cycle,
+                    mock_reviewer_approve,
+                ]
+                call_idx = 0
+
+                def side_effect_wrapper(*args, **kwargs):
+                    nonlocal call_idx
+                    res = calls[call_idx](*args, **kwargs)
+                    call_idx += 1
+                    return res
+
+                mock_run.side_effect = side_effect_wrapper
+
+                with (
+                    patch.object(orch, "git") as mock_git,
+                    patch.object(orch, "mechanical_checks", return_value=True),
+                    patch.object(orch, "sanity_check_impl", return_value=True),
+                    patch.object(orch, "sanity_check_review", return_value=True),
+                    patch.object(orch, "delegate_commit", return_value=True),
+                ):
+
+                    def mock_git_side_effect(cmd, *args, **kwargs):
+                        if cmd == "status":
+                            return "M file.txt"
+                        if cmd == "rev-parse":
+                            return "head_sha"
+                        return ""
+
+                    mock_git.side_effect = mock_git_side_effect
+
+                    success = orch.run_single_task()
+
+                assert success is True
+                builder_fix_prompt = mock_run.call_args_list[2][0][0]
+                assert "Task 1" in builder_fix_prompt
+                assert "Task 2" not in builder_fix_prompt
+        finally:
+            orch.cleanup()
