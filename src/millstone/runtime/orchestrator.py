@@ -528,6 +528,7 @@ class Orchestrator:
         }  # Aggregated severity counts
         self._current_task_text: str = ""  # Current task text for review metrics
         self._selected_task_item: TasklistItem | None = None
+        self._resumed_task_state: dict[str, Any] | None = None
         self._tasklist_fix_scope_active: bool = False
         self._task_impossible_decision: ReviewDecision | None = None
         self._task_previous_diff: str | None = (
@@ -998,7 +999,7 @@ class Orchestrator:
 
     def _build_state_snapshot(self, halt_reason: str = "") -> dict[str, Any]:
         """Build the standard state payload for resumable halts."""
-        return {
+        state = {
             "current_task_num": self.current_task_num,
             "builder_session_id": self.builder_session_id,
             "reviewer_session_id": self.reviewer_session_id,
@@ -1009,6 +1010,75 @@ class Orchestrator:
             "halt_reason": halt_reason,
             "timestamp": datetime.now().isoformat(),
         }
+        state.update(self._selected_task_state_snapshot())
+        return state
+
+    def _serialize_task_item(self, task: TasklistItem | None) -> dict[str, Any] | None:
+        if task is None:
+            return None
+        return {
+            "task_id": task.task_id,
+            "title": task.title,
+            "status": task.status.value,
+            "design_ref": task.design_ref,
+            "opportunity_ref": task.opportunity_ref,
+            "risk": task.risk,
+            "tests": task.tests,
+            "criteria": task.criteria,
+            "acceptance_criteria": list(task.acceptance_criteria or []),
+            "context": task.context,
+            "raw": task.raw,
+        }
+
+    def _deserialize_task_item(self, payload: dict[str, Any] | None) -> TasklistItem | None:
+        if not payload:
+            return None
+        status_value = payload.get("status", TaskStatus.todo.value)
+        with contextlib.suppress(ValueError):
+            status = TaskStatus(status_value)
+            return TasklistItem(
+                task_id=payload.get("task_id", ""),
+                title=payload.get("title", "") or "task",
+                status=status,
+                design_ref=payload.get("design_ref"),
+                opportunity_ref=payload.get("opportunity_ref"),
+                risk=payload.get("risk"),
+                tests=payload.get("tests"),
+                criteria=payload.get("criteria"),
+                acceptance_criteria=list(payload.get("acceptance_criteria") or []),
+                context=payload.get("context"),
+                raw=payload.get("raw"),
+            )
+        return None
+
+    def _selected_task_state_snapshot(self) -> dict[str, Any]:
+        """Capture selected-task identity so inner-loop resumes keep the same scope."""
+        snapshot = {
+            "selected_task_line": self._selected_task_line,
+            "selected_task_title": self._selected_task_title or self.current_task_title or None,
+            "selected_task_context_file": self._selected_task_context_file,
+            "current_task_id": self._current_task_id,
+            "current_task_text": self._current_task_text,
+            "current_task_group": self.current_task_group,
+            "current_task_risk": self.current_task_risk,
+            "selected_task_item": self._serialize_task_item(self._get_selected_task_item()),
+        }
+        return {k: v for k, v in snapshot.items() if v is not None}
+
+    def _restore_selected_task_state(self, state: dict[str, Any]) -> None:
+        """Restore saved selected-task identity for a resumed inner-loop run."""
+        keys = {
+            "selected_task_line",
+            "selected_task_title",
+            "selected_task_context_file",
+            "current_task_id",
+            "current_task_text",
+            "current_task_group",
+            "current_task_risk",
+            "selected_task_item",
+        }
+        snapshot = {k: state.get(k) for k in keys if state.get(k) is not None}
+        self._resumed_task_state = snapshot or None
 
     def save_state(self, halt_reason: str = "", **extra: object) -> None:
         """Save current orchestration state to state.json.
@@ -2237,16 +2307,12 @@ class Orchestrator:
         )
 
     def _current_task_acceptance_criteria(self) -> list[str]:
-        from millstone.artifact_providers.file import FileTasklistProvider
-
-        provider = self._outer_loop_manager.tasklist_provider
-        if not isinstance(provider, FileTasklistProvider):
-            task = self._get_selected_task_item()
-            if task is not None:
-                if task.acceptance_criteria:
-                    return task.acceptance_criteria
-                if task.criteria:
-                    return [task.criteria]
+        task = self._get_selected_task_item()
+        if task is not None:
+            if task.acceptance_criteria:
+                return task.acceptance_criteria
+            if task.criteria:
+                return [task.criteria]
         return self.extract_current_task_acceptance_criteria()
 
     def _tasklist_fix_targeted_update_instruction(self) -> str:
@@ -2356,6 +2422,31 @@ class Orchestrator:
             and getattr(provider, "_agent_callback", None) is None
         ):
             provider.set_agent_callback(lambda p, **k: self.run_agent(p, role="author", **k))
+
+    def _finalize_remote_task_completion(self) -> bool:
+        """Ensure MCP-backed tasks are marked done after a successful task run."""
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        if self.task or not self._current_task_id:
+            return True
+
+        provider = self._outer_loop_manager.tasklist_provider
+        if not isinstance(provider, MCPTasklistProvider):
+            return True
+
+        try:
+            self._ensure_tasklist_provider_author_callback()
+            provider.update_task_status(self._current_task_id, TaskStatus.done)
+            self.log("remote_task_marked_complete", task_id=self._current_task_id)
+            return True
+        except Exception as exc:
+            self.log(
+                "remote_task_completion_failed",
+                task_id=self._current_task_id,
+                error=str(exc),
+            )
+            progress(f"{self._task_prefix()} ERROR: failed to mark remote task complete: {exc}")
+            return False
 
     def extract_current_task_line(self) -> str:
         if self._selected_task_line:
@@ -2499,6 +2590,81 @@ class Orchestrator:
         )
         self.completed_task_count = self._tasklist_manager.completed_task_count
         return result
+
+    def _finalize_automatic_compaction(self) -> bool:
+        """Commit tracked tasklist compaction so it cannot spill into the next task."""
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+
+        provider = self._outer_loop_manager.tasklist_provider
+        if isinstance(provider, MCPTasklistProvider):
+            return True
+
+        status_lines = self._get_working_tree_status_lines()
+        if status_lines is None:
+            self.log("automatic_compaction_status_failed")
+            progress("Automatic compaction completed, but git status failed.")
+            return False
+        if not status_lines:
+            return True
+
+        tasklist_path = str(self.tasklist)
+        remaining_files = [line.split()[-1] for line in status_lines if line.strip()]
+        unexpected_files = [path for path in remaining_files if path != tasklist_path]
+        if unexpected_files:
+            self.log(
+                "automatic_compaction_unexpected_changes",
+                tasklist=tasklist_path,
+                files=",".join(unexpected_files),
+            )
+            progress(
+                "Automatic compaction left unexpected working-tree changes; halting before the next task."
+            )
+            return False
+
+        add_result = subprocess.run(
+            ["git", "add", "--", tasklist_path],
+            cwd=self.repo_dir,
+            capture_output=True,
+            text=True,
+        )
+        if add_result.returncode != 0:
+            self.log(
+                "automatic_compaction_git_add_failed",
+                tasklist=tasklist_path,
+                error=add_result.stderr.strip(),
+            )
+            progress("Automatic compaction could not stage the tasklist change.")
+            return False
+
+        commit_result = subprocess.run(
+            [
+                "git",
+                "commit",
+                "-m",
+                "Compact completed tasks in tasklist\n\nGenerated with millstone orchestrator",
+            ],
+            cwd=self.repo_dir,
+            capture_output=True,
+            text=True,
+        )
+        if commit_result.returncode != 0:
+            self.log(
+                "automatic_compaction_commit_failed",
+                tasklist=tasklist_path,
+                error=commit_result.stderr.strip(),
+            )
+            progress("Automatic compaction could not commit the tasklist change.")
+            return False
+
+        self._update_loc_baseline()
+        progress("Auto-committed tasklist compaction.")
+        return True
+
+    def _run_automatic_compaction(self) -> bool:
+        """Run compaction and finalize any tracked tasklist changes immediately."""
+        if not self.run_compaction():
+            return False
+        return self._finalize_automatic_compaction()
 
     def run_eval(self, coverage: bool = False, mode: str | None = None) -> dict:
         def _emit_eval_evidence(eval_result: dict) -> None:
@@ -3695,6 +3861,9 @@ class Orchestrator:
 
         # Determine task text and metadata
         _mcp_task_item: Any = None  # Set when MCP provider supplies the current task
+        restored_task_state = self._resumed_task_state if not self.task else None
+        self._resumed_task_state = None
+
         if self.task:
             task_display = self.task[:50] + "..." if len(self.task) > 50 else self.task
             self.current_task_title = task_display
@@ -3706,6 +3875,17 @@ class Orchestrator:
             self._selected_task_title = self.current_task_title
             self._selected_task_line = task_text
             self._selected_task_context_file = task_metadata.get("context")
+        elif restored_task_state:
+            self.current_task_title = restored_task_state.get("selected_task_title") or "task"
+            task_text = restored_task_state.get("current_task_text") or self.current_task_title
+            self.apply_risk_settings(restored_task_state.get("current_task_risk"))
+            self.current_task_group = restored_task_state.get("current_task_group")
+            self._selected_task_title = self.current_task_title
+            self._selected_task_line = restored_task_state.get("selected_task_line") or task_text
+            self._selected_task_context_file = restored_task_state.get("selected_task_context_file")
+            self._selected_task_item = self._deserialize_task_item(
+                restored_task_state.get("selected_task_item")
+            )
         else:
             # When the tasklist is MCP-backed, derive task title and ID from the
             # remote provider's cached task list instead of reading a local file
@@ -3749,7 +3929,9 @@ class Orchestrator:
         self._current_task_text = task_text
         # Prefer canonical task_id from metadata (stable, ontology-compliant identity).
         # When an MCP provider supplied the task, use its remote ID directly.
-        if _mcp_task_item is not None:
+        if restored_task_state and restored_task_state.get("current_task_id"):
+            self._current_task_id = restored_task_state["current_task_id"]
+        elif _mcp_task_item is not None:
             self._current_task_id = _mcp_task_item.task_id
         elif self.task:
             _task_meta = self._tasklist_manager._parse_task_metadata(task_text)
@@ -3764,7 +3946,8 @@ class Orchestrator:
                 re.sub(r"[^a-z0-9]+", "-", task_text.lower()).strip("-")[:30] or None
             )
 
-        self._selected_task_item = _mcp_task_item
+        if _mcp_task_item is not None:
+            self._selected_task_item = _mcp_task_item
         if not self.task and self._selected_task_item is None:
             with contextlib.suppress(Exception):
                 pending_provider_tasks = [
@@ -3900,14 +4083,13 @@ class Orchestrator:
             self.log("research_completed", task=task_text[:200], output_file=str(output_file))
             if not self.task:
                 self.mark_task_complete()
-                # Close remote task for MCP providers — mark_task_complete()
-                # only updates the local tasklist file, which is a no-op when
-                # the task lives on a remote backend (GitHub Issues, Linear, …).
-                from millstone.artifact_providers.mcp import MCPTasklistProvider
-
-                provider = self._outer_loop_manager.tasklist_provider
-                if isinstance(provider, MCPTasklistProvider) and self._current_task_id:
-                    provider.update_task_status(self._current_task_id, TaskStatus.done)
+                if not self._finalize_remote_task_completion():
+                    _worker_finish(
+                        "failed",
+                        review_summary=builder_output[:4000],
+                        error="remote_task_completion",
+                    )
+                    return False
             progress(f"{self._task_prefix()} Research completed -> {output_file}")
             _worker_finish("success", review_summary=builder_output[:4000])
             return True
@@ -4165,6 +4347,10 @@ class Orchestrator:
                 # Update baseline so next task measures LoC from this commit
                 self._update_loc_baseline()
 
+                if not self._finalize_remote_task_completion():
+                    loop_state["failure_reason"] = "remote_task_completion"
+                    return False
+
                 if self.eval_on_commit and not self._run_eval_on_commit(task_text=task_text):
                     loop_state["failure_reason"] = "eval_regression"
                     return False
@@ -4173,6 +4359,9 @@ class Orchestrator:
                 return True
 
             if self.delegate_commit():
+                if not self._finalize_remote_task_completion():
+                    loop_state["failure_reason"] = "remote_task_completion"
+                    return False
                 if self.eval_on_commit and not self._run_eval_on_commit(task_text=task_text):
                     loop_state["failure_reason"] = "eval_regression"
                     return False
@@ -4560,6 +4749,7 @@ class Orchestrator:
                     # Inner-loop resume (LoC/sensitive-file halt): user has
                     # already reviewed the diff, so skip mechanical checks.
                     self._skip_mechanical_checks = True
+                    self._restore_selected_task_state(state)
             else:
                 print("Warning: --continue specified but no saved state found.")
                 print("Running normally...")
@@ -4620,7 +4810,21 @@ class Orchestrator:
                         "Skipping startup tasklist compaction because the working tree has uncommitted changes."
                     )
                 else:
-                    self.run_compaction()
+                    if not self._run_automatic_compaction():
+                        self.log(
+                            "run_completed",
+                            result="HALTED",
+                            reason="startup_compaction_failed",
+                            tasks_completed="0",
+                        )
+                        self._print_run_summary(
+                            0,
+                            1,
+                            "startup_compaction_failed",
+                            run_start_time,
+                            remaining="unknown",
+                        )
+                        return 1
 
         # Capture baseline eval if eval_on_commit or eval_on_task is enabled
         # Note: skip_eval only affects eval_on_task gate, not eval_on_commit
@@ -4717,8 +4921,24 @@ class Orchestrator:
                     # motivation to reorganize and drop unchecked tasks.
                     if not self.task:
                         self.completed_task_count = self.count_completed_tasks()
-                        if self.should_compact():
-                            self.run_compaction()
+                        if self.should_compact() and not self._run_automatic_compaction():
+                            progress(
+                                f"=== HALTED after {tasks_completed} task(s) === automatic compaction failed"
+                            )
+                            self.log(
+                                "run_completed",
+                                result="HALTED",
+                                reason="inter_task_compaction_failed",
+                                tasks_completed=str(tasks_completed),
+                            )
+                            self._print_run_summary(
+                                tasks_completed,
+                                tasks_failed + 1,
+                                "inter_task_compaction_failed",
+                                run_start_time,
+                                remaining=self._remaining_count(task_num),
+                            )
+                            return 1
                 else:
                     tasks_failed += 1
                     # Stop on first failure

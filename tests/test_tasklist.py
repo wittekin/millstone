@@ -184,3 +184,61 @@ class TestAcceptanceCriteria:
         mgr = TasklistManager(repo_dir=temp_repo)
         result = mgr.extract_current_task_acceptance_criteria()
         assert result == []
+
+
+class TestSingleTaskCompletionValidation:
+    def test_allows_first_unchecked_to_move_into_completed_summary(self, temp_repo):
+        mgr = TasklistManager(repo_dir=temp_repo)
+        original = (
+            "# Tasklist\n\n"
+            "## Completed\n\n"
+            "Earlier work is summarized here.\n\n"
+            "## Remaining\n\n"
+            "- [ ] Task 1\n"
+            "- [ ] Task 2\n"
+        )
+        new = (
+            "# Tasklist\n\n"
+            "## Completed\n\n"
+            "Earlier work is summarized here. Task 1 is now complete.\n\n"
+            "## Remaining\n\n"
+            "- [ ] Task 2\n"
+        )
+
+        valid, reason = mgr.validate_single_task_completion(original, new)
+
+        assert valid is True
+        assert reason == ""
+
+    def test_rejects_task_removal_without_completed_summary(self, temp_repo):
+        mgr = TasklistManager(repo_dir=temp_repo)
+        original = "# Tasklist\n\n- [ ] Task 1\n- [ ] Task 2\n"
+        new = "# Tasklist\n\n- [ ] Task 2\n"
+
+        valid, reason = mgr.validate_single_task_completion(original, new)
+
+        assert valid is False
+        assert "Task count decreased" in reason
+
+    def test_rejects_removing_later_task_from_completed_summary_mode(self, temp_repo):
+        mgr = TasklistManager(repo_dir=temp_repo)
+        original = (
+            "# Tasklist\n\n"
+            "## Completed\n\n"
+            "Earlier work is summarized here.\n\n"
+            "## Remaining\n\n"
+            "- [ ] Task 1\n"
+            "- [ ] Task 2\n"
+        )
+        new = (
+            "# Tasklist\n\n"
+            "## Completed\n\n"
+            "Earlier work is summarized here. Task 2 is now complete.\n\n"
+            "## Remaining\n\n"
+            "- [ ] Task 1\n"
+        )
+
+        valid, reason = mgr.validate_single_task_completion(original, new)
+
+        assert valid is False
+        assert "Task count decreased" in reason

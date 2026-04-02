@@ -676,8 +676,12 @@ class FileTasklistProvider(TasklistProviderBase):
                 "`- [ ]` pending, `- [x]` complete. Select the FIRST unchecked task."
             ),
             "TASKLIST_COMPLETE_INSTRUCTIONS": (
-                f"Mark exactly this one task complete by changing its `- [ ]` to "
-                f"`- [x]` in `{self.path}` and stop. Do not modify any other tasks."
+                f"Mark exactly this one task complete in `{self.path}` and stop. "
+                "Normally, change its `- [ ]` to `- [x]`. "
+                "If the file has a `Completed` summary section instead of listing older "
+                "finished tasks individually, you may instead remove the selected task from "
+                "the pending list and update only that `Completed` summary. Do not modify "
+                "any other pending tasks."
             ),
             "TASKLIST_REWRITE_INSTRUCTIONS": (
                 f"Write the entire compacted content back to `{self.path}`, "

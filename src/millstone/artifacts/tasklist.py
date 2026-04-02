@@ -414,6 +414,10 @@ class TasklistManager:
             tasks.append((checked.lower() == "x", task_text.strip()))
         return tasks
 
+    def _has_completed_summary_section(self, content: str) -> bool:
+        """Return True when the tasklist already uses a compacted completed summary."""
+        return bool(re.search(r"^#{2,6}\s+Completed\b", content, re.MULTILINE | re.IGNORECASE))
+
     def validate_single_task_completion(
         self,
         original_content: str,
@@ -430,7 +434,25 @@ class TasklistManager:
         if not original_tasks or not new_tasks:
             return True, ""
 
+        first_unchecked = next(
+            (i for i, (checked, _) in enumerate(original_tasks) if not checked),
+            None,
+        )
+
         if len(new_tasks) < len(original_tasks):
+            if (
+                first_unchecked is not None
+                and len(new_tasks) == len(original_tasks) - 1
+                and (
+                    self._has_completed_summary_section(original_content)
+                    or self._has_completed_summary_section(new_content)
+                )
+            ):
+                expected_tasks = (
+                    original_tasks[:first_unchecked] + original_tasks[first_unchecked + 1 :]
+                )
+                if new_tasks == expected_tasks:
+                    return True, ""
             return (
                 False,
                 f"Task count decreased: {len(original_tasks)} -> {len(new_tasks)}. Deleting tasks is not allowed.",
@@ -457,10 +479,6 @@ class TasklistManager:
                 f"Multiple tasks were marked complete ({len(checkoffs)}).",
             )
 
-        first_unchecked = next(
-            (i for i, (checked, _) in enumerate(original_tasks) if not checked),
-            None,
-        )
         if first_unchecked is None:
             return False, "No unchecked tasks remained, but a task was marked complete."
 
