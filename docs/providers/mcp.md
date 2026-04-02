@@ -144,7 +144,9 @@ Any MCP server your agent supports works — the `mcp_server` value is passed th
 
 ## Effect policy
 
-All MCP operations are classified as `EffectClass.transactional` (C2). Under the default `DEV_IMPLEMENTATION` profile these are permitted. If you have a stricter policy configured (e.g. `C1_LOCAL_WRITE` only), MCP operations will raise `CapabilityViolation` — update `.millstone/policy.toml` to allow `C2_REMOTE_BOUNDED` effects.
+Millstone-classified MCP write operations are `EffectClass.transactional` (`C2_remote_bounded`). The default `dev_implementation` profile is `C1_local_write`, so direct provider writes that millstone issues itself are not permitted unless you configure a `C2_remote_bounded` profile with `transactional` effects allowlisted.
+
+In the default profile, prompt-driven MCP actions performed by the coding agent can still run because the agent is executing those tool calls from the rendered prompt, not through millstone's direct provider-effect path. Orchestrator-driven follow-up writes, such as explicit post-commit remote task completion, are skipped unless the active profile allows those transactional effects.
 
 ---
 

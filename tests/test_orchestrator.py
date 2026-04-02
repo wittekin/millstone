@@ -1944,7 +1944,23 @@ All done."""
                 stderr="",
             )
 
-            orch = Orchestrator(tasklist="docs/tasklist.md", research=True, cli="claude")
+            profile = Profile(
+                id="test_c2_transactional_research",
+                name="C2 Transactional Research Profile",
+                role_aliases={"builder": "author"},
+                capability_tier=CapabilityTier.C2_REMOTE_BOUNDED,
+                permitted_effect_classes=frozenset({EffectClass.transactional}),
+            )
+            registry = ProfileRegistry()
+            registry.register(profile)
+
+            with patch("millstone.runtime.orchestrator.ProfileRegistry", return_value=registry):
+                orch = Orchestrator(
+                    tasklist="docs/tasklist.md",
+                    research=True,
+                    cli="claude",
+                    profile=profile.id,
+                )
             try:
                 # Inject a mock MCP tasklist provider with a known remote task ID
                 mock_mcp = MagicMock(spec=MCPTasklistProvider)
@@ -1988,6 +2004,148 @@ All done."""
                 mock_mcp.update_task_status.assert_not_called()
             finally:
                 orch.cleanup()
+
+    def test_run_single_task_closes_mcp_task_on_success(self, temp_repo):
+        """Approved MCP-backed tasks are explicitly marked done after commit."""
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        profile = Profile(
+            id="test_c2_transactional",
+            name="C2 Transactional Profile",
+            role_aliases={"builder": "author"},
+            capability_tier=CapabilityTier.C2_REMOTE_BOUNDED,
+            permitted_effect_classes=frozenset({EffectClass.transactional}),
+        )
+        registry = ProfileRegistry()
+        registry.register(profile)
+
+        with patch("millstone.runtime.orchestrator.ProfileRegistry", return_value=registry):
+            orch = Orchestrator(tasklist="docs/tasklist.md", profile=profile.id, quiet=True)
+        try:
+            mock_mcp = MagicMock(spec=MCPTasklistProvider)
+            mock_mcp._agent_callback = None
+            task = TasklistItem(task_id="GH-42", title="Remote task", status=TaskStatus.todo)
+            mock_mcp.get_prompt_placeholders.return_value = {}
+            mock_mcp.list_tasks.return_value = [task]
+            mock_mcp.get_task.return_value = task
+            orch._outer_loop_manager.tasklist_provider = mock_mcp
+
+            def fake_run_agent(prompt, role="default", **kwargs):
+                if role == "author":
+                    (temp_repo / "impl.py").write_text("value = 1\n")
+                    return "Implemented remote task."
+                if role == "reviewer":
+                    return (
+                        '{"status":"APPROVED","review":"ok","summary":"ok",'
+                        '"findings":[],"findings_by_severity":{"critical":[],"high":[],'
+                        '"medium":[],"low":[],"nit":[]},"impossible_condition":null,'
+                        '"tasklist_fix_recommendation":null}'
+                    )
+                raise AssertionError(f"Unexpected role: {role}")
+
+            with (
+                patch.object(orch, "run_agent", side_effect=fake_run_agent),
+                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "delegate_commit", return_value=True),
+            ):
+                assert orch.run_single_task() is True
+
+            mock_mcp.update_task_status.assert_called_once_with("GH-42", TaskStatus.done)
+        finally:
+            orch.cleanup()
+
+    def test_run_single_task_fails_when_mcp_completion_update_fails(self, temp_repo):
+        """Remote completion failures are surfaced instead of silently ignored."""
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        profile = Profile(
+            id="test_c2_transactional_failure",
+            name="C2 Transactional Failure Profile",
+            role_aliases={"builder": "author"},
+            capability_tier=CapabilityTier.C2_REMOTE_BOUNDED,
+            permitted_effect_classes=frozenset({EffectClass.transactional}),
+        )
+        registry = ProfileRegistry()
+        registry.register(profile)
+
+        with patch("millstone.runtime.orchestrator.ProfileRegistry", return_value=registry):
+            orch = Orchestrator(tasklist="docs/tasklist.md", profile=profile.id, quiet=True)
+        try:
+            mock_mcp = MagicMock(spec=MCPTasklistProvider)
+            mock_mcp._agent_callback = None
+            task = TasklistItem(task_id="GH-42", title="Remote task", status=TaskStatus.todo)
+            mock_mcp.get_prompt_placeholders.return_value = {}
+            mock_mcp.list_tasks.return_value = [task]
+            mock_mcp.get_task.return_value = task
+            mock_mcp.update_task_status.side_effect = RuntimeError("remote outage")
+            orch._outer_loop_manager.tasklist_provider = mock_mcp
+
+            def fake_run_agent(prompt, role="default", **kwargs):
+                if role == "author":
+                    (temp_repo / "impl.py").write_text("value = 1\n")
+                    return "Implemented remote task."
+                if role == "reviewer":
+                    return (
+                        '{"status":"APPROVED","review":"ok","summary":"ok",'
+                        '"findings":[],"findings_by_severity":{"critical":[],"high":[],'
+                        '"medium":[],"low":[],"nit":[]},"impossible_condition":null,'
+                        '"tasklist_fix_recommendation":null}'
+                    )
+                raise AssertionError(f"Unexpected role: {role}")
+
+            with (
+                patch.object(orch, "run_agent", side_effect=fake_run_agent),
+                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "delegate_commit", return_value=True),
+            ):
+                assert orch.run_single_task() is False
+
+            mock_mcp.update_task_status.assert_called_once_with("GH-42", TaskStatus.done)
+        finally:
+            orch.cleanup()
+
+    def test_run_single_task_skips_explicit_mcp_close_when_profile_disallows_remote_effects(
+        self, temp_repo
+    ):
+        """Default C1 profiles leave MCP completion to the builder prompt path."""
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        orch = Orchestrator(tasklist="docs/tasklist.md", quiet=True)
+        try:
+            mock_mcp = MagicMock(spec=MCPTasklistProvider)
+            mock_mcp._agent_callback = None
+            task = TasklistItem(task_id="GH-42", title="Remote task", status=TaskStatus.todo)
+            mock_mcp.get_prompt_placeholders.return_value = {}
+            mock_mcp.list_tasks.return_value = [task]
+            mock_mcp.get_task.return_value = task
+            orch._outer_loop_manager.tasklist_provider = mock_mcp
+
+            def fake_run_agent(prompt, role="default", **kwargs):
+                if role == "author":
+                    (temp_repo / "impl.py").write_text("value = 1\n")
+                    return "Implemented remote task."
+                if role == "reviewer":
+                    return (
+                        '{"status":"APPROVED","review":"ok","summary":"ok",'
+                        '"findings":[],"findings_by_severity":{"critical":[],"high":[],'
+                        '"medium":[],"low":[],"nit":[]},"impossible_condition":null,'
+                        '"tasklist_fix_recommendation":null}'
+                    )
+                raise AssertionError(f"Unexpected role: {role}")
+
+            with (
+                patch.object(orch, "run_agent", side_effect=fake_run_agent),
+                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "delegate_commit", return_value=True),
+            ):
+                assert orch.run_single_task() is True
+
+            mock_mcp.update_task_status.assert_not_called()
+        finally:
+            orch.cleanup()
 
 
 class TestIsApproved:
@@ -3657,6 +3815,57 @@ compact_threshold = 50
         finally:
             orch.cleanup()
 
+    def test_finalize_automatic_compaction_commits_tracked_tasklist(self, temp_repo):
+        """Tracked tasklist compaction is committed immediately and updates baseline."""
+        tasklist_path = temp_repo / "docs" / "tasklist.md"
+        tasklist_path.parent.mkdir(parents=True, exist_ok=True)
+        tasklist_path.write_text("# Tasklist\n\n- [x] Done 1\n- [ ] Pending\n")
+        subprocess.run(
+            ["git", "add", "docs/tasklist.md"], cwd=temp_repo, check=True, capture_output=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add tracked tasklist"],
+            cwd=temp_repo,
+            check=True,
+            capture_output=True,
+        )
+
+        orch = Orchestrator(tasklist="docs/tasklist.md", quiet=True)
+        try:
+            orch._init_loc_baseline()
+            tasklist_path.write_text("# Tasklist\n\n## Completed\n\nDone 1.\n\n- [ ] Pending\n")
+
+            assert orch._finalize_automatic_compaction() is True
+
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=temp_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            assert status == ""
+
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=temp_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            assert orch.loc_baseline_ref == head
+
+            message = subprocess.run(
+                ["git", "log", "-1", "--pretty=%B"],
+                cwd=temp_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            assert "Compact completed tasks in tasklist" in message
+        finally:
+            orch.cleanup()
+
 
 class TestCompactionSanityCheck:
     """Tests for compaction sanity check functionality."""
@@ -4764,6 +4973,99 @@ class TestStatePersistence:
             assert state["cycle"] == 1
             assert state["halt_reason"] == "loc_threshold_exceeded:600"
             assert "timestamp" in state
+        finally:
+            orch.cleanup()
+
+    def test_save_state_persists_selected_task_identity(self, temp_repo):
+        """save_state captures selected-task identity for inner-loop resume."""
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        tasklist = temp_repo / "docs" / "tasklist.md"
+        tasklist.parent.mkdir(parents=True, exist_ok=True)
+        tasklist.write_text("# Tasklist\n\n- [ ] Task 1\n- [ ] Task 2\n")
+
+        orch = Orchestrator(tasklist="docs/tasklist.md")
+        try:
+            orch._selected_task_line = "- [ ] Task 1"
+            orch._selected_task_title = "Task 1"
+            orch._selected_task_context_file = ".millstone/context/task-1.md"
+            orch._current_task_id = "task-1"
+            orch._current_task_text = "Task 1\n  - Risk: low"
+            orch.current_task_group = "Core"
+            orch.current_task_risk = "low"
+            orch._selected_task_item = TasklistItem(
+                task_id="task-1",
+                title="Task 1",
+                status=TaskStatus.todo,
+                acceptance_criteria=["Criterion A"],
+                context=".millstone/context/task-1.md",
+            )
+
+            orch.save_state(halt_reason="policy:loc_threshold")
+
+            state = json.loads(orch._get_state_file_path().read_text())
+            assert state["selected_task_line"] == "- [ ] Task 1"
+            assert state["selected_task_title"] == "Task 1"
+            assert state["current_task_id"] == "task-1"
+            assert state["current_task_group"] == "Core"
+            assert state["current_task_risk"] == "low"
+            assert state["selected_task_item"]["acceptance_criteria"] == ["Criterion A"]
+        finally:
+            orch.cleanup()
+
+    def test_run_single_task_uses_resumed_selected_task_scope(self, temp_repo):
+        """run_single_task preserves the saved selected task on inner-loop resume."""
+        from millstone.artifacts.models import TaskStatus
+
+        tasklist = temp_repo / "docs" / "tasklist.md"
+        tasklist.parent.mkdir(parents=True, exist_ok=True)
+        tasklist.write_text("# Tasklist\n\n- [x] Task 1\n- [ ] Task 2\n")
+
+        orch = Orchestrator(tasklist="docs/tasklist.md", continue_run=True, quiet=True)
+        try:
+            orch._resumed_task_state = {
+                "selected_task_line": "- [ ] Task 1",
+                "selected_task_title": "Task 1",
+                "current_task_id": "task-1",
+                "current_task_text": "Task 1",
+                "selected_task_item": {
+                    "task_id": "task-1",
+                    "title": "Task 1",
+                    "status": TaskStatus.todo.value,
+                    "acceptance_criteria": ["Keep using Task 1"],
+                    "criteria": None,
+                    "design_ref": None,
+                    "opportunity_ref": None,
+                    "risk": None,
+                    "tests": None,
+                    "context": None,
+                    "raw": None,
+                },
+            }
+
+            def fake_run_agent(prompt, role="default", **kwargs):
+                if role == "author":
+                    assert "Task 1" in prompt
+                    assert "Task 2" not in prompt.split("## Selected Task")[-1]
+                    (temp_repo / "impl.py").write_text("value = 1\n")
+                    return "Implemented Task 1."
+                if role == "reviewer":
+                    return (
+                        '{"status":"APPROVED","review":"ok","summary":"ok",'
+                        '"findings":[],"findings_by_severity":{"critical":[],"high":[],'
+                        '"medium":[],"low":[],"nit":[]},"impossible_condition":null,'
+                        '"tasklist_fix_recommendation":null}'
+                    )
+                raise AssertionError(f"Unexpected role: {role}")
+
+            with (
+                patch.object(orch, "run_agent", side_effect=fake_run_agent),
+                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "delegate_commit", return_value=True),
+            ):
+                assert orch.run_single_task() is True
+                assert orch._current_task_id == "task-1"
+                assert orch.current_task_title == "Task 1"
         finally:
             orch.cleanup()
 
@@ -15098,6 +15400,48 @@ enforce_single_task = true
 
             log_content = orch.log_file.read_text()
             assert "tasklist_scope_violation" in log_content
+        finally:
+            orch.cleanup()
+
+    def test_mechanical_checks_allows_compacted_completed_summary_update(self, temp_repo):
+        """mechanical_checks accepts compacted tasklists that consume only the selected task."""
+        from millstone.runtime.orchestrator import POLICY_FILE_NAME, WORK_DIR_NAME
+
+        config_dir = temp_repo / WORK_DIR_NAME
+        config_dir.mkdir(exist_ok=True)
+        policy_file = config_dir / POLICY_FILE_NAME
+        policy_file.write_text("""
+[limits]
+max_loc_per_task = 10000
+
+[tasklist]
+enforce_single_task = true
+""")
+
+        orch = Orchestrator()
+        try:
+            tasklist_path = temp_repo / ".millstone" / "tasklist.md"
+            baseline = (
+                "# Tasklist\n\n"
+                "## Completed\n\n"
+                "Earlier work is summarized here.\n\n"
+                "## Remaining\n\n"
+                "- [ ] Task 1: Do something\n"
+                "- [ ] Task 2: Do another thing\n"
+            )
+            tasklist_path.write_text(baseline)
+            orch._tasklist_baseline = baseline
+
+            tasklist_path.write_text(
+                "# Tasklist\n\n"
+                "## Completed\n\n"
+                "Earlier work is summarized here. Task 1 is now complete.\n\n"
+                "## Remaining\n\n"
+                "- [ ] Task 2: Do another thing\n"
+            )
+
+            result = orch.mechanical_checks()
+            assert result is True
         finally:
             orch.cleanup()
 
