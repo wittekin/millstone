@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-04-02
+
+### Fixed
+- MCP-backed task completion finalization now only performs a direct provider-side status update when the active profile permits `C2_remote_bounded` transactional effects, avoiding false task failures under the default `C1_local_write` profile while preserving explicit remote close-out for C2-capable runs.
+- Corrected MCP provider documentation to reflect the actual default profile behavior for direct provider-side remote writes.
+
 ## [0.6.3] - 2026-04-02
 
 ### Fixed

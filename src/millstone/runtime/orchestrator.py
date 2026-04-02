@@ -55,7 +55,7 @@ from millstone.loops.inner import InnerLoopManager
 from millstone.loops.outer import OuterLoopManager
 from millstone.loops.registry_adapter import LoopRegistryAdapter
 from millstone.policy.capability import CapabilityPolicyGate, CapabilityTier
-from millstone.policy.effects import EffectIntent, EffectPolicyGate, NoOpEffectProvider
+from millstone.policy.effects import EffectClass, EffectIntent, EffectPolicyGate, NoOpEffectProvider
 from millstone.policy.schemas import (
     ReviewDecision,
     ReviewStatus,
@@ -2423,6 +2423,16 @@ class Orchestrator:
         ):
             provider.set_agent_callback(lambda p, **k: self.run_agent(p, role="author", **k))
 
+    def _can_finalize_remote_task_completion(self) -> tuple[bool, str | None]:
+        """Check whether the active profile may perform direct remote task completion."""
+        try:
+            self._capability_gate.assert_permitted(CapabilityTier.C2_REMOTE_BOUNDED)
+        except Exception as exc:
+            return False, str(exc)
+        if EffectClass.transactional not in self.profile.permitted_effect_classes:
+            return False, "Effect class transactional is not in permitted_effect_classes"
+        return True, None
+
     def _finalize_remote_task_completion(self) -> bool:
         """Ensure MCP-backed tasks are marked done after a successful task run."""
         from millstone.artifact_providers.mcp import MCPTasklistProvider
@@ -2432,6 +2442,15 @@ class Orchestrator:
 
         provider = self._outer_loop_manager.tasklist_provider
         if not isinstance(provider, MCPTasklistProvider):
+            return True
+
+        allowed, reason = self._can_finalize_remote_task_completion()
+        if not allowed:
+            self.log(
+                "remote_task_completion_skipped",
+                task_id=self._current_task_id,
+                reason=reason,
+            )
             return True
 
         try:

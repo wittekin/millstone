@@ -1944,7 +1944,23 @@ All done."""
                 stderr="",
             )
 
-            orch = Orchestrator(tasklist="docs/tasklist.md", research=True, cli="claude")
+            profile = Profile(
+                id="test_c2_transactional_research",
+                name="C2 Transactional Research Profile",
+                role_aliases={"builder": "author"},
+                capability_tier=CapabilityTier.C2_REMOTE_BOUNDED,
+                permitted_effect_classes=frozenset({EffectClass.transactional}),
+            )
+            registry = ProfileRegistry()
+            registry.register(profile)
+
+            with patch("millstone.runtime.orchestrator.ProfileRegistry", return_value=registry):
+                orch = Orchestrator(
+                    tasklist="docs/tasklist.md",
+                    research=True,
+                    cli="claude",
+                    profile=profile.id,
+                )
             try:
                 # Inject a mock MCP tasklist provider with a known remote task ID
                 mock_mcp = MagicMock(spec=MCPTasklistProvider)
@@ -1994,7 +2010,18 @@ All done."""
         from millstone.artifact_providers.mcp import MCPTasklistProvider
         from millstone.artifacts.models import TasklistItem, TaskStatus
 
-        orch = Orchestrator(tasklist="docs/tasklist.md", quiet=True)
+        profile = Profile(
+            id="test_c2_transactional",
+            name="C2 Transactional Profile",
+            role_aliases={"builder": "author"},
+            capability_tier=CapabilityTier.C2_REMOTE_BOUNDED,
+            permitted_effect_classes=frozenset({EffectClass.transactional}),
+        )
+        registry = ProfileRegistry()
+        registry.register(profile)
+
+        with patch("millstone.runtime.orchestrator.ProfileRegistry", return_value=registry):
+            orch = Orchestrator(tasklist="docs/tasklist.md", profile=profile.id, quiet=True)
         try:
             mock_mcp = MagicMock(spec=MCPTasklistProvider)
             mock_mcp._agent_callback = None
@@ -2033,7 +2060,18 @@ All done."""
         from millstone.artifact_providers.mcp import MCPTasklistProvider
         from millstone.artifacts.models import TasklistItem, TaskStatus
 
-        orch = Orchestrator(tasklist="docs/tasklist.md", quiet=True)
+        profile = Profile(
+            id="test_c2_transactional_failure",
+            name="C2 Transactional Failure Profile",
+            role_aliases={"builder": "author"},
+            capability_tier=CapabilityTier.C2_REMOTE_BOUNDED,
+            permitted_effect_classes=frozenset({EffectClass.transactional}),
+        )
+        registry = ProfileRegistry()
+        registry.register(profile)
+
+        with patch("millstone.runtime.orchestrator.ProfileRegistry", return_value=registry):
+            orch = Orchestrator(tasklist="docs/tasklist.md", profile=profile.id, quiet=True)
         try:
             mock_mcp = MagicMock(spec=MCPTasklistProvider)
             mock_mcp._agent_callback = None
@@ -2065,6 +2103,47 @@ All done."""
                 assert orch.run_single_task() is False
 
             mock_mcp.update_task_status.assert_called_once_with("GH-42", TaskStatus.done)
+        finally:
+            orch.cleanup()
+
+    def test_run_single_task_skips_explicit_mcp_close_when_profile_disallows_remote_effects(
+        self, temp_repo
+    ):
+        """Default C1 profiles leave MCP completion to the builder prompt path."""
+        from millstone.artifact_providers.mcp import MCPTasklistProvider
+        from millstone.artifacts.models import TasklistItem, TaskStatus
+
+        orch = Orchestrator(tasklist="docs/tasklist.md", quiet=True)
+        try:
+            mock_mcp = MagicMock(spec=MCPTasklistProvider)
+            mock_mcp._agent_callback = None
+            task = TasklistItem(task_id="GH-42", title="Remote task", status=TaskStatus.todo)
+            mock_mcp.get_prompt_placeholders.return_value = {}
+            mock_mcp.list_tasks.return_value = [task]
+            mock_mcp.get_task.return_value = task
+            orch._outer_loop_manager.tasklist_provider = mock_mcp
+
+            def fake_run_agent(prompt, role="default", **kwargs):
+                if role == "author":
+                    (temp_repo / "impl.py").write_text("value = 1\n")
+                    return "Implemented remote task."
+                if role == "reviewer":
+                    return (
+                        '{"status":"APPROVED","review":"ok","summary":"ok",'
+                        '"findings":[],"findings_by_severity":{"critical":[],"high":[],'
+                        '"medium":[],"low":[],"nit":[]},"impossible_condition":null,'
+                        '"tasklist_fix_recommendation":null}'
+                    )
+                raise AssertionError(f"Unexpected role: {role}")
+
+            with (
+                patch.object(orch, "run_agent", side_effect=fake_run_agent),
+                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "delegate_commit", return_value=True),
+            ):
+                assert orch.run_single_task() is True
+
+            mock_mcp.update_task_status.assert_not_called()
         finally:
             orch.cleanup()
 
