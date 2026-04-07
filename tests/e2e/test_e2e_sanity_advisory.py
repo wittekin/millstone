@@ -1,12 +1,13 @@
-"""E2E tests for advisory sanity check → reviewer/builder information flow.
+"""E2E tests for advisory flags → reviewer/builder information flow.
 
-These tests verify that sanity check flags propagate correctly through the
-orchestrator pipeline rather than halting the session:
+These tests verify that sanity check and dangerous pattern flags propagate
+correctly through the orchestrator pipeline rather than halting the session:
 
 1. Impl sanity flags arrive in the reviewer prompt as advisory context.
 2. Review sanity flags arrive in the builder feedback text.
-3. The full flow continues (no halt) when sanity checks flag concerns.
-4. Clean sanity checks produce no flag artifacts in prompts.
+3. Dangerous pattern flags (action=flag) arrive in the reviewer prompt.
+4. The full flow continues (no halt) when flags are present.
+5. Clean checks produce no flag artifacts in prompts.
 """
 
 from __future__ import annotations
@@ -230,3 +231,105 @@ class TestFullFlowContinuesWithFlags:
             assert not (orch.work_dir / "STOP.md").exists()
         finally:
             orch.cleanup()
+
+
+class TestDangerousFlagsReachReviewer:
+    """Dangerous pattern flags (action=flag) are injected into the reviewer prompt."""
+
+    def test_flagged_dangerous_pattern_appears_in_reviewer_prompt(
+        self, stub_cli: StubCli, temp_repo: Path
+    ) -> None:
+        """When a dangerous pattern with action=flag matches, the reviewer
+        prompt contains the flag in 'Automated Sanity Check Flags'."""
+        # Write policy with action=flag for DROP TABLE
+        policy_file = temp_repo / ".millstone" / "policy.toml"
+        policy_file.write_text(
+            "[limits]\nmax_loc_per_task = 10000\n\n"
+            '[dangerous]\naction = "flag"\n'
+            'patterns = ["DROP TABLE"]\n'
+        )
+
+        def _write_sql(repo: Path) -> None:
+            (repo / "migrate.sql").write_text("DROP TABLE old_users;\n")
+            subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=False)
+
+        stub_cli.add(role="author", output="Added migration.", side_effect=_write_sql)
+        stub_cli.add(role="sanity", output=_SANITY_OK_JSON)
+        stub_cli.add(role="reviewer", output=_APPROVED_JSON)
+        stub_cli.add(role="builder", output="Committed.", side_effect=_do_commit)
+
+        orch = Orchestrator(max_tasks=1)
+        try:
+            with stub_cli.patch(orch):
+                exit_code = orch.run()
+        finally:
+            orch.cleanup()
+
+        assert exit_code == 0
+
+        reviewer_calls = [c for c in stub_cli.calls if c.role == "reviewer"]
+        assert reviewer_calls
+        reviewer_prompt = reviewer_calls[0].prompt
+
+        assert "Automated Sanity Check Flags" in reviewer_prompt
+        assert "DROP TABLE" in reviewer_prompt
+
+    def test_blocked_dangerous_pattern_still_halts(
+        self, stub_cli: StubCli, temp_repo: Path
+    ) -> None:
+        """action=block dangerous patterns still halt — no regression."""
+        policy_file = temp_repo / ".millstone" / "policy.toml"
+        policy_file.write_text(
+            "[limits]\nmax_loc_per_task = 10000\n\n"
+            '[dangerous]\naction = "block"\n'
+            'patterns = ["DROP TABLE"]\n'
+        )
+
+        def _write_sql(repo: Path) -> None:
+            (repo / "migrate.sql").write_text("DROP TABLE old_users;\n")
+            subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=False)
+
+        stub_cli.add(role="author", output="Added migration.", side_effect=_write_sql)
+
+        orch = Orchestrator(max_tasks=1)
+        try:
+            with stub_cli.patch(orch):
+                exit_code = orch.run()
+        finally:
+            orch.cleanup()
+
+        # Should halt — mechanical check blocks
+        assert exit_code == 1
+
+    def test_per_pattern_flag_override_reaches_reviewer(
+        self, stub_cli: StubCli, temp_repo: Path
+    ) -> None:
+        """Per-pattern action=flag overrides the default block action."""
+        policy_file = temp_repo / ".millstone" / "policy.toml"
+        policy_file.write_text(
+            "[limits]\nmax_loc_per_task = 10000\n\n"
+            '[dangerous]\naction = "block"\n'
+            '[[dangerous.patterns]]\npattern = "DROP TABLE"\naction = "flag"\n'
+        )
+
+        def _write_sql(repo: Path) -> None:
+            (repo / "migrate.sql").write_text("DROP TABLE old_users;\n")
+            subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=False)
+
+        stub_cli.add(role="author", output="Added migration.", side_effect=_write_sql)
+        stub_cli.add(role="sanity", output=_SANITY_OK_JSON)
+        stub_cli.add(role="reviewer", output=_APPROVED_JSON)
+        stub_cli.add(role="builder", output="Committed.", side_effect=_do_commit)
+
+        orch = Orchestrator(max_tasks=1)
+        try:
+            with stub_cli.patch(orch):
+                exit_code = orch.run()
+        finally:
+            orch.cleanup()
+
+        assert exit_code == 0
+
+        reviewer_calls = [c for c in stub_cli.calls if c.role == "reviewer"]
+        assert reviewer_calls
+        assert "DROP TABLE" in reviewer_calls[0].prompt

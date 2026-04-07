@@ -7,7 +7,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from millstone.artifacts.tasklist import TasklistManager
-from millstone.config import WORK_DIR_NAME, resolve_loc_threshold
+from millstone.config import (
+    WORK_DIR_NAME,
+    normalize_dangerous_patterns,
+    resolve_dangerous_action,
+    resolve_loc_threshold,
+)
 from millstone.runtime.locks import AdvisoryLock
 
 
@@ -65,13 +70,15 @@ def run_safety_gates(
 
     # Dangerous patterns
     dangerous = policy.get("dangerous", {})
-    dangerous_patterns = dangerous.get("patterns", []) or []
-    should_block = dangerous.get("block", True)
-    if dangerous_patterns and should_block:
+    raw_patterns = dangerous.get("patterns", []) or []
+    default_action = resolve_dangerous_action(dangerous)
+    normalized = normalize_dangerous_patterns(raw_patterns, default_action)
+    block_patterns = [e for e in normalized if e["action"] == "block"]
+    if block_patterns:
         diff_content = git("diff", diff_range)
-        for pattern in dangerous_patterns:
-            if re.search(pattern, diff_content, re.IGNORECASE):
-                return False, f"dangerous_pattern:{pattern}"
+        for entry in block_patterns:
+            if re.search(entry["pattern"], diff_content, re.IGNORECASE):
+                return False, f"dangerous_pattern:{entry['pattern']}"
 
     return True, ""
 

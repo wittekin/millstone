@@ -4250,6 +4250,12 @@ class Orchestrator:
             sanity_flags = self.sanity_check_impl(
                 artifact.output, artifact.git_status, artifact.git_diff
             )
+            # Merge dangerous pattern flags (from mechanical checks) with sanity flags
+            dangerous_flags = self._inner_loop_manager.dangerous_flags
+            if dangerous_flags:
+                sanity_flags = (
+                    f"{sanity_flags}\n\n{dangerous_flags}" if sanity_flags else dangerous_flags
+                )
             artifact.sanity_flags = sanity_flags
 
             return True, None

@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-04-07
+
+### Added
+- Dangerous pattern policy is now configurable per-pattern. Each pattern can specify `action = "block"` (halt the run) or `action = "flag"` (pass to reviewer as advisory context). A default action can be set for all patterns, with per-pattern overrides.
+- Dangerous pattern flags (action=flag) are merged with sanity check flags and injected into the reviewer prompt.
+- Backward compatible: legacy `block = true/false` config maps to `action = "block"/"flag"`.
+
 ## [0.6.5] - 2026-04-06
 
 ### Changed

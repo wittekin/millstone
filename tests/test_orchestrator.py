@@ -15219,11 +15219,11 @@ block = true
         finally:
             orch.cleanup()
 
-    def test_mechanical_checks_dangerous_patterns_warns_only(self, temp_repo, capsys):
-        """mechanical_checks warns but doesn't block when block=false."""
+    def test_mechanical_checks_dangerous_patterns_flags_only(self, temp_repo, capsys):
+        """mechanical_checks flags but doesn't block when block=false (legacy) or action=flag."""
         from millstone.runtime.orchestrator import POLICY_FILE_NAME, WORK_DIR_NAME
 
-        # Create policy with block=false
+        # Create policy with block=false (legacy compat → action=flag)
         config_dir = temp_repo / WORK_DIR_NAME
         config_dir.mkdir(exist_ok=True)
         policy_file = config_dir / POLICY_FILE_NAME
@@ -15243,10 +15243,10 @@ block = false
             subprocess.run(["git", "add", "."], cwd=temp_repo, capture_output=True)
 
             result = orch.mechanical_checks()
-            assert result is True  # Should pass since block=false
+            assert result is True  # Should pass since block=false → action=flag
 
             captured = capsys.readouterr()
-            assert "WARN" in captured.out
+            assert "FLAG" in captured.out
             assert "DROP TABLE" in captured.out
         finally:
             orch.cleanup()
