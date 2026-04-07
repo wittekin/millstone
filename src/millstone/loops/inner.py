@@ -12,7 +12,11 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
-from millstone.config import resolve_loc_threshold
+from millstone.config import (
+    normalize_dangerous_patterns,
+    resolve_dangerous_action,
+    resolve_loc_threshold,
+)
 from millstone.policy.schemas import (
     ReviewDecision,
     parse_review_decision,
@@ -58,6 +62,7 @@ class InnerLoopManager:
         self.policy = policy or {}
         self.project_config = project_config or {}
         self.loop_sensitive_patterns = loop_sensitive_patterns
+        self.dangerous_flags: str | None = None
 
     def git(self, *args) -> str:
         """Run git command and return output.
@@ -258,6 +263,7 @@ class InnerLoopManager:
         # Use callback or fall back to internal git method
         git = git_callback if git_callback else self.git
         skip_consumed = False
+        self.dangerous_flags = None
 
         # Check for changes (staged or unstaged)
         status = git("status", "--porcelain").strip()
@@ -373,18 +379,22 @@ class InnerLoopManager:
                         )
 
         # Check for dangerous patterns in diff content
-        dangerous_patterns = self.policy.get("dangerous", {}).get("patterns", [])
-        should_block = self.policy.get("dangerous", {}).get("block", True)
-        if dangerous_patterns:
-            # Get the actual diff content to scan for dangerous patterns
+        dangerous_section = self.policy.get("dangerous", {})
+        raw_patterns = dangerous_section.get("patterns", [])
+        default_action = resolve_dangerous_action(dangerous_section)
+        normalized = normalize_dangerous_patterns(raw_patterns, default_action)
+        if normalized:
             diff_content = git("diff", baseline)
-            for pattern in dangerous_patterns:
+            flag_reasons: list[str] = []
+            for entry in normalized:
+                pattern = entry["pattern"]
+                action = entry["action"]
                 if re.search(pattern, diff_content, re.IGNORECASE):
                     rule = f"dangerous.patterns (matched '{pattern}')"
                     self._log_policy_violation(
                         "dangerous_pattern", f"Diff content matched {rule}", log_callback
                     )
-                    if should_block:
+                    if action == "block":
                         print(
                             f"BLOCKED: Dangerous pattern detected in changes (policy rule: {rule})."
                         )
@@ -397,10 +407,15 @@ class InnerLoopManager:
                             save_state_callback(f"policy:dangerous_pattern:{pattern}")
                         return False, skip_consumed
                     else:
-                        # Log but don't block if block is False
-                        print(
-                            f"WARN: Dangerous pattern '{pattern}' detected (blocking disabled by policy)"
+                        # action == "flag": collect for reviewer
+                        flag_reasons.append(
+                            f"Dangerous pattern '{pattern}' detected in diff (flagged for review)"
                         )
+                        print(
+                            f"FLAG: Dangerous pattern '{pattern}' detected — flagging for reviewer"
+                        )
+            if flag_reasons:
+                self.dangerous_flags = "\n".join(flag_reasons)
 
         enforce_single_task = self.policy.get("tasklist", {}).get("enforce_single_task", False)
         if enforce_single_task and tasklist_path and tasklist_baseline is not None:

@@ -264,6 +264,45 @@ def resolve_loc_threshold(*limits: int | None) -> int | None:
     return min(enabled_limits)
 
 
+def normalize_dangerous_patterns(
+    patterns: list[str | dict],
+    default_action: str = "block",
+) -> list[dict[str, str]]:
+    """Normalize mixed-format dangerous patterns to uniform dicts.
+
+    Each entry in *patterns* may be a plain string (inherits *default_action*)
+    or a dict ``{"pattern": "...", "action": "block"|"flag"}``.
+
+    Returns a list of ``{"pattern": str, "action": str}`` dicts.
+    """
+    result: list[dict[str, str]] = []
+    for entry in patterns:
+        if isinstance(entry, str):
+            result.append({"pattern": entry, "action": default_action})
+        elif isinstance(entry, dict):
+            result.append(
+                {
+                    "pattern": entry["pattern"],
+                    "action": entry.get("action", default_action),
+                }
+            )
+    return result
+
+
+def resolve_dangerous_action(dangerous_section: dict) -> str:
+    """Resolve the default action from a dangerous policy section.
+
+    Supports both the new ``action`` key and the legacy ``block`` boolean.
+    ``action`` takes precedence when both are present.
+    """
+    if "action" in dangerous_section:
+        return dangerous_section["action"]
+    # Legacy: block=true → "block", block=false → "flag"
+    if dangerous_section.get("block", True):
+        return "block"
+    return "flag"
+
+
 def load_config(repo_dir: Path | None = None) -> dict:
     """Load configuration from .millstone/config.toml if it exists.
 
