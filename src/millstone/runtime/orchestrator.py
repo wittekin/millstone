@@ -91,6 +91,7 @@ class BuilderArtifact:
     git_diff: str
     builder_committed: bool = False
     task_repair: TasklistItem | None = None
+    sanity_flags: str | None = None
 
 
 @dataclass
@@ -3630,6 +3631,7 @@ class Orchestrator:
         builder_output: str = "",
         git_diff: str | None = None,
         task_repair: TasklistItem | None = None,
+        sanity_flags: str | None = None,
     ) -> str:
         """Generate prompt for review."""
         prompt = self.load_prompt("review_prompt.md")
@@ -3654,6 +3656,19 @@ class Orchestrator:
         else:
             criteria_blurb = ""
         prompt = prompt.replace("{{ACCEPTANCE_CRITERIA}}", criteria_blurb)
+        # Inject sanity check flags if present
+        sanity_blurb = ""
+        if sanity_flags:
+            sanity_blurb = (
+                "\n\n---\n\n## Automated Sanity Check Flags\n\n"
+                "The automated pre-review sanity check flagged the following concerns. "
+                "Evaluate these flags as part of your review — they may be false positives:\n\n"
+                f"{sanity_flags}\n"
+            )
+        if "{{SANITY_FLAGS}}" in prompt:
+            prompt = prompt.replace("{{SANITY_FLAGS}}", sanity_blurb)
+        elif sanity_blurb:
+            prompt += sanity_blurb
         selected_scope = self._selected_task_scope_block()
         if selected_scope:
             prompt += "\n\n---\n\n## Review Scope\n\n"
@@ -3705,8 +3720,8 @@ class Orchestrator:
         task_description = self.task if self.task else self.extract_current_task_title()
         return self.load_prompt("research_prompt.md").replace("{{TASK}}", task_description)
 
-    def sanity_check_impl(self, agent_output: str, git_status: str, git_diff: str) -> bool:
-        # Delegates to InnerLoopManager
+    def sanity_check_impl(self, agent_output: str, git_status: str, git_diff: str) -> str | None:
+        # Delegates to InnerLoopManager.  Returns flag reason or None.
         return self._inner_loop_manager.sanity_check_impl(
             agent_output=agent_output,
             git_status=git_status,
@@ -3715,8 +3730,8 @@ class Orchestrator:
             run_agent_callback=self.run_agent,
         )
 
-    def sanity_check_review(self, review_output: str) -> bool:
-        # Delegates to InnerLoopManager
+    def sanity_check_review(self, review_output: str) -> str | None:
+        # Delegates to InnerLoopManager.  Returns flag reason or None.
         return self._inner_loop_manager.sanity_check_review(
             review_output=review_output,
             load_prompt_callback=self.load_prompt,
@@ -4232,8 +4247,10 @@ class Orchestrator:
                     note="after_empty_diff_retry",
                 )
 
-            if not self.sanity_check_impl(artifact.output, artifact.git_status, artifact.git_diff):
-                return False, "Sanity check failed"
+            sanity_flags = self.sanity_check_impl(
+                artifact.output, artifact.git_status, artifact.git_diff
+            )
+            artifact.sanity_flags = sanity_flags
 
             return True, None
 
@@ -4246,7 +4263,12 @@ class Orchestrator:
             reviewer_resume = self.reviewer_session_id
 
             review_output = self.run_agent(
-                self.get_review_prompt(artifact.output, artifact.git_diff, artifact.task_repair),
+                self.get_review_prompt(
+                    artifact.output,
+                    artifact.git_diff,
+                    artifact.task_repair,
+                    sanity_flags=artifact.sanity_flags,
+                ),
                 role="reviewer",
                 output_schema="review_decision",
                 resume=reviewer_resume,
@@ -4263,13 +4285,18 @@ class Orchestrator:
 
             # Only sanity check if we couldn't parse a valid verdict
             # This allows reviewers like Codex that output just JSON without markdown
+            review_sanity_flag: str | None = None
             if decision is None:
                 is_empty_fallback = (
                     "Reviewer returned empty response" in review_output
                     and "REQUEST_CHANGES" in review_output
                 )
-                if not is_empty_fallback and not self.sanity_check_review(review_output):
-                    raise Exception("Review sanity check failed")
+                if not is_empty_fallback:
+                    review_sanity_flag = self.sanity_check_review(review_output)
+                    if review_sanity_flag:
+                        print(f"WARN: Review sanity check flagged: {review_sanity_flag}")
+                        # Treat unparseable + flagged review as REQUEST_CHANGES
+                        approved = False
 
             # Update metrics and diff for false positive detection
             if decision:
@@ -4291,6 +4318,10 @@ class Orchestrator:
                 feedback_text = decision.review or decision.summary or feedback_text
                 if decision.status == ReviewStatus.TASK_IMPOSSIBLE:
                     feedback_text = self._task_impossible_feedback(decision)
+            if review_sanity_flag:
+                feedback_text = (
+                    f"[Review sanity check flagged: {review_sanity_flag}]\n\n" + feedback_text
+                )
 
             return BuilderVerdict(approved, decision, review_output, feedback_text)
 

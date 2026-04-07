@@ -13,6 +13,7 @@ Builder Output:
 Git Diff:
 {{GIT_DIFF}}
 </context>
+{{SANITY_FLAGS}}
 
 <process>
 1. Use the selected task scope provided later in this prompt as the authoritative scope.

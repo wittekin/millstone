@@ -647,8 +647,8 @@ class TestParallelOrchestratorPhase1:
                 return "ok"
 
             worker.run_agent = fake_run_agent
-            worker.sanity_check_impl = lambda *_a, **_k: True
-            worker.sanity_check_review = lambda *_a, **_k: True
+            worker.sanity_check_impl = lambda *_a, **_k: None
+            worker.sanity_check_review = lambda *_a, **_k: None
             try:
                 blocked["seen"] = worker.run_single_task() is False
             finally:

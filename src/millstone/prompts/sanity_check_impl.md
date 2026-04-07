@@ -3,13 +3,13 @@
 Check whether the author's work is reasonable enough to send to review.
 Do not do a full review.
 
-Halt only for serious problems:
+Flag only for serious problems:
 - incoherent or unrelated output
 - obvious failure loops or catastrophic errors
 - destructive or unsafe changes
 - no meaningful work when the task clearly required changes
 
-Do not halt for normal bugs, incompleteness, style issues, or tangential but relevant work.
+Do not flag for normal bugs, incompleteness, style issues, or tangential but relevant work.
 
 Author output:
 {{AGENT_OUTPUT}}
@@ -29,5 +29,5 @@ Return JSON only:
 or
 
 ```json
-{"status": "HALT", "reason": "why human intervention is required"}
+{"status": "HALT", "reason": "concise description of the concern for the reviewer"}
 ```

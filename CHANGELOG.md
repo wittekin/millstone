@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-04-06
+
+### Changed
+- Sanity checks are now advisory instead of blocking. Implementation sanity flags are injected into the reviewer prompt as context rather than halting the session. Review sanity flags for unparseable reviews are surfaced in builder feedback and treated as REQUEST_CHANGES.
+
 ## [0.6.4] - 2026-04-02
 
 ### Fixed

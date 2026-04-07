@@ -2046,7 +2046,7 @@ All done."""
 
             with (
                 patch.object(orch, "run_agent", side_effect=fake_run_agent),
-                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "sanity_check_impl", return_value=None),
                 patch.object(orch, "delegate_commit", return_value=True),
             ):
                 assert orch.run_single_task() is True
@@ -2097,7 +2097,7 @@ All done."""
 
             with (
                 patch.object(orch, "run_agent", side_effect=fake_run_agent),
-                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "sanity_check_impl", return_value=None),
                 patch.object(orch, "delegate_commit", return_value=True),
             ):
                 assert orch.run_single_task() is False
@@ -2138,7 +2138,7 @@ All done."""
 
             with (
                 patch.object(orch, "run_agent", side_effect=fake_run_agent),
-                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "sanity_check_impl", return_value=None),
                 patch.object(orch, "delegate_commit", return_value=True),
             ):
                 assert orch.run_single_task() is True
@@ -5060,7 +5060,7 @@ class TestStatePersistence:
 
             with (
                 patch.object(orch, "run_agent", side_effect=fake_run_agent),
-                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "sanity_check_impl", return_value=None),
                 patch.object(orch, "delegate_commit", return_value=True),
             ):
                 assert orch.run_single_task() is True
@@ -17739,7 +17739,7 @@ class TestPrintFailureSummary:
                 patch.object(orch, "run_agent", side_effect=fake_run_agent),
                 patch.object(orch, "_analyze_task_complexity", return_value={}),
                 patch.object(orch, "mechanical_checks", return_value=True),
-                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "sanity_check_impl", return_value=None),
                 patch.object(orch, "save_task_metrics") as save_metrics,
                 patch.object(orch, "delegate_commit") as delegate_commit,
             ):
@@ -17821,7 +17821,7 @@ class TestPrintFailureSummary:
                 patch.object(orch, "run_agent", side_effect=fake_run_agent),
                 patch.object(orch, "_analyze_task_complexity", return_value={}),
                 patch.object(orch, "mechanical_checks", return_value=True),
-                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "sanity_check_impl", return_value=None),
                 patch.object(orch, "delegate_commit", return_value=True) as delegate_commit,
             ):
                 result = orch.run_single_task()
@@ -17892,7 +17892,7 @@ class TestPrintFailureSummary:
                 patch.object(orch, "run_agent", side_effect=fake_run_agent),
                 patch.object(orch, "_analyze_task_complexity", return_value={}),
                 patch.object(orch, "mechanical_checks", return_value=True),
-                patch.object(orch, "sanity_check_impl", return_value=True),
+                patch.object(orch, "sanity_check_impl", return_value=None),
                 patch.object(orch, "delegate_commit", return_value=True) as delegate_commit,
                 patch.object(provider, "update_task", wraps=provider.update_task) as update_task,
             ):
@@ -18132,8 +18132,8 @@ class TestUncheckedTaskPreservation:
                 with (
                     patch.object(orch, "git") as mock_git,
                     patch.object(orch, "mechanical_checks", return_value=True),
-                    patch.object(orch, "sanity_check_impl", return_value=True),
-                    patch.object(orch, "sanity_check_review", return_value=True),
+                    patch.object(orch, "sanity_check_impl", return_value=None),
+                    patch.object(orch, "sanity_check_review", return_value=None),
                     patch.object(orch, "delegate_commit", return_value=True),
                 ):
 
