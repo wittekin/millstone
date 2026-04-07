@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-04-06
+
+### Changed
+- Sanity checks are now advisory instead of blocking. Implementation sanity flags are injected into the reviewer prompt as context rather than halting the session. Review sanity flags for unparseable reviews are surfaced in builder feedback and treated as REQUEST_CHANGES.
+
+## [0.6.4] - 2026-04-02
+
+### Fixed
+- MCP-backed task completion finalization now only performs a direct provider-side status update when the active profile permits `C2_remote_bounded` transactional effects, avoiding false task failures under the default `C1_local_write` profile while preserving explicit remote close-out for C2-capable runs.
+- Corrected MCP provider documentation to reflect the actual default profile behavior for direct provider-side remote writes.
+
+## [0.6.3] - 2026-04-02
+
+### Fixed
+- Single-task scope validation now accepts compacted tasklists that move the selected completed item into the `Completed` summary section, avoiding false scope violations after compaction.
+- Inner-loop `--continue` now preserves selected-task identity so resumed builder/reviewer work cannot drift to a different task after a mid-task halt.
+- Successful MCP-backed task runs now explicitly mark the selected remote task done after commit, instead of relying only on the builder prompt to do it.
+- Automatic compaction on tracked tasklists now finalizes its own tasklist rewrite immediately, preventing compaction-only changes from leaking into the next task's diff, review, or commit.
+
 ## [0.6.2] - 2026-03-31
 
 ### Fixed

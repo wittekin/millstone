@@ -104,11 +104,11 @@ class InnerLoopManager:
         git_diff: str,
         load_prompt_callback: Callable[[str], str],
         run_agent_callback: Callable[..., str],
-    ) -> bool:
+    ) -> str | None:
         """Sanity check implementation before review.
 
-        Uses structured output to get OK/HALT signal from the sanity check agent.
-        Falls back to file-based STOP.md detection for compatibility.
+        Uses structured output to get OK/FLAG signal from the sanity check agent.
+        Flags are passed to the reviewer as advisory context rather than halting.
 
         Args:
             agent_output: Output from the builder agent.
@@ -118,7 +118,7 @@ class InnerLoopManager:
             run_agent_callback: Callback to invoke the LLM agent.
 
         Returns:
-            True if sanity check passed, False if halted.
+            Flag reason string if concerns were raised, None if OK.
         """
         prompt = load_prompt_callback("sanity_check_impl.md")
         prompt = prompt.replace("{{ORCHESTRATOR_DIR}}", str(self.work_dir))
@@ -136,33 +136,31 @@ class InnerLoopManager:
         # Try structured parsing first
         result = parse_sanity_result(output)
         if result is not None and result.should_halt:
-            # Write STOP.md for consistency with existing mechanism
-            stop_file = self.work_dir / "STOP.md"
-            reason = result.reason or "Sanity check halted (no reason provided)"
-            stop_file.write_text(f"Implementation sanity check failed:\n\n{reason}\n")
+            flag = result.reason or "Sanity check flagged concerns (no detail provided)"
             print()
-            print("=== STOPPED ===")
-            print("Reason:")
-            print(reason)
-            return False
+            print("=== SANITY FLAG ===")
+            print("Flagged for reviewer:")
+            print(flag)
+            return flag
 
-        # Fallback: check for file-based signal (compatibility)
-        if self.check_stop():
-            return False
+        # Fallback: check for file-based signal (legacy/external tooling)
+        stop_flag = self._consume_stop_file()
+        if stop_flag is not None:
+            return stop_flag
 
         print("Implementation sanity check: OK")
-        return True
+        return None
 
     def sanity_check_review(
         self,
         review_output: str,
         load_prompt_callback: Callable[[str], str],
         run_agent_callback: Callable[..., str],
-    ) -> bool:
+    ) -> str | None:
         """Sanity check review before passing back to builder.
 
-        Uses structured output to get OK/HALT signal from the sanity check agent.
-        Falls back to file-based STOP.md detection for compatibility.
+        Uses structured output to get OK/FLAG signal from the sanity check agent.
+        Flags are logged as warnings rather than halting the session.
 
         Args:
             review_output: Output from the reviewer agent.
@@ -170,7 +168,7 @@ class InnerLoopManager:
             run_agent_callback: Callback to invoke the LLM agent.
 
         Returns:
-            True if sanity check passed, False if halted.
+            Flag reason string if concerns were raised, None if OK.
         """
         prompt = load_prompt_callback("sanity_check_review.md")
         prompt = prompt.replace("{{ORCHESTRATOR_DIR}}", str(self.work_dir))
@@ -186,22 +184,35 @@ class InnerLoopManager:
         # Try structured parsing first
         result = parse_sanity_result(output)
         if result is not None and result.should_halt:
-            # Write STOP.md for consistency with existing mechanism
-            stop_file = self.work_dir / "STOP.md"
-            reason = result.reason or "Sanity check halted (no reason provided)"
-            stop_file.write_text(f"Review sanity check failed:\n\n{reason}\n")
+            flag = result.reason or "Sanity check flagged concerns (no detail provided)"
             print()
-            print("=== STOPPED ===")
-            print("Reason:")
-            print(reason)
-            return False
+            print("=== SANITY FLAG (review) ===")
+            print("Warning:")
+            print(flag)
+            return flag
 
-        # Fallback: check for file-based signal (compatibility)
-        if self.check_stop():
-            return False
+        # Fallback: check for file-based signal (legacy/external tooling)
+        stop_flag = self._consume_stop_file()
+        if stop_flag is not None:
+            return stop_flag
 
         print("Review sanity check: OK")
-        return True
+        return None
+
+    def _consume_stop_file(self) -> str | None:
+        """Read and remove STOP.md if it exists.
+
+        Returns the file contents as a flag string, or None.
+        """
+        stop_file = self.work_dir / "STOP.md"
+        if stop_file.exists():
+            reason = stop_file.read_text()
+            stop_file.unlink()
+            print()
+            print("=== SANITY FLAG (from STOP.md) ===")
+            print(reason)
+            return reason
+        return None
 
     # =========================================================================
     # Mechanical checks

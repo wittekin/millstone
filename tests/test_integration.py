@@ -382,22 +382,22 @@ class TestFullFlow:
         finally:
             orch.cleanup()
 
-    def test_sanity_check_creates_stop_file(self, temp_repo):
+    def test_sanity_check_flags_passed_to_reviewer(self, temp_repo, capsys):
         """
-        Scenario: Sanity check agent detects gibberish and creates STOP.md.
-        Expected: Exit 1 immediately.
+        Scenario: Sanity check agent flags concerns about builder output.
+        Expected: Flags are injected into reviewer prompt as advisory context,
+                  session continues normally instead of halting.
         """
         orch = Orchestrator()
-
-        def create_stop(repo):
-            # Create STOP.md in orchestrator's work dir
-            stop_file = orch.work_dir / "STOP.md"
-            stop_file.write_text("Builder output appears to be gibberish")
 
         responses = (
             ResponseBuilder()
             .on_builder(make_file_change(), output="asdfghjkl gibberish ???")
-            .on_sanity_check(response="Creating STOP.md", side_effect=create_stop)
+            .on_sanity_check(
+                response='{"status": "HALT", "reason": "Builder output appears to be gibberish"}'
+            )
+            .on_reviewer(approve=True)
+            .on_commit(success=True)
             .build()
         )
 
@@ -405,8 +405,11 @@ class TestFullFlow:
             with patch("subprocess.run", side_effect=make_mock_runner(temp_repo, responses)):
                 exit_code = orch.run()
 
-            assert exit_code == 1
+            # Session continues to review instead of halting
+            assert exit_code == 0
             assert orch.cycle == 1
+            captured = capsys.readouterr()
+            assert "SANITY FLAG" in captured.out
         finally:
             orch.cleanup()
 
