@@ -32,8 +32,20 @@ from millstone.loops.inner import InnerLoopManager
 def inner_loop(tmp_path: Path) -> InnerLoopManager:
     work_dir = tmp_path / ".millstone"
     work_dir.mkdir()
-    # Initialize a git repo so git commands work
+    # Initialize a git repo so git commands work (configure user for CI)
     subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@test.com"],
+        cwd=tmp_path,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test"],
+        cwd=tmp_path,
+        capture_output=True,
+        check=True,
+    )
     subprocess.run(
         ["git", "commit", "--allow-empty", "-m", "init"],
         cwd=tmp_path,
