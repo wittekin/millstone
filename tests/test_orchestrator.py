@@ -494,26 +494,26 @@ class TestOuterLoopManagerMaxCyclesPlumbing:
 
 
 class TestCleanup:
-    """Tests for cleanup behavior."""
+    """Tests for cleanup behavior.
 
-    def test_cleanup_removes_work_dir_contents(self, temp_repo):
-        """Cleanup removes contents but keeps work directory and runs/."""
+    cleanup() only removes known transient files (STOP.md).
+    All other files and directories are preserved.
+    """
+
+    def test_cleanup_preserves_user_files(self, temp_repo):
+        """Cleanup preserves user-created files and directories."""
         orch = Orchestrator()
         work_dir = orch.work_dir
 
-        # Create some files in work dir
         (work_dir / "test_file.txt").write_text("test")
         (work_dir / "subdir").mkdir()
         (work_dir / "subdir" / "nested.txt").write_text("nested")
 
         orch.cleanup()
 
-        # Directory should still exist; runs/ and tasklist.md are preserved
         assert work_dir.exists()
-        remaining = sorted(p.name for p in work_dir.iterdir())
-        assert "runs" in remaining, f"'runs' missing from {remaining}"
-        assert "test_file.txt" not in remaining, "Ephemeral file should be removed"
-        assert "subdir" not in remaining, "Ephemeral subdir should be removed"
+        assert (work_dir / "test_file.txt").exists()
+        assert (work_dir / "subdir" / "nested.txt").exists()
 
     def test_cleanup_is_idempotent(self, temp_repo):
         """Cleanup can be called multiple times safely."""
@@ -532,8 +532,6 @@ class TestCleanup:
             (work_dir / "parallel" / "keep.txt").write_text("x")
             (work_dir / "locks" / "keep.txt").write_text("x")
             (work_dir / "worktrees" / "keep.txt").write_text("x")
-            (work_dir / "tmp").mkdir(exist_ok=True)
-            (work_dir / "tmp" / "delete.txt").write_text("y")
 
             orch.cleanup()
 
@@ -543,7 +541,6 @@ class TestCleanup:
             assert (work_dir / "parallel" / "keep.txt").exists()
             assert (work_dir / "locks" / "keep.txt").exists()
             assert (work_dir / "worktrees" / "keep.txt").exists()
-            assert not (work_dir / "tmp").exists()
         finally:
             orch.cleanup()
 
@@ -561,15 +558,14 @@ class TestCleanup:
         finally:
             orch.cleanup()
 
-    def test_cleanup_still_removes_other_dirs(self, temp_repo):
-        """cleanup() still removes non-whitelisted work_dir contents."""
+    def test_cleanup_removes_transient_stop_file(self, temp_repo):
+        """cleanup() removes STOP.md (transient halt signal)."""
         orch = Orchestrator()
         work_dir = orch.work_dir
         try:
-            (work_dir / "junk").mkdir(exist_ok=True)
-            (work_dir / "junk" / "a.txt").write_text("junk")
+            (work_dir / "STOP.md").write_text("halted")
             orch.cleanup()
-            assert not (work_dir / "junk").exists()
+            assert not (work_dir / "STOP.md").exists()
         finally:
             orch.cleanup()
 
@@ -13261,15 +13257,10 @@ class TestCostTracking:
             tasks_dir = orch.work_dir / "tasks"
             assert tasks_dir.exists()
 
-            # Create a dummy file that should be cleaned
-            (orch.work_dir / "dummy.txt").write_text("test")
-
             orch.cleanup()
 
             # tasks directory should still exist
             assert tasks_dir.exists()
-            # But dummy file should be gone
-            assert not (orch.work_dir / "dummy.txt").exists()
         finally:
             pass  # cleanup already called
 
