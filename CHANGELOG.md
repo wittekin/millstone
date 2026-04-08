@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-04-08
+
+### Fixed
+- `cleanup()` no longer deletes user-created files in `.millstone/`. Previously it removed everything except a hardcoded allowlist, silently destroying `policy.toml`, `project.toml`, and any user files. Now it only removes known transient files (`STOP.md`).
+
 ## [0.6.6] - 2026-04-07
 
 ### Added

@@ -1669,44 +1669,18 @@ class Orchestrator:
         print()
 
     def cleanup(self):
-        """Remove work directory contents (but keep the directory, runs/, evals/, and tasks/)."""
-        import shutil
+        """Remove known transient files from work directory.
 
-        persistent = {
-            # Runtime history
-            "runs",
-            "evals",
-            "tasks",
-            "cycles",
-            "parallel",
-            "locks",
-            "worktrees",
-            # User-written config — never delete
-            "config.toml",
-            # Artifact files/dirs that are local-only by default
-            "opportunities.md",
-            "designs",
-            # Pause/resume state
-            "state.json",
-            # Always preserve the default tasklist regardless of which tasklist this
-            # Orchestrator instance was configured with.  Tests that pass a custom
-            # tasklist path (e.g. "my/tasks.md") must not delete the real
-            # .millstone/tasklist.md that exists on disk.
-            Path(DEFAULT_CONFIG["tasklist"]).name,
+        Only removes files that millstone itself creates as transient artifacts.
+        User-created files (config, policy, notes, etc.) are never touched.
+        """
+        transient_files = {
+            "STOP.md",
         }
-        # Also preserve a non-default tasklist name when it lives inside work_dir
-        if Path(self.tasklist).parts[0] == WORK_DIR_NAME:
-            persistent.add(Path(self.tasklist).name)
-        # Preserve a configured roadmap when it lives inside work_dir.
-        if self.roadmap and Path(self.roadmap).parts[0] == WORK_DIR_NAME:
-            persistent.add(Path(self.roadmap).name)
         if self.work_dir.exists():
-            for item in self.work_dir.iterdir():
-                if item.name in persistent:
-                    continue
-                if item.is_dir():
-                    shutil.rmtree(item)
-                else:
+            for name in transient_files:
+                item = self.work_dir / name
+                if item.exists():
                     item.unlink()
 
     def _get_provider(self, role: str = "default") -> CLIProvider:
