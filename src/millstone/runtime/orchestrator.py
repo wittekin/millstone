@@ -377,6 +377,7 @@ class Orchestrator:
         cli_analyzer: str | None = None,
         cli_release_eng: str | None = None,
         cli_sre: str | None = None,
+        codex_yolo: bool = False,
         # Worktree/parallel execution (control plane)
         parallel_enabled: bool = False,
         parallel_concurrency: int = 1,
@@ -579,6 +580,7 @@ class Orchestrator:
         self._cli_analyzer = cli_analyzer or cli
         self._cli_release_eng = cli_release_eng or cli
         self._cli_sre = cli_sre or cli
+        self._codex_yolo = codex_yolo
         # Cache for instantiated providers (lazy-loaded)
         self._providers: dict[str, CLIProvider] = {}
 
@@ -1717,7 +1719,8 @@ class Orchestrator:
 
         # Return cached provider or create new one
         if cli_name not in self._providers:
-            self._providers[cli_name] = get_provider(cli_name)
+            provider_kwargs = {"yolo": self._codex_yolo} if cli_name == "codex" else {}
+            self._providers[cli_name] = get_provider(cli_name, **provider_kwargs)
         return self._providers[cli_name]
 
     def _is_run_claude_patched(self) -> bool:
@@ -5377,6 +5380,13 @@ Remote backlog scoping (Jira / Linear / GitHub):
         f"Available: {available_clis}.",
     )
     parser.add_argument(
+        "--codex-yolo",
+        action="store_true",
+        default=bool(config.get("codex_yolo", False)),
+        help="Pass --yolo to Codex CLI invocations. Opt-in only because it bypasses "
+        "Codex approval prompts and sandboxing.",
+    )
+    parser.add_argument(
         "--compact-threshold",
         type=int,
         default=config["compact_threshold"],
@@ -6003,6 +6013,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 cli_reviewer=args.cli_reviewer,
                 cli_sanity=args.cli_sanity,
                 cli_analyzer=args.cli_analyzer,
+                codex_yolo=args.codex_yolo,
                 log_verbosity=log_verbosity,
                 log_diff_mode=log_diff_mode,
                 verbose_header=verbose_header,
@@ -6026,6 +6037,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
                 cli=args.cli,
                 cli_analyzer=args.cli_analyzer,
                 cli_sanity=args.cli_sanity,
+                codex_yolo=args.codex_yolo,
                 log_verbosity=log_verbosity,
                 log_diff_mode=log_diff_mode,
                 verbose_header=verbose_header,
@@ -6146,6 +6158,7 @@ Remote backlog scoping (Jira / Linear / GitHub):
         cli_analyzer=args.cli_analyzer,
         cli_release_eng=args.cli_release_eng,
         cli_sre=args.cli_sre,
+        codex_yolo=args.codex_yolo,
         log_verbosity=log_verbosity,
         log_diff_mode=log_diff_mode,
         verbose_header=verbose_header,

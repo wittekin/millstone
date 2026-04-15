@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-04-14
+
+### Changed
+- Codex CLI provider no longer passes `--yolo` by default. Users can now opt in explicitly with `--codex-yolo` or `codex_yolo = true` in `.millstone/config.toml`, and that setting is forwarded through parallel/worktree workers.
+
 ## [0.6.7] - 2026-04-08
 
 ### Fixed

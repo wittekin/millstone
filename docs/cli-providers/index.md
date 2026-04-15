@@ -18,7 +18,6 @@ millstone delegates all agent work — building, reviewing, sanity-checking, ana
 Set the CLI used for all roles in `.millstone/config.toml`:
 
 ```toml
-[millstone]
 cli = "claude"   # default
 ```
 
@@ -33,7 +32,6 @@ millstone --cli codex
 Different roles can use different CLIs. This is useful when one provider is better suited for review than build, or when you want to cross-check with a different model vendor:
 
 ```toml
-[millstone]
 cli          = "claude"    # default for any role not explicitly set
 cli_builder  = "claude"    # implements tasks
 cli_reviewer = "codex"     # reviews the builder's changes

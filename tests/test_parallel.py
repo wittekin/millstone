@@ -769,6 +769,17 @@ class TestParallelOrchestratorPhase2:
         cmd = po._worker_command("task text", temp_repo / ".millstone" / "worktrees" / "task-t1")
         assert "--no-tasklist-edits" in cmd
 
+    def test_worker_command_forwards_codex_yolo(self, temp_repo):
+        orch = Orchestrator(
+            repo_dir=temp_repo,
+            parallel_enabled=True,
+            cli="codex",
+            codex_yolo=True,
+        )
+        po = ParallelOrchestrator(orch)
+        cmd = po._worker_command("task text", temp_repo / ".millstone" / "worktrees" / "task-t1")
+        assert "--codex-yolo" in cmd
+
     def test_concurrent_two_independent_tasks(self, temp_repo):
         base_branch = _git(temp_repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
         (temp_repo / "docs" / "tasklist.md").write_text(

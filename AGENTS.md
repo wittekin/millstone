@@ -156,6 +156,7 @@ Key config options:
 - `review_designs` - Auto-review designs before planning
 - `cli` - Default CLI tool (`claude`, `codex`, `gemini`, or `opencode`)
 - `cli_builder`, `cli_reviewer`, `cli_sanity`, `cli_analyzer`, `cli_release_eng`, `cli_sre` - Per-role CLI overrides
+- `codex_yolo` - Opt in to passing `--yolo` to the Codex CLI provider
 - `opportunity_provider`, `design_provider`, `tasklist_provider` - Artifact backend selection (file/MCP-style providers)
 - `parallel_*` keys - Worktree/parallel execution controls
 - `profile` - Active role/profile registry mapping for loop contracts

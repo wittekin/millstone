@@ -58,6 +58,16 @@ def test_on_eval_regression_config_from_toml(temp_repo):
     assert cfg["on_eval_regression"] == "ignore"
 
 
+def test_codex_yolo_config_from_toml(temp_repo):
+    """codex_yolo should load as a first-class config key."""
+    config_dir = temp_repo / ".millstone"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "config.toml").write_text("codex_yolo = true\n")
+
+    cfg = load_config(temp_repo)
+    assert cfg["codex_yolo"] is True
+
+
 # ---------------------------------------------------------------------------
 # tasklist_filter schema
 # ---------------------------------------------------------------------------
@@ -218,3 +228,8 @@ def test_help_list_form_examples_present():
 def test_help_shortcut_equivalence_annotation_present():
     """--help output documents that shortcut is equivalent to list form."""
     assert "equivalent to" in _help_output()
+
+
+def test_help_contains_codex_yolo_flag():
+    """--help output documents the Codex yolo opt-in flag."""
+    assert "--codex-yolo" in _help_output()

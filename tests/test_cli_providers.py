@@ -114,13 +114,19 @@ class TestCodexProvider:
         assert provider.version_command() == ["codex", "--version"]
 
     def test_build_command_basic(self):
-        """Basic command uses stdin sentinel and --yolo."""
+        """Basic command uses stdin sentinel without --yolo by default."""
         provider = CodexProvider()
         cmd = provider.build_command("fix the bug")
         assert cmd[0] == "codex"
         assert "exec" in cmd
         assert "-" in cmd
         assert "fix the bug" not in cmd
+        assert "--yolo" not in cmd
+
+    def test_build_command_with_yolo(self):
+        """CodexProvider can opt into --yolo explicitly."""
+        provider = CodexProvider(yolo=True)
+        cmd = provider.build_command("fix the bug")
         assert "--yolo" in cmd
 
     def test_build_command_with_resume(self):
@@ -169,6 +175,12 @@ class TestProviderRegistry:
         """get_provider('codex') returns CodexProvider."""
         provider = get_provider("codex")
         assert isinstance(provider, CodexProvider)
+
+    def test_get_provider_codex_with_kwargs(self):
+        """get_provider forwards kwargs to provider constructors."""
+        provider = get_provider("codex", yolo=True)
+        assert isinstance(provider, CodexProvider)
+        assert provider.yolo is True
 
     def test_get_provider_unknown_raises(self):
         """get_provider with unknown name raises ValueError."""
@@ -759,6 +771,20 @@ class TestOrchestratorCLIIntegration:
                 builder_provider = orch._get_provider("builder")
                 assert isinstance(default_provider, ClaudeProvider)
                 assert isinstance(builder_provider, CodexProvider)
+            finally:
+                orch.cleanup()
+
+    def test_orchestrator_passes_codex_yolo_to_provider(self):
+        """_get_provider wires codex_yolo into the Codex provider."""
+        from millstone.runtime.orchestrator import Orchestrator
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            orch = Orchestrator(task="test", cli="codex", codex_yolo=True)
+            try:
+                provider = orch._get_provider("builder")
+                assert isinstance(provider, CodexProvider)
+                assert provider.yolo is True
             finally:
                 orch.cleanup()
 
