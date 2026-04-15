@@ -317,6 +317,24 @@ class TestStructuredOutputSchema:
         )
         assert "--output-schema" not in cmd
 
+    def test_codex_resume_with_output_schema_keeps_flags_before_prompt(self, tmp_path):
+        """Codex resume keeps --output-schema before the positional follow-up prompt."""
+        provider = CodexProvider()
+        work_dir = tmp_path / ".millstone"
+        work_dir.mkdir()
+
+        cmd = provider.build_command(
+            "follow-up prompt",
+            resume="session-123",
+            output_schema="review_decision",
+            schema_work_dir=str(work_dir),
+        )
+
+        assert cmd[:4] == ["codex", "exec", "resume", "session-123"]
+        assert "--output-schema" in cmd
+        assert cmd[-1] == "follow-up prompt"
+        assert cmd.index("--output-schema") < cmd.index("follow-up prompt")
+
     def test_claude_output_schema_no_work_dir_needed(self):
         """ClaudeProvider works without schema_work_dir (uses inline JSON)."""
         provider = ClaudeProvider()
@@ -690,6 +708,27 @@ class TestOrchestratorStructuredOutput:
                 agent_call = [c for c in calls if c[0][0][0] == "claude"][-1]
                 cmd = agent_call[0][0]
                 assert "--json-schema" in cmd
+            finally:
+                orch.cleanup()
+
+    def test_run_agent_sanity_with_codex_uses_exec_output_schema(self):
+        """Sanity runs routed to Codex keep --output-schema on `codex exec`."""
+        from millstone.runtime.orchestrator import Orchestrator
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout='{"status": "OK"}', stderr="")
+            orch = Orchestrator(task="test", cli="claude", cli_sanity="codex")
+            try:
+                orch.run_agent(
+                    "check this",
+                    role="sanity",
+                    output_schema="sanity_check",
+                )
+                calls = [c for c in mock_run.call_args_list if c[0][0][0] == "codex"]
+                assert calls, "expected a codex subprocess call"
+                cmd = calls[-1][0][0]
+                assert cmd[:3] == ["codex", "exec", "-"]
+                assert "--output-schema" in cmd
             finally:
                 orch.cleanup()
 

@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.6.9] - 2026-04-14
+
+### Fixed
+- Codex structured-output resume commands now keep `--output-schema` ahead of the positional follow-up prompt, preventing Codex from misparsing schema-backed reviewer and sanity runs on resumed sessions.
+- Added regression coverage to lock down Codex structured-output command shapes for both resumed sessions and sanity-role executions.
+
 ## [0.6.8] - 2026-04-14
 
 ### Changed

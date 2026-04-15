@@ -161,9 +161,6 @@ class CodexProvider(CLIProvider):
         if resume:
             # Resume an existing session
             cmd = ["codex", "exec", "resume", resume]
-            if prompt:
-                # Follow-up prompts are short enough to be safe as positional args.
-                cmd.append(prompt)
         else:
             # New session — use '-' so codex reads the prompt from stdin.
             cmd = ["codex", "exec", "-"]
@@ -178,6 +175,10 @@ class CodexProvider(CLIProvider):
 
             schema_path = get_schema_path(output_schema, schema_work_dir)
             cmd.extend(["--output-schema", schema_path])
+
+        if resume and prompt:
+            # Keep positional follow-up prompts last so codex still parses flags.
+            cmd.append(prompt)
 
         return cmd
 
