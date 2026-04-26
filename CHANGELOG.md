@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.6.11] - 2026-04-26
+
+### Fixed
+- Non-MCP remote tasklist providers (notably the new `beads` backend, but also any future provider that is neither file- nor MCP-backed) are no longer silently routed through the local-file code path. Three orchestrator branches that special-cased `MCPTasklistProvider` now invert the dispatch — `FileTasklistProvider` is the only special case, and every other provider is routed to its own methods:
+  - `has_remaining_tasks()` no longer reports "NO MORE TASKS" when a remote backend has open work (`bd ready` showed open tasks while millstone exited with 0 tasks executed).
+  - `preflight_checks()` no longer requires a local `.millstone/tasklist.md` stub for remote backends — beads/jira/etc. source tasks from their backend.
+  - Task selection now prefers `provider.list_ready_tasks()` for providers that implement `ReadyAwareTasklistProvider` (beads), so the orchestrator can no longer pick a blocked task and ship it to the builder. Falls back to status-filtered `list_tasks()` for providers without ready-aware capability.
+- `BeadsTasklistProvider` / `BeadsOpportunityProvider` docstring config example now shows the correct flat top-level TOML keys instead of an erroneous `[millstone]` table — `load_config()` reads from the top level only, so the previous example was silently ignored.
+
 ## [0.6.10] - 2026-04-25
 
 ### Added
