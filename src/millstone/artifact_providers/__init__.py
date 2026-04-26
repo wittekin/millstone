@@ -6,8 +6,10 @@ from millstone.artifact_providers.base import (
     TasklistProviderBase,
 )
 from millstone.artifact_providers.protocols import (
+    DependencyLinker,
     DesignProvider,
     OpportunityProvider,
+    ReadyAwareTasklistProvider,
     TasklistProvider,
 )
 from millstone.artifact_providers.registry import (
@@ -26,10 +28,12 @@ from millstone.artifact_providers.registry import (
 )
 
 __all__ = [
+    "DependencyLinker",
     "DesignProvider",
     "DesignProviderBase",
     "OpportunityProvider",
     "OpportunityProviderBase",
+    "ReadyAwareTasklistProvider",
     "TasklistProvider",
     "TasklistProviderBase",
     "get_design_provider",
