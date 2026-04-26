@@ -224,7 +224,7 @@ commit_designs = true        # stores at designs/
 commit_opportunities = true  # stores at opportunities.md
 ```
 
-For full multi-maintainer collaboration, use an external artifact provider (Jira, Linear, or GitHub Issues) instead of file-backed defaults.
+For full multi-maintainer collaboration, use an external artifact provider (Jira, Linear, GitHub Issues, or [beads](https://github.com/gastownhall/beads)) instead of file-backed defaults.
 
 ### Tasklist filter contract
 

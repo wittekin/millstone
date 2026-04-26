@@ -114,13 +114,19 @@ class TestCodexProvider:
         assert provider.version_command() == ["codex", "--version"]
 
     def test_build_command_basic(self):
-        """Basic command uses stdin sentinel and --yolo."""
+        """Basic command uses stdin sentinel without --yolo by default."""
         provider = CodexProvider()
         cmd = provider.build_command("fix the bug")
         assert cmd[0] == "codex"
         assert "exec" in cmd
         assert "-" in cmd
         assert "fix the bug" not in cmd
+        assert "--yolo" not in cmd
+
+    def test_build_command_with_yolo(self):
+        """CodexProvider can opt into --yolo explicitly."""
+        provider = CodexProvider(yolo=True)
+        cmd = provider.build_command("fix the bug")
         assert "--yolo" in cmd
 
     def test_build_command_with_resume(self):
@@ -169,6 +175,12 @@ class TestProviderRegistry:
         """get_provider('codex') returns CodexProvider."""
         provider = get_provider("codex")
         assert isinstance(provider, CodexProvider)
+
+    def test_get_provider_codex_with_kwargs(self):
+        """get_provider forwards kwargs to provider constructors."""
+        provider = get_provider("codex", yolo=True)
+        assert isinstance(provider, CodexProvider)
+        assert provider.yolo is True
 
     def test_get_provider_unknown_raises(self):
         """get_provider with unknown name raises ValueError."""
@@ -304,6 +316,24 @@ class TestStructuredOutputSchema:
             # No schema_work_dir
         )
         assert "--output-schema" not in cmd
+
+    def test_codex_resume_with_output_schema_keeps_flags_before_prompt(self, tmp_path):
+        """Codex resume keeps --output-schema before the positional follow-up prompt."""
+        provider = CodexProvider()
+        work_dir = tmp_path / ".millstone"
+        work_dir.mkdir()
+
+        cmd = provider.build_command(
+            "follow-up prompt",
+            resume="session-123",
+            output_schema="review_decision",
+            schema_work_dir=str(work_dir),
+        )
+
+        assert cmd[:4] == ["codex", "exec", "resume", "session-123"]
+        assert "--output-schema" in cmd
+        assert cmd[-1] == "follow-up prompt"
+        assert cmd.index("--output-schema") < cmd.index("follow-up prompt")
 
     def test_claude_output_schema_no_work_dir_needed(self):
         """ClaudeProvider works without schema_work_dir (uses inline JSON)."""
@@ -681,6 +711,27 @@ class TestOrchestratorStructuredOutput:
             finally:
                 orch.cleanup()
 
+    def test_run_agent_sanity_with_codex_uses_exec_output_schema(self):
+        """Sanity runs routed to Codex keep --output-schema on `codex exec`."""
+        from millstone.runtime.orchestrator import Orchestrator
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout='{"status": "OK"}', stderr="")
+            orch = Orchestrator(task="test", cli="claude", cli_sanity="codex")
+            try:
+                orch.run_agent(
+                    "check this",
+                    role="sanity",
+                    output_schema="sanity_check",
+                )
+                calls = [c for c in mock_run.call_args_list if c[0][0][0] == "codex"]
+                assert calls, "expected a codex subprocess call"
+                cmd = calls[-1][0][0]
+                assert cmd[:3] == ["codex", "exec", "-"]
+                assert "--output-schema" in cmd
+            finally:
+                orch.cleanup()
+
 
 class TestOrchestratorCLIIntegration:
     """Tests for Orchestrator CLI provider integration."""
@@ -759,6 +810,20 @@ class TestOrchestratorCLIIntegration:
                 builder_provider = orch._get_provider("builder")
                 assert isinstance(default_provider, ClaudeProvider)
                 assert isinstance(builder_provider, CodexProvider)
+            finally:
+                orch.cleanup()
+
+    def test_orchestrator_passes_codex_yolo_to_provider(self):
+        """_get_provider wires codex_yolo into the Codex provider."""
+        from millstone.runtime.orchestrator import Orchestrator
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            orch = Orchestrator(task="test", cli="codex", codex_yolo=True)
+            try:
+                provider = orch._get_provider("builder")
+                assert isinstance(provider, CodexProvider)
+                assert provider.yolo is True
             finally:
                 orch.cleanup()
 

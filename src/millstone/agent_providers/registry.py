@@ -16,12 +16,12 @@ PROVIDERS: dict[str, type[CLIProvider]] = {
 }
 
 
-def get_provider(name: str) -> CLIProvider:
+def get_provider(name: str, **kwargs) -> CLIProvider:
     """Get a CLI provider by name."""
     if name not in PROVIDERS:
         available = ", ".join(PROVIDERS.keys())
         raise ValueError(f"Unknown CLI provider: {name}. Available: {available}")
-    return PROVIDERS[name]()
+    return PROVIDERS[name](**kwargs)
 
 
 def list_providers() -> list[str]:

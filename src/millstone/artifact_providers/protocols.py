@@ -11,6 +11,7 @@ contracts in ``millstone.artifact_providers.base``.
 from typing import Protocol, runtime_checkable
 
 from millstone.artifacts.models import (
+    DependencyKind,
     Design,
     DesignStatus,
     Opportunity,
@@ -48,3 +49,28 @@ class TasklistProvider(Protocol):
     def get_snapshot(self) -> str: ...
     def restore_snapshot(self, content: str) -> None: ...
     def get_prompt_placeholders(self) -> dict[str, str]: ...
+
+
+@runtime_checkable
+class ReadyAwareTasklistProvider(Protocol):
+    """Optional capability: provider can return only unblocked / ready-to-work tasks.
+
+    Backends that natively model dependencies (e.g. beads) can answer this
+    cheaply. Callers should use ``isinstance(provider, ReadyAwareTasklistProvider)``
+    to feature-detect; for providers that do not implement it, fall back to
+    ``list_tasks()``.
+    """
+
+    def list_ready_tasks(self) -> list[TasklistItem]: ...
+
+
+@runtime_checkable
+class DependencyLinker(Protocol):
+    """Optional capability: provider can record typed links between two artifact ids.
+
+    Implemented by providers whose backend stores a dependency graph (e.g. beads
+    via ``bd dep add``). The semantics of ``from_id`` / ``to_id`` follow the
+    given ``DependencyKind`` (e.g. for ``blocks``, ``from_id`` blocks ``to_id``).
+    """
+
+    def link(self, from_id: str, to_id: str, kind: DependencyKind) -> None: ...

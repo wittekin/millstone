@@ -40,6 +40,19 @@ class TaskStatus(str, Enum):
     blocked = "blocked"
 
 
+class DependencyKind(str, Enum):
+    """Typed link between two artifact ids, for providers that support them.
+
+    Values match the canonical names used by the beads CLI (`bd dep add ... --type`).
+    Providers without dependency support simply do not implement DependencyLinker.
+    """
+
+    blocks = "blocks"
+    related = "related"
+    parent_child = "parent-child"
+    discovered_from = "discovered-from"
+
+
 @dataclass
 class Opportunity:
     opportunity_id: str  # canonical identity (explicit ID field, else title slug)

@@ -167,6 +167,7 @@ DEFAULT_CONFIG = {
     "cli_analyzer": None,  # CLI for complexity analysis role
     "cli_release_eng": None,  # CLI for release engineering role
     "cli_sre": None,  # CLI for site reliability engineering role
+    "codex_yolo": False,  # Opt into codex --yolo (approval/sandbox bypass)
     # Session mode: how sessions persist across tasks
     # "new_each_task" - Fresh session for each task (default, safest)
     # "continue_within_run" - Preserve session for all tasks in single invocation

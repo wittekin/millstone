@@ -44,6 +44,7 @@ Credentials are managed entirely by the agent's MCP configuration — never stor
 | Backend | Description | Guide |
 |---------|-------------|-------|
 | `mcp` | Agent MCP tools for all reads and writes | [MCP](mcp.md) |
+| `beads` | Direct subprocess to the [beads](https://github.com/gastownhall/beads) `bd` CLI; native dependency graph + ready-task discovery | [Beads](beads.md) |
 | `file` | Local markdown files | — |
 
 ### Design

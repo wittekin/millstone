@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.6.10] - 2026-04-25
+
+### Added
+- New `beads` artifact provider backed by the [beads](https://github.com/gastownhall/beads) graph issue tracker. Implements both `TasklistProvider` and `OpportunityProvider` via direct subprocess calls to the `bd` CLI — no LLM/MCP round-trip required. Configure via `tasklist_provider = "beads"` / `opportunity_provider = "beads"` in `.millstone/config.toml`. Supports label-based scoping (default `millstone-task` / `millstone-opportunity`) so tasks and opportunities coexist in one beads repo.
+- Tasks appended through the beads provider with an `opportunity_ref` set are automatically linked to their source opportunity via `bd dep add ... --type discovered-from`, preserving the build-from-opportunity relationship in the beads dependency graph.
+- New optional capability protocols `ReadyAwareTasklistProvider` (exposes `list_ready_tasks()` for backends with native dependency tracking) and `DependencyLinker` (exposes typed `link(from_id, to_id, kind)` for cross-artifact links). Both are `@runtime_checkable` and consumed via feature detection — providers without the capability remain fully supported through the base contracts.
+- New `DependencyKind` enum (`blocks`, `related`, `parent-child`, `discovered-from`) with values matching the beads CLI dependency-type vocabulary.
+
+## [0.6.9] - 2026-04-14
+
+### Fixed
+- Codex structured-output resume commands now keep `--output-schema` ahead of the positional follow-up prompt, preventing Codex from misparsing schema-backed reviewer and sanity runs on resumed sessions.
+- Added regression coverage to lock down Codex structured-output command shapes for both resumed sessions and sanity-role executions.
+
+## [0.6.8] - 2026-04-14
+
+### Changed
+- Codex CLI provider no longer passes `--yolo` by default. Users can now opt in explicitly with `--codex-yolo` or `codex_yolo = true` in `.millstone/config.toml`, and that setting is forwarded through parallel/worktree workers.
+
 ## [0.6.7] - 2026-04-08
 
 ### Fixed

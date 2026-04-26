@@ -115,6 +115,9 @@ class ClaudeProvider(CLIProvider):
 class CodexProvider(CLIProvider):
     """Provider for Codex CLI (OpenAI)."""
 
+    def __init__(self, *, yolo: bool = False):
+        self.yolo = yolo
+
     @property
     def name(self) -> str:
         return "Codex CLI"
@@ -142,7 +145,7 @@ class CodexProvider(CLIProvider):
         """Build Codex CLI command.
 
         Codex uses:
-            codex exec - --yolo [--model <model>] [--output-schema <path>]
+            codex exec - [--yolo] [--model <model>] [--output-schema <path>]
 
         The prompt is always passed via stdin (using the '-' sentinel) to avoid
         hitting the OS execve argument-size limit (E2BIG / errno 7) on large
@@ -153,17 +156,16 @@ class CodexProvider(CLIProvider):
             codex exec resume <session_id> [<follow_up_prompt>]
 
         Note: --yolo bypasses approvals and sandboxing (equivalent to claude's
-        --dangerously-skip-permissions).
+        --dangerously-skip-permissions) and is opt-in via millstone config/CLI.
         """
         if resume:
             # Resume an existing session
             cmd = ["codex", "exec", "resume", resume]
-            if prompt:
-                # Follow-up prompts are short enough to be safe as positional args.
-                cmd.append(prompt)
         else:
             # New session — use '-' so codex reads the prompt from stdin.
-            cmd = ["codex", "exec", "-", "--yolo"]
+            cmd = ["codex", "exec", "-"]
+            if self.yolo:
+                cmd.append("--yolo")
 
         if model:
             cmd.extend(["--model", model])
@@ -173,6 +175,10 @@ class CodexProvider(CLIProvider):
 
             schema_path = get_schema_path(output_schema, schema_work_dir)
             cmd.extend(["--output-schema", schema_path])
+
+        if resume and prompt:
+            # Keep positional follow-up prompts last so codex still parses flags.
+            cmd.append(prompt)
 
         return cmd
 

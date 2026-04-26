@@ -19,21 +19,27 @@ Codex reads `OPENAI_API_KEY` from the environment. Add it to your shell profile 
 ## Configure in millstone
 
 ```toml
-[millstone]
 cli = "codex"
+codex_yolo = true  # optional: pass --yolo to codex
 ```
 
 Or target a specific role — for example, using Codex only as the reviewer:
 
 ```toml
-[millstone]
 cli          = "claude"
 cli_reviewer = "codex"
 ```
 
+You can also opt into `--yolo` from the CLI when needed:
+
+```bash
+millstone --cli codex --codex-yolo
+```
+
 ## Notes
 
-- millstone invokes `codex exec - --yolo`, which runs Codex non-interactively and bypasses approval prompts. The prompt is delivered via stdin to avoid OS argument-size limits on large prompts.
+- millstone invokes `codex exec -` by default. Add `--codex-yolo` or set `codex_yolo = true` to pass Codex `--yolo` explicitly.
+- The prompt is delivered via stdin to avoid OS argument-size limits on large prompts.
 - Session resume uses `codex exec resume <session_id>`.
 - Structured output (reviewer and sanity check roles) uses `--output-schema <path>` with a JSON schema file written to `.millstone/`.
 

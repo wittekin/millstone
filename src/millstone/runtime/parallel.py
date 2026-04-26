@@ -523,6 +523,8 @@ class ParallelOrchestrator:
             cmd.extend(["--cli-sanity", self.orch._cli_sanity])
         if self.orch._cli_analyzer:
             cmd.extend(["--cli-analyzer", self.orch._cli_analyzer])
+        if self.orch._codex_yolo:
+            cmd.append("--codex-yolo")
         if self.orch._custom_prompts_dir is not None:
             cmd.extend(["--prompts-dir", str(self.orch._custom_prompts_dir)])
         return cmd

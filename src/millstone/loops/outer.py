@@ -47,6 +47,8 @@ with contextlib.suppress(Exception):
     import millstone.artifact_providers.mcp  # noqa: F401  (side-effect: registers "mcp" backends)
 with contextlib.suppress(Exception):
     import millstone.artifact_providers.jira  # noqa: F401  (side-effect: registers "jira" backend)
+with contextlib.suppress(Exception):
+    import millstone.artifact_providers.beads  # noqa: F401  (side-effect: registers "beads" backend)
 
 if TYPE_CHECKING:
     # Avoid circular import - only used for type hints
