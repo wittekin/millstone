@@ -7,7 +7,8 @@ backend, calling ``bd`` directly rather than going through an LLM/MCP loop.
 
 Configuration (``.millstone/config.toml``)::
 
-    [millstone]
+    # Flat top-level keys — millstone's load_config reads the top level only,
+    # so do NOT nest these under a ``[millstone]`` table.
     tasklist_provider = "beads"
     opportunity_provider = "beads"
 

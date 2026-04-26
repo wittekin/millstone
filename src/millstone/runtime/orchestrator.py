@@ -845,28 +845,29 @@ class Orchestrator:
     def has_remaining_tasks(self) -> bool:
         """Check whether there are pending tasks to process.
 
-        When the configured provider is MCP (e.g. GitHub Issues, Linear), the
-        local tasklist file is ignored entirely — the provider is always queried
-        via the agent callback so that a stale or leftover local file does not
-        shadow the remote backend.
-
-        For file-backed tasklists the local file is read directly.
+        For remote backends (MCP, beads, jira, etc.) the provider is queried
+        directly so that a stale or leftover local tasklist file does not
+        shadow the remote backend. Only the local file-backed provider reads
+        from the markdown file.
         """
+        from millstone.artifact_providers.file import FileTasklistProvider
         from millstone.artifact_providers.mcp import MCPTasklistProvider
         from millstone.artifacts.models import TaskStatus
 
         provider = self._outer_loop_manager.tasklist_provider
 
-        if isinstance(provider, MCPTasklistProvider):
-            # MCP provider: always query remote, ignore any local file.
-            if provider._agent_callback is None:
-                provider.set_agent_callback(lambda p, **k: self.run_agent(p, role="author", **k))
-            provider.invalidate_cache()
-            tasks = provider.list_tasks()
-            return any(t.status in (TaskStatus.todo, TaskStatus.in_progress) for t in tasks)
+        if isinstance(provider, FileTasklistProvider):
+            return self._tasklist_manager.has_remaining_tasks()
 
-        # File provider: use the local tasklist file.
-        return self._tasklist_manager.has_remaining_tasks()
+        # Remote / non-file provider (MCP, beads, jira, ...): query the
+        # provider directly so the local stub file does not shadow it.
+        if isinstance(provider, MCPTasklistProvider) and provider._agent_callback is None:
+            provider.set_agent_callback(lambda p, **k: self.run_agent(p, role="author", **k))
+        invalidate_cache = getattr(provider, "invalidate_cache", None)
+        if callable(invalidate_cache):
+            invalidate_cache()
+        tasks = provider.list_tasks()
+        return any(t.status in (TaskStatus.todo, TaskStatus.in_progress) for t in tasks)
 
     def _setup_work_dir(self):
         """Create work directory and ensure it's gitignored."""
@@ -1564,12 +1565,14 @@ class Orchestrator:
                 f"Not a git repository: {self.repo_dir}\nInitialize with: git init"
             )
 
-        # Check 3: Tasklist file exists (if not using --task and not using MCP provider)
+        # Check 3: Tasklist file exists (only required for the file-backed provider).
+        # Remote providers (MCP, beads, jira, ...) source tasks from their backend
+        # and don't need a local stub file.
         if not self.task:
-            from millstone.artifact_providers.mcp import MCPTasklistProvider
+            from millstone.artifact_providers.file import FileTasklistProvider
 
             tl_provider = self._outer_loop_manager.tasklist_provider
-            if not isinstance(tl_provider, MCPTasklistProvider):
+            if isinstance(tl_provider, FileTasklistProvider):
                 tasklist_path = self.repo_dir / self.tasklist
                 if not tasklist_path.exists():
                     raise PreflightError(
@@ -3898,17 +3901,26 @@ class Orchestrator:
                 restored_task_state.get("selected_task_item")
             )
         else:
-            # When the tasklist is MCP-backed, derive task title and ID from the
-            # remote provider's cached task list instead of reading a local file
-            # that may not exist or may be stale.
-            from millstone.artifact_providers.mcp import MCPTasklistProvider
+            # For remote-backed providers (MCP, beads, jira, ...) derive task
+            # title and ID from the provider directly. Prefer ready-aware
+            # filtering when available so blocked tasks are skipped.
+            from millstone.artifact_providers.file import FileTasklistProvider
 
             provider = self._outer_loop_manager.tasklist_provider
-            if isinstance(provider, MCPTasklistProvider):
-                cached = provider.list_tasks()
-                pending = [
-                    t for t in cached if t.status in (TaskStatus.todo, TaskStatus.in_progress)
-                ]
+            if not isinstance(provider, FileTasklistProvider):
+                # Use list_ready_tasks() when the provider supports it
+                # (ReadyAwareTasklistProvider protocol — beads, etc.) so we
+                # never pick a task whose dependencies are still open. Fall
+                # back to list_tasks() filtered by status for MCP/legacy.
+                ready_fn = getattr(provider, "list_ready_tasks", None)
+                if callable(ready_fn):
+                    pending = list(ready_fn())
+                else:
+                    pending = [
+                        t
+                        for t in provider.list_tasks()
+                        if t.status in (TaskStatus.todo, TaskStatus.in_progress)
+                    ]
                 if pending:
                     _mcp_task_item = pending[0]
                     self.current_task_title = _mcp_task_item.title or "task"
@@ -3961,11 +3973,16 @@ class Orchestrator:
             self._selected_task_item = _mcp_task_item
         if not self.task and self._selected_task_item is None:
             with contextlib.suppress(Exception):
-                pending_provider_tasks = [
-                    t
-                    for t in self._outer_loop_manager.tasklist_provider.list_tasks()
-                    if t.status in (TaskStatus.todo, TaskStatus.in_progress)
-                ]
+                provider = self._outer_loop_manager.tasklist_provider
+                ready_fn = getattr(provider, "list_ready_tasks", None)
+                if callable(ready_fn):
+                    pending_provider_tasks = list(ready_fn())
+                else:
+                    pending_provider_tasks = [
+                        t
+                        for t in provider.list_tasks()
+                        if t.status in (TaskStatus.todo, TaskStatus.in_progress)
+                    ]
                 if pending_provider_tasks:
                     self._selected_task_item = pending_provider_tasks[0]
                     self._current_task_id = self._selected_task_item.task_id
